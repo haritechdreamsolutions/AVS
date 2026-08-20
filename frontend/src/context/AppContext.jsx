@@ -31,7 +31,8 @@ export const AppProvider = ({ children }) => {
   const [activeBill, setActiveBill] = useState(null);
 
   // Dynamic API URL for Local & Cloud Hosting (Netlify / Render / Vercel)
-  const API_URL = import.meta.env.VITE_API_URL || '/api';
+  const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').trim().replace(/\/+$/, '');
+  const API_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : (rawApiUrl === '' || rawApiUrl === '/api' ? '/api' : `${rawApiUrl}/api`);
 
   const fetchData = async () => {
     try {
