@@ -235,9 +235,9 @@ INSERT INTO shops (id, code, name, owner_name, phone, distance, route_id, curren
 
 INSERT INTO employee_stock (employee_id, product_id, qty_units, unit) VALUES
 (1, 1, 8, 'Tray'),
-(1, 2, 5, 'Tray'),
+(1, 5, 5, 'Tray'),
 (1, 3, 5, 'Box'),
-(1, 4, 15, 'Pack');
+(1, 7, 15, 'Pack');
 
 INSERT INTO sales (id, bill_no, employee_id, employee_name, shop_id, shop_name, date, time, total_amount, payment_mode) VALUES
 (1, 'INV-10921', 1, 'Tharun (Driver)', 102, 'Mani Store', CURRENT_DATE, '09:30 AM', 1800.00, 'CASH'),
