@@ -1,0 +1,181 @@
+:root {
+  --bg-light: #f8fafc;
+  --card-bg: #ffffff;
+  --card-border: #e2e8f0;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+}
+
+body {
+  background-color: var(--bg-light);
+  font-family: 'Inter', sans-serif;
+  color: #0f172a;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Custom Light Glassmorphism & Card Styles */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+}
+
+.glass-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.85rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease-in-out;
+}
+
+.glass-card:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+  transform: translateY(-2px);
+}
+
+.glow-blue {
+  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.25);
+}
+
+.glow-green {
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);
+}
+
+.glow-red {
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.25);
+}
+
+/* Touch Buttons for Mobile POS */
+.touch-btn {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  border-radius: 0.75rem;
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.touch-btn:active {
+  transform: scale(0.98);
+}
+
+.touch-btn-primary {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: white;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+
+.touch-btn-success {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+.touch-btn-danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+}
+
+/* Numpad styling for Employee Login */
+.pin-pad-btn {
+  height: 60px;
+  width: 100%;
+  border-radius: 0.85rem;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  font-size: 1.4rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0f172a;
+  transition: all 0.15s;
+}
+
+.pin-pad-btn:active {
+  background: #3b82f6;
+  color: white;
+  border-color: #2563eb;
+}
+
+/* Unit Selector Pill Buttons */
+.unit-pill {
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+}
+
+.unit-pill.active {
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+/* 58mm Thermal Print CSS */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  
+  .thermal-receipt, .thermal-receipt * {
+    visibility: visible;
+  }
+  
+  .thermal-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 58mm !important;
+    padding: 2mm;
+    font-family: 'Space Mono', monospace;
+    font-size: 10pt;
+    color: black !important;
+    background: white !important;
+  }
+  
+  .a4-report, .a4-report * {
+    visibility: visible;
+  }
+  
+  .a4-report {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    background: white !important;
+    color: black !important;
+  }
+}
+
+/* Hide scrollbars completely for Chrome, Safari, Edge and Firefox */
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
