@@ -4,7 +4,10 @@ import 'dotenv/config';
 const { Pool } = pg;
 
 const poolConfig = process.env.DATABASE_URL
-  ? { connectionString: process.env.DATABASE_URL, ssl: false }
+  ? { 
+      connectionString: process.env.DATABASE_URL, 
+      ssl: process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false } 
+    }
   : {
       host:     process.env.PG_HOST     || 'localhost',
       port:     parseInt(process.env.PG_PORT || '5432', 10),

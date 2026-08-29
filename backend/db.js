@@ -2100,6 +2100,14 @@ addDamage(damageData) {
 
   // EMPLOYEE & LOGIN USER MANAGEMENT METHODS
 
+  getUsers() {
+    return this.data.users || [];
+  }
+
+  getRoutes() {
+    return this.data.routes || [];
+  }
+
   reassignDriverRoute(routeId, newDriverId) {
     const rId = Number(routeId);
     const dId = Number(newDriverId);
