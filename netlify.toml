@@ -25,7 +25,7 @@
 
 [[redirects]]
   from = "/api/*"
-  to = "https://avsdistributor.onrender.com/api/:splat"
+  to = "https://avs-backend-ttrz.onrender.com/api/:splat"
   status = 200
   force = true
 

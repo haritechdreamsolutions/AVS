@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import express from 'express';
-import cors from 'cors';
 import session from 'express-session';
 import pgSession from 'connect-pg-simple';
 import { pool } from './database/pg_pool.js';
@@ -12,29 +11,20 @@ const PORT = process.env.PORT || 5000;
 // Enable trust proxy for Render / Cloud reverse proxy HTTPS session cookies
 app.set('trust proxy', 1);
 
-// Allowed Origins for CORS
-const allowedOrigins = [
-  'https://avsdistributor.netlify.app',
-  'http://localhost:4000',
-  'http://localhost:3000',
-  'http://localhost:5000'
-];
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.netlify.app')) {
-      callback(null, true);
-    } else {
-      callback(null, true); // Allow all origins in production for maximum compatibility
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
-};
-
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+// Custom CORS Middleware to guarantee exact origin reflection for credentials: 'include'
+app.use((req, res, next) => {
+  const origin = req.headers.origin || 'https://avsdistributor.netlify.app';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  
+  // Handle OPTIONS preflight immediately with 200 OK
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
 
 app.use(express.json());
 
