@@ -15,22 +15,26 @@ import { Home, Receipt, Store } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 
 export default function App() {
-  const { activeRole, currentUser, createSale, activeBill, setActiveBill } = useApp();
+  const { activeRole, currentUser, isAuthChecking, createSale, activeBill, setActiveBill } = useApp();
 
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
   const [empScreen, setEmpScreen] = useState('home');
   const [selectedShop, setSelectedShop] = useState(null);
   const [pendingBillData, setPendingBillData] = useState(null);
   const [showDamageModal, setShowDamageModal] = useState(false);
   const [showEndOfDayModal, setShowEndOfDayModal] = useState(false);
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    toast.info("Logged out successfully");
+  const API_URL = import.meta.env.VITE_API_URL || '/api';
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
+      window.location.reload(); // Hard reload to clear context state
+    } catch (e) {
+      toast.error("Logout failed");
+    }
   };
 
   const handleLoginSuccess = () => {
-    setIsLoggedIn(true);
     setEmpScreen('home');
     toast.success("Welcome back!");
   };
@@ -59,22 +63,32 @@ export default function App() {
     }
   };
 
+  if (isAuthChecking) {
+    return <div className="h-screen w-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
+  }
+
+  if (!currentUser) {
+    return (
+      <>
+        <Toaster position="top-right" richColors />
+        <RoleLoginScreen onLoginSuccess={handleLoginSuccess} />
+      </>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased selection:bg-blue-600 selection:text-white">
+    <div className="h-screen overflow-hidden flex flex-col bg-slate-50 text-slate-800">
       
       {/* Sonner Toast Notification Container */}
       <Toaster position="top-right" richColors />
 
-      {/* Render Login Screen if user logged out */}
-      {!isLoggedIn ? (
-        <RoleLoginScreen onLoginSuccess={handleLoginSuccess} />
-      ) : activeRole === 'OWNER' ? (
+      {activeRole === 'OWNER' ? (
         <OwnerSidebarLayout onLogout={handleLogout} />
       ) : (
         <>
           <Header onLogout={handleLogout} />
 
-          <main className="flex-1 pb-16">
+          <main className="flex-1 overflow-y-auto pb-16">
             {activeRole === 'EMPLOYEE' && (
               <>
                 {empScreen === 'home' && (

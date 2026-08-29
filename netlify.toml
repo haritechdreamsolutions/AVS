@@ -1,6 +1,11 @@
 [build]
-  publish = "frontend/dist"
-  command = "npm --prefix frontend install && npm --prefix frontend run build"
+  publish = "dist"
+  command = "npm run build"
+
+[[redirects]]
+  from = "/api/*"
+  to = "http://localhost:6000/api/:splat"
+  status = 200
 
 [[redirects]]
   from = "/*"

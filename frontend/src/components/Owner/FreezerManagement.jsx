@@ -40,7 +40,7 @@ export const FreezerManagement = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-6">
       
       {/* Top Banner */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 glass-panel p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
@@ -163,8 +163,8 @@ export const FreezerManagement = () => {
 
       {/* Assign Freezer Modal */}
       {showAssignModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full max-h-[90vh] overflow-y-auto my-auto p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h4 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
                 <Snowflake className="w-5 h-5 text-cyan-600" />

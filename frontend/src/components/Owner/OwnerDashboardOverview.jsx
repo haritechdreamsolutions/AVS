@@ -74,7 +74,7 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
   };
 
   return (
-    <div className="space-y-5 pb-24">
+    <div className="space-y-5 pb-6">
       
       {/* Header Banner */}
       <div className="p-5 rounded-3xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white border border-slate-800 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
@@ -296,8 +296,8 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
 
       {/* Sale Details Modal */}
       {selectedSaleForDetails && (
-        <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-5 space-y-4 shadow-2xl relative overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto my-auto p-5 space-y-4 shadow-2xl relative">
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">

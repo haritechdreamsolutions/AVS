@@ -1,7 +1,6 @@
 -- ====================================================================
--- AVS DISTRIBUTION MANAGEMENT POS - COMPLETE MYSQL DATABASE SCRIPT
+-- AVS DISTRIBUTION MANAGEMENT POS - MYSQL DDL SCHEMA SCRIPT
 -- Database: avs_distribution_db
--- Features: Full Tables DDL, Foreign Keys, Stored Procedures & Full Seeds Data
 -- ====================================================================
 
 CREATE DATABASE IF NOT EXISTS `avs_distribution_db` 
@@ -9,12 +8,8 @@ DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 USE `avs_distribution_db`;
 
--- --------------------------------------------------------------------
--- 1. DROP EXISTING TABLES & PROCEDURES (SAFE RESET ORDER)
--- --------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS `sp_UpdateProductPrice`;
 DROP PROCEDURE IF EXISTS `sp_CollectShopDue`;
-DROP PROCEDURE IF EXISTS `sp_CreateSaleInvoice`;
 DROP PROCEDURE IF EXISTS `sp_AssignFreezerAsset`;
 
 DROP TABLE IF EXISTS `recent_activities`;
@@ -24,7 +19,6 @@ DROP TABLE IF EXISTS `damages`;
 DROP TABLE IF EXISTS `sale_items`;
 DROP TABLE IF EXISTS `sales`;
 DROP TABLE IF EXISTS `employee_stock`;
-DROP TABLE IF EXISTS `freezer_allocations`;
 DROP TABLE IF EXISTS `shops`;
 DROP TABLE IF EXISTS `products`;
 DROP TABLE IF EXISTS `routes`;
@@ -32,11 +26,6 @@ DROP TABLE IF EXISTS `users`;
 DROP TABLE IF EXISTS `roles`;
 DROP TABLE IF EXISTS `company_info`;
 
--- --------------------------------------------------------------------
--- 2. CREATE SCHEMAS & TABLES DDL
--- --------------------------------------------------------------------
-
--- Company Info Table
 CREATE TABLE `company_info` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(150) NOT NULL,
@@ -46,13 +35,11 @@ CREATE TABLE `company_info` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Roles Table
 CREATE TABLE `roles` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `role_name` VARCHAR(50) NOT NULL UNIQUE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Users / Employees Table
 CREATE TABLE `users` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(100) NOT NULL,
@@ -65,7 +52,6 @@ CREATE TABLE `users` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Routes Master Table
 CREATE TABLE `routes` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `name` VARCHAR(100) NOT NULL,
@@ -73,9 +59,21 @@ CREATE TABLE `routes` (
   `completed_count` INT DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Products Master Table (Price & Ratio Engine)
+CREATE TABLE `categories` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `code` VARCHAR(50) NOT NULL UNIQUE,
+  `name` VARCHAR(100) NOT NULL UNIQUE,
+  `description` TEXT DEFAULT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE `products` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `category_id` INT DEFAULT NULL,
+  `sku` VARCHAR(50) DEFAULT NULL UNIQUE,
+  `barcode` VARCHAR(50) DEFAULT NULL UNIQUE,
   `name` VARCHAR(150) NOT NULL,
   `display_name` VARCHAR(150) NOT NULL,
   `category` VARCHAR(50) NOT NULL,
@@ -86,12 +84,14 @@ CREATE TABLE `products` (
   `unit_selling_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `piece_selling_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `warehouse_stock_units` INT NOT NULL DEFAULT 0,
+  `min_stock_level` INT NOT NULL DEFAULT 10,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
   `icon` VARCHAR(10) DEFAULT '🥛',
   `image_path` VARCHAR(255) DEFAULT NULL,
-  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (`category_id`) REFERENCES `categories`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Retail Shops Master Table
 CREATE TABLE `shops` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `code` VARCHAR(20) NOT NULL UNIQUE,
@@ -111,7 +111,6 @@ CREATE TABLE `shops` (
   FOREIGN KEY (`route_id`) REFERENCES `routes`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Employee Loaded Vehicle Stock Table
 CREATE TABLE `employee_stock` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `employee_id` INT NOT NULL,
@@ -123,7 +122,6 @@ CREATE TABLE `employee_stock` (
   FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Sales Headers Table
 CREATE TABLE `sales` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `bill_no` VARCHAR(50) NOT NULL UNIQUE,
@@ -139,7 +137,6 @@ CREATE TABLE `sales` (
   FOREIGN KEY (`shop_id`) REFERENCES `shops`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Sales Items Breakdown Table
 CREATE TABLE `sale_items` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `sale_id` INT NOT NULL,
@@ -153,7 +150,6 @@ CREATE TABLE `sale_items` (
   FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Damages & Returns Table
 CREATE TABLE `damages` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `employee_id` INT DEFAULT NULL,
@@ -166,7 +162,6 @@ CREATE TABLE `damages` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Expenses Table
 CREATE TABLE `expenses` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `employee_id` INT DEFAULT NULL,
@@ -177,7 +172,6 @@ CREATE TABLE `expenses` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- End of Day Cash Settlements Table
 CREATE TABLE `settlements` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `employee_id` INT NOT NULL,
@@ -192,7 +186,6 @@ CREATE TABLE `settlements` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Recent System Audit Log / Activities Table
 CREATE TABLE `recent_activities` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `title` VARCHAR(255) NOT NULL,
@@ -202,99 +195,12 @@ CREATE TABLE `recent_activities` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
--- --------------------------------------------------------------------
--- 3. STORED PROCEDURES (PROCEDURES MASTER)
--- --------------------------------------------------------------------
+-- ====================================================================
+-- AVS DISTRIBUTION MANAGEMENT POS - MYSQL INSERTS SEEDS SCRIPT
+-- Database: avs_distribution_db
+-- ====================================================================
 
-DELIMITER //
-
--- Procedure 1: Update Product Price & 72 Pcs Ratio
-CREATE PROCEDURE `sp_UpdateProductPrice`(
-  IN `p_product_id` INT,
-  IN `p_unit_selling_price` DECIMAL(10,2),
-  IN `p_piece_selling_price` DECIMAL(10,2),
-  IN `p_purchase_price` DECIMAL(10,2),
-  IN `p_pieces_per_unit` INT
-)
-BEGIN
-  UPDATE `products`
-  SET 
-    `unit_selling_price` = p_unit_selling_price,
-    `piece_selling_price` = p_piece_selling_price,
-    `purchase_price` = p_purchase_price,
-    `pieces_per_unit` = p_pieces_per_unit
-  WHERE `id` = p_product_id;
-
-  INSERT INTO `recent_activities` (`title`, `time`, `type`)
-  VALUES (
-    CONCAT('Rate updated for product #', p_product_id, ': ₹', p_unit_selling_price, '/Tray'),
-    DATE_FORMAT(NOW(), '%h:%i %p'),
-    'price'
-  );
-END //
-
--- Procedure 2: Collect Retailer Market Due
-CREATE PROCEDURE `sp_CollectShopDue`(
-  IN `p_shop_id` INT,
-  IN `p_amount` DECIMAL(10,2),
-  IN `p_mode` VARCHAR(20)
-)
-BEGIN
-  DECLARE v_current_due DECIMAL(10,2);
-  DECLARE v_shop_name VARCHAR(150);
-  DECLARE v_new_due DECIMAL(10,2);
-
-  SELECT `current_due`, `name` INTO v_current_due, v_shop_name
-  FROM `shops` WHERE `id` = p_shop_id;
-
-  SET v_new_due = GREATEST(0.00, v_current_due - p_amount);
-
-  UPDATE `shops` 
-  SET `current_due` = v_new_due 
-  WHERE `id` = p_shop_id;
-
-  INSERT INTO `recent_activities` (`title`, `time`, `type`)
-  VALUES (
-    CONCAT('Collected ₹', p_amount, ' due from ', v_shop_name, ' (Mode: ', p_mode, ')'),
-    DATE_FORMAT(NOW(), '%h:%i %p'),
-    'payment'
-  );
-END //
-
--- Procedure 3: Assign Deep Freezer Asset to Retail Store
-CREATE PROCEDURE `sp_AssignFreezerAsset`(
-  IN `p_shop_id` INT,
-  IN `p_model` VARCHAR(150),
-  IN `p_serial` VARCHAR(100)
-)
-BEGIN
-  DECLARE v_shop_name VARCHAR(150);
-
-  SELECT `name` INTO v_shop_name FROM `shops` WHERE `id` = p_shop_id;
-
-  UPDATE `shops`
-  SET 
-    `has_freezer` = 1,
-    `freezer_model` = p_model,
-    `freezer_serial` = p_serial,
-    `freezer_date` = DATE_FORMAT(NOW(), '%Y-%m-%d'),
-    `freezer_status` = 'Active'
-  WHERE `id` = p_shop_id;
-
-  INSERT INTO `recent_activities` (`title`, `time`, `type`)
-  VALUES (
-    CONCAT('Freezer asset allocated to ', v_shop_name),
-    DATE_FORMAT(NOW(), '%h:%i %p'),
-    'freezer'
-  );
-END //
-
-DELIMITER ;
-
-
--- --------------------------------------------------------------------
--- 4. SEEDS DATA (POPULATE DATABASE INSERTS)
--- --------------------------------------------------------------------
+USE `avs_distribution_db`;
 
 -- Company Info
 INSERT INTO `company_info` (`id`, `name`, `subtitle`, `address`, `phone`) VALUES
@@ -320,25 +226,33 @@ INSERT INTO `users` (`id`, `name`, `phone`, `pin`, `role`, `vehicle_no`, `status
 INSERT INTO `routes` (`id`, `name`, `shops_count`, `completed_count`) VALUES
 (1, 'Route A (Salem Main)', 30, 12);
 
--- Products Master (All 15 Variants + 72 Pcs Tray Ratios)
-INSERT INTO `products` (`id`, `name`, `display_name`, `category`, `base_unit`, `selling_unit`, `pieces_per_unit`, `purchase_price`, `unit_selling_price`, `piece_selling_price`, `warehouse_stock_units`, `icon`, `image_path`) VALUES
-(1, 'Amirtha Milk 200ml', 'Amirtha Milk - 200ml', 'Dairy', 'Piece', 'Tray', 20, 720.00, 880.00, 44.00, 88, '🥛', '/images/amirthaa_milk_200ml.png'),
-(5, 'Amirtha Milk 500ml', 'Amirtha Milk - 500ml', 'Dairy', 'Piece', 'Tray', 12, 780.00, 960.00, 80.00, 110, '🥛', '/images/amirthaa_milk_500ml.png'),
-(6, 'Amirtha Milk 1L', 'Amirtha Milk - 1L', 'Dairy', 'Piece', 'Tray', 10, 850.00, 1050.00, 105.00, 65, '🥛', '/images/amirthaa_milk_1l.jpg'),
-(7, 'Amirtha Curd 200ml', 'Amirtha Curd - 200ml', 'Curd', 'Piece', 'Tray', 20, 520.00, 660.00, 33.00, 75, '🥣', '/images/amirthaa_curd_200ml.jpg'),
-(8, 'Amirtha Curd 500ml', 'Amirtha Curd - 500ml', 'Curd', 'Piece', 'Tray', 12, 620.00, 780.00, 65.00, 90, '🥣', '/images/amirthaa_curd_500ml.jpg'),
-(9, 'Amirtha Curd 1L', 'Amirtha Curd - 1L', 'Curd', 'Piece', 'Tray', 10, 760.00, 950.00, 95.00, 40, '🥣', '/images/amirthaa_curd_1l.jpg'),
-(10, 'Coccola 200ml', 'Coccola - 200ml', 'Beverage', 'Piece', 'Box', 24, 480.00, 600.00, 25.00, 140, '🥤', '/images/coccola_200ml.png'),
-(3, 'Coccola 500ml', 'Coccola - 500ml', 'Beverage', 'Piece', 'Box', 12, 540.00, 720.00, 60.00, 120, '🥤', '/images/coccola_500ml.png'),
-(11, 'Coccola 1L', 'Coccola - 1L', 'Beverage', 'Piece', 'Box', 6, 420.00, 570.00, 95.00, 80, '🥤', '/images/coccola_1l.png'),
-(12, 'Juice Pack 200ml', 'Juice Pack - 200ml', 'Juice', 'Piece', 'Box', 24, 400.00, 520.00, 22.00, 95, '🧃', '/images/juice_hero.jpg'),
-(15, 'Tata Drink 200ml', 'Tata Drink - 200ml', 'Juice', 'Piece', 'Box', 24, 380.00, 480.00, 20.00, 110, '🧃', '/images/tata_hero.jpg'),
-(18, 'Aquafresh Water 200ml', 'Aquafresh Water - 200ml', 'Water', 'Piece', 'Box', 48, 200.00, 280.00, 6.00, 210, '💧', '/images/aquafresh_water_200ml.png'),
-(19, 'Aquafresh Water 500ml', 'Aquafresh Water - 500ml', 'Water', 'Piece', 'Box', 24, 240.00, 340.00, 14.00, 180, '💧', '/images/aquafresh_water_500ml.png'),
-(2, 'Aquafresh Water 1L', 'Aquafresh Water - 1L', 'Water', 'Piece', 'Box', 12, 280.00, 380.00, 32.00, 250, '💧', '/images/aquafresh_water_1l.png'),
-(20, 'Aquafresh Water 2L', 'Aquafresh Water - 2L', 'Water', 'Piece', 'Box', 6, 220.00, 300.00, 50.00, 90, '💧', '/images/aquafresh_water_2l.png');
+-- Categories Master (5 Core Categories)
+INSERT INTO `categories` (`id`, `code`, `name`, `description`, `is_active`) VALUES
+(1, 'CAT-MILK', 'Dairy', 'Fresh Milk & Pasteurised Dairy Pouches', 1),
+(2, 'CAT-CURD', 'Curd', 'Fresh Yogurt & Fermented Curd Tubs', 1),
+(3, 'CAT-BEV', 'Beverage', 'Carbonated Drinks & Soft Drinks', 1),
+(4, 'CAT-JUICE', 'Juice', 'Fruit Juice Packs & Energy Drinks', 1),
+(5, 'CAT-WATER', 'Water', 'Purified Mineral Water Bottles', 1);
 
--- Shops Master (6 Stores Including Green Park Bakery #107)
+-- Products Master (15 Variants + Rate Engine Data + SKU & Barcodes + Category FK)
+INSERT INTO `products` (`id`, `category_id`, `sku`, `barcode`, `name`, `display_name`, `category`, `base_unit`, `selling_unit`, `pieces_per_unit`, `purchase_price`, `unit_selling_price`, `piece_selling_price`, `warehouse_stock_units`, `min_stock_level`, `is_active`, `icon`, `image_path`) VALUES
+(1, 1, 'MILK-200', '8901234500010', 'Amirtha Milk 200ml', 'Amirtha Milk - 200ml', 'Dairy', 'Piece', 'Tray', 20, 720.00, 880.00, 44.00, 88, 15, 1, '🥛', '/images/amirthaa_milk_200ml.png'),
+(5, 1, 'MILK-500', '8901234500050', 'Amirtha Milk 500ml', 'Amirtha Milk - 500ml', 'Dairy', 'Piece', 'Tray', 12, 780.00, 960.00, 80.00, 110, 20, 1, '🥛', '/images/amirthaa_milk_500ml.png'),
+(6, 1, 'MILK-1000', '8901234500100', 'Amirtha Milk 1L', 'Amirtha Milk - 1L', 'Dairy', 'Piece', 'Tray', 10, 850.00, 1050.00, 105.00, 65, 10, 1, '🥛', '/images/amirthaa_milk_1l.jpg'),
+(7, 2, 'CURD-200', '8901234500200', 'Amirtha Curd 200ml', 'Amirtha Curd - 200ml', 'Curd', 'Piece', 'Tray', 20, 520.00, 660.00, 33.00, 75, 15, 1, '🥣', '/images/amirthaa_curd_200ml.jpg'),
+(8, 2, 'CURD-500', '8901234500500', 'Amirtha Curd 500ml', 'Amirtha Curd - 500ml', 'Curd', 'Piece', 'Tray', 12, 620.00, 780.00, 65.00, 90, 15, 1, '🥣', '/images/amirthaa_curd_500ml.jpg'),
+(9, 2, 'CURD-1000', '8901234501000', 'Amirtha Curd 1L', 'Amirtha Curd - 1L', 'Curd', 'Piece', 'Tray', 10, 760.00, 950.00, 95.00, 40, 10, 1, '🥣', '/images/amirthaa_curd_1l.jpg'),
+(10, 3, 'COC-200', '8901234502000', 'Coccola 200ml', 'Coccola - 200ml', 'Beverage', 'Piece', 'Box', 24, 480.00, 600.00, 25.00, 140, 25, 1, '🥤', '/images/coccola_200ml.png'),
+(3, 3, 'COC-500', '8901234505000', 'Coccola 500ml', 'Coccola - 500ml', 'Beverage', 'Piece', 'Box', 12, 540.00, 720.00, 60.00, 120, 20, 1, '🥤', '/images/coccola_500ml.png'),
+(11, 3, 'COC-1000', '8901234510000', 'Coccola 1L', 'Coccola - 1L', 'Beverage', 'Piece', 'Box', 6, 420.00, 570.00, 95.00, 80, 10, 1, '🥤', '/images/coccola_1l.png'),
+(12, 4, 'JUICE-200', '8901234520000', 'Juice Pack 200ml', 'Juice Pack - 200ml', 'Juice', 'Piece', 'Box', 24, 400.00, 520.00, 22.00, 95, 15, 1, '🧃', '/images/juice_hero.jpg'),
+(15, 4, 'TATA-200', '8901234530000', 'Tata Drink 200ml', 'Tata Drink - 200ml', 'Juice', 'Piece', 'Box', 24, 380.00, 480.00, 20.00, 110, 15, 1, '🧃', '/images/tata_hero.jpg'),
+(18, 5, 'AQUA-200', '8901234540000', 'Aquafresh Water 200ml', 'Aquafresh Water - 200ml', 'Water', 'Piece', 'Box', 48, 200.00, 280.00, 6.00, 210, 30, 1, '💧', '/images/aquafresh_water_200ml.png'),
+(19, 5, 'AQUA-500', '8901234550000', 'Aquafresh Water 500ml', 'Aquafresh Water - 500ml', 'Water', 'Piece', 'Box', 24, 240.00, 340.00, 14.00, 180, 20, 1, '💧', '/images/aquafresh_water_500ml.png'),
+(2, 5, 'AQUA-1000', '8901234560000', 'Aquafresh Water 1L', 'Aquafresh Water - 1L', 'Water', 'Piece', 'Box', 12, 280.00, 380.00, 32.00, 250, 25, 1, '💧', '/images/aquafresh_water_1l.png'),
+(20, 5, 'AQUA-2000', '8901234570000', 'Aquafresh Water 2L', 'Aquafresh Water - 2L', 'Water', 'Piece', 'Box', 6, 220.00, 300.00, 50.00, 90, 10, 1, '💧', '/images/aquafresh_water_2l.png');
+
+-- Shops Master (6 Retail Stores)
 INSERT INTO `shops` (`id`, `code`, `name`, `owner_name`, `phone`, `distance`, `route_id`, `current_due`, `completed`, `has_freezer`, `freezer_model`, `freezer_serial`, `freezer_date`, `freezer_status`) VALUES
 (102, '#102', 'Mani Store', 'Manikandan', '9123456789', '2.3 km', 1, 1200.00, 0, 1, 'Blue Star 300L Deep Freezer', 'FRZ-MS-102', '2026-01-10', 'Active'),
 (103, '#103', 'Kumar Store', 'Kumar', '9123456788', '2.8 km', 1, 800.00, 0, 0, NULL, NULL, NULL, NULL),
@@ -354,7 +268,7 @@ INSERT INTO `employee_stock` (`employee_id`, `product_id`, `qty_units`, `unit`) 
 (1, 3, 5, 'Box'),
 (1, 4, 15, 'Pack');
 
--- Initial Sales History
+-- Initial Sales Records
 INSERT INTO `sales` (`id`, `bill_no`, `employee_id`, `employee_name`, `shop_id`, `shop_name`, `date`, `time`, `total_amount`, `payment_mode`) VALUES
 (1, 'INV-10921', 1, 'Tharun (Driver)', 102, 'Mani Store', CURDATE(), '09:30 AM', 1800.00, 'CASH'),
 (2, 'INV-10922', 1, 'Tharun (Driver)', 103, 'Kumar Store', CURDATE(), '10:15 AM', 950.00, 'GPAY'),
@@ -367,14 +281,8 @@ INSERT INTO `sale_items` (`sale_id`, `product_id`, `product_name`, `qty`, `unit_
 (2, 5, 'Amirtha Milk 500ml', 1.00, 'Tray', 960.00, 960.00),
 (3, 3, 'Coccola 500ml', 4.00, 'Box', 720.00, 2880.00);
 
--- Initial Audit Log Activities
+-- System Audit Log Activities
 INSERT INTO `recent_activities` (`id`, `title`, `time`, `type`) VALUES
 (1, 'Database schema and seeds setup completed', '10:00 AM', 'system'),
 (2, 'Price master rates updated by Owner Admin', '10:15 AM', 'price'),
 (3, 'Freezer assigned to Mani Store (#102)', '10:30 AM', 'freezer');
-
-COMMIT;
-
--- ====================================================================
--- END OF MYSQL DATABASE SETUP SCRIPT
--- ====================================================================

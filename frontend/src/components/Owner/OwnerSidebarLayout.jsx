@@ -14,6 +14,8 @@ import { DriverRouteManagementView } from './DriverRouteManagementView';
 import { ShopsManagementView } from './ShopsManagementView';
 import { OwnerDashboardOverview } from './OwnerDashboardOverview';
 import { AdminProductRatesView } from './AdminProductRatesView';
+import { AdminProductsMasterView } from './AdminProductsMasterView';
+import { UsersMaster } from './UsersMaster';
 import { Tag } from 'lucide-react';
 
 export const OwnerSidebarLayout = ({ onLogout }) => {
@@ -23,7 +25,8 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-    { id: 'product_rates', label: 'Product Rates 🏷️', icon: <Tag className="w-5 h-5 text-emerald-400" /> },
+    { id: 'users', label: 'Users Master', icon: <ShieldCheck className="w-5 h-5 text-indigo-400" /> },
+    { id: 'products', label: 'Products & Rates 📦', icon: <Package className="w-5 h-5 text-emerald-400" /> },
     { id: 'freezer', label: 'Freezer Assets 🧊', icon: <Snowflake className="w-5 h-5 text-cyan-400" /> },
     { id: 'sales', label: 'Sales & Bills', icon: <ShoppingBag className="w-5 h-5" /> },
     { id: 'inventory', label: 'Inventory Stock', icon: <Package className="w-5 h-5" /> },
@@ -34,24 +37,40 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900">
+    <div className="h-full overflow-hidden bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900 w-full max-w-full">
       
+      {/* Mobile Backdrop Overlay when Drawer is Open */}
+      {sidebarOpen && (
+        <div 
+          onClick={() => setSidebarOpen(false)} 
+          className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-xs md:hidden" 
+        />
+      )}
+
       {/* Mobile Top Header */}
-      <div className="md:hidden bg-slate-900 text-white p-4 flex items-center justify-between shadow-md">
+      <div className="md:hidden bg-slate-900 text-white p-3.5 flex items-center justify-between shadow-md shrink-0 sticky top-0 z-30">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-black">A</div>
-          <span className="font-extrabold text-sm uppercase">AVS DISTRIBUTORS (Admin)</span>
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center font-black text-sm">A</div>
+          <div>
+            <span className="font-black text-xs uppercase tracking-wide block">AVS DISTRIBUTORS</span>
+            <span className="text-[9px] text-purple-300 font-bold block">Owner Admin Panel</span>
+          </div>
         </div>
-        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 text-slate-300 hover:text-white">
-          {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        <button 
+          onClick={() => setSidebarOpen(!sidebarOpen)} 
+          className="p-2 text-slate-300 hover:text-white rounded-xl bg-slate-800 border border-slate-700"
+          aria-label="Toggle Navigation Menu"
+        >
+          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
       {/* Admin Sidebar Navigation */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 flex flex-col justify-between p-4 shadow-xl transition-transform duration-200 ease-in-out md:static md:translate-x-0 ${
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 flex flex-col p-4 shadow-2xl transition-transform duration-200 ease-in-out md:relative md:inset-auto md:h-full md:shrink-0 md:translate-x-0 ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
-        <div className="space-y-6">
+        {/* Scrollable nav area — grows and scrolls */}
+        <div className="flex-1 overflow-y-auto min-h-0 space-y-6">
           
           {/* Sidebar Brand Header */}
           <div className="flex items-center gap-3 px-2 pt-2 border-b border-slate-800 pb-4">
@@ -93,8 +112,8 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
           </nav>
         </div>
 
-        {/* Sidebar Footer & Logout */}
-        <div className="pt-4 border-t border-slate-800 space-y-3">
+        {/* Sidebar Footer — always pinned at bottom */}
+        <div className="shrink-0 pt-4 border-t border-slate-800 space-y-3">
           <div className="flex items-center gap-3 px-2 text-xs">
             <div className="w-8 h-8 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold">
               A
@@ -115,17 +134,22 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
         </div>
       </aside>
 
-      {/* Main Content Area - FULL WIDTH (No right-side whitespace) */}
-      <main className="flex-1 p-4 md:p-6 overflow-y-auto w-full">
+      {/* Main Content Area — ONLY this div scrolls */}
+      <main className="flex-1 h-full overflow-y-auto p-3 sm:p-4 md:p-6 w-full max-w-full min-w-0 overflow-x-hidden">
         
         {/* DASHBOARD OVERVIEW TAB */}
         {activeTab === 'dashboard' && (
           <OwnerDashboardOverview onNavigateTab={(tab) => setActiveTab(tab)} />
         )}
 
-        {/* PRODUCT RATES MASTER TAB */}
-        {activeTab === 'product_rates' && (
-          <AdminProductRatesView />
+        {/* USERS MASTER TAB */}
+        {activeTab === 'users' && (
+          <UsersMaster />
+        )}
+
+        {/* PRODUCTS & RATES MASTER TAB */}
+        {activeTab === 'products' && (
+          <AdminProductsMasterView />
         )}
 
         {/* FREEZER MANAGEMENT TAB */}

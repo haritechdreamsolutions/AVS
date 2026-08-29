@@ -29,23 +29,31 @@ INSERT INTO `users` (`id`, `name`, `phone`, `pin`, `role`, `vehicle_no`, `status
 INSERT INTO `routes` (`id`, `name`, `shops_count`, `completed_count`) VALUES
 (1, 'Route A (Salem Main)', 30, 12);
 
--- Products Master (15 Variants + Rate Engine Data)
-INSERT INTO `products` (`id`, `name`, `display_name`, `category`, `base_unit`, `selling_unit`, `pieces_per_unit`, `purchase_price`, `unit_selling_price`, `piece_selling_price`, `warehouse_stock_units`, `icon`, `image_path`) VALUES
-(1, 'Amirtha Milk 200ml', 'Amirtha Milk - 200ml', 'Dairy', 'Piece', 'Tray', 20, 720.00, 880.00, 44.00, 88, '🥛', '/images/amirthaa_milk_200ml.png'),
-(5, 'Amirtha Milk 500ml', 'Amirtha Milk - 500ml', 'Dairy', 'Piece', 'Tray', 12, 780.00, 960.00, 80.00, 110, '🥛', '/images/amirthaa_milk_500ml.png'),
-(6, 'Amirtha Milk 1L', 'Amirtha Milk - 1L', 'Dairy', 'Piece', 'Tray', 10, 850.00, 1050.00, 105.00, 65, '🥛', '/images/amirthaa_milk_1l.jpg'),
-(7, 'Amirtha Curd 200ml', 'Amirtha Curd - 200ml', 'Curd', 'Piece', 'Tray', 20, 520.00, 660.00, 33.00, 75, '🥣', '/images/amirthaa_curd_200ml.jpg'),
-(8, 'Amirtha Curd 500ml', 'Amirtha Curd - 500ml', 'Curd', 'Piece', 'Tray', 12, 620.00, 780.00, 65.00, 90, '🥣', '/images/amirthaa_curd_500ml.jpg'),
-(9, 'Amirtha Curd 1L', 'Amirtha Curd - 1L', 'Curd', 'Piece', 'Tray', 10, 760.00, 950.00, 95.00, 40, '🥣', '/images/amirthaa_curd_1l.jpg'),
-(10, 'Coccola 200ml', 'Coccola - 200ml', 'Beverage', 'Piece', 'Box', 24, 480.00, 600.00, 25.00, 140, '🥤', '/images/coccola_200ml.png'),
-(3, 'Coccola 500ml', 'Coccola - 500ml', 'Beverage', 'Piece', 'Box', 12, 540.00, 720.00, 60.00, 120, '🥤', '/images/coccola_500ml.png'),
-(11, 'Coccola 1L', 'Coccola - 1L', 'Beverage', 'Piece', 'Box', 6, 420.00, 570.00, 95.00, 80, '🥤', '/images/coccola_1l.png'),
-(12, 'Juice Pack 200ml', 'Juice Pack - 200ml', 'Juice', 'Piece', 'Box', 24, 400.00, 520.00, 22.00, 95, '🧃', '/images/juice_hero.jpg'),
-(15, 'Tata Drink 200ml', 'Tata Drink - 200ml', 'Juice', 'Piece', 'Box', 24, 380.00, 480.00, 20.00, 110, '🧃', '/images/tata_hero.jpg'),
-(18, 'Aquafresh Water 200ml', 'Aquafresh Water - 200ml', 'Water', 'Piece', 'Box', 48, 200.00, 280.00, 6.00, 210, '💧', '/images/aquafresh_water_200ml.png'),
-(19, 'Aquafresh Water 500ml', 'Aquafresh Water - 500ml', 'Water', 'Piece', 'Box', 24, 240.00, 340.00, 14.00, 180, '💧', '/images/aquafresh_water_500ml.png'),
-(2, 'Aquafresh Water 1L', 'Aquafresh Water - 1L', 'Water', 'Piece', 'Box', 12, 280.00, 380.00, 32.00, 250, '💧', '/images/aquafresh_water_1l.png'),
-(20, 'Aquafresh Water 2L', 'Aquafresh Water - 2L', 'Water', 'Piece', 'Box', 6, 220.00, 300.00, 50.00, 90, '💧', '/images/aquafresh_water_2l.png');
+-- Categories Master (5 Core Categories)
+INSERT INTO `categories` (`id`, `code`, `name`, `description`, `is_active`) VALUES
+(1, 'CAT-MILK', 'Dairy', 'Fresh Milk & Pasteurised Dairy Pouches', 1),
+(2, 'CAT-CURD', 'Curd', 'Fresh Yogurt & Fermented Curd Tubs', 1),
+(3, 'CAT-BEV', 'Beverage', 'Carbonated Drinks & Soft Drinks', 1),
+(4, 'CAT-JUICE', 'Juice', 'Fruit Juice Packs & Energy Drinks', 1),
+(5, 'CAT-WATER', 'Water', 'Purified Mineral Water Bottles', 1);
+
+-- Products Master (15 Variants + Rate Engine Data + SKU & Barcodes + Category FK)
+INSERT INTO `products` (`id`, `category_id`, `sku`, `barcode`, `name`, `display_name`, `category`, `base_unit`, `selling_unit`, `pieces_per_unit`, `purchase_price`, `unit_selling_price`, `piece_selling_price`, `warehouse_stock_units`, `min_stock_level`, `is_active`, `icon`, `image_path`) VALUES
+(1, 1, 'MILK-200', '8901234500010', 'Amirtha Milk 200ml', 'Amirtha Milk - 200ml', 'Dairy', 'Piece', 'Tray', 20, 720.00, 880.00, 44.00, 88, 15, 1, '🥛', '/images/amirthaa_milk_200ml.png'),
+(5, 1, 'MILK-500', '8901234500050', 'Amirtha Milk 500ml', 'Amirtha Milk - 500ml', 'Dairy', 'Piece', 'Tray', 12, 780.00, 960.00, 80.00, 110, 20, 1, '🥛', '/images/amirthaa_milk_500ml.png'),
+(6, 1, 'MILK-1000', '8901234500100', 'Amirtha Milk 1L', 'Amirtha Milk - 1L', 'Dairy', 'Piece', 'Tray', 10, 850.00, 1050.00, 105.00, 65, 10, 1, '🥛', '/images/amirthaa_milk_1l.jpg'),
+(7, 2, 'CURD-200', '8901234500200', 'Amirtha Curd 200ml', 'Amirtha Curd - 200ml', 'Curd', 'Piece', 'Tray', 20, 520.00, 660.00, 33.00, 75, 15, 1, '🥣', '/images/amirthaa_curd_200ml.jpg'),
+(8, 2, 'CURD-500', '8901234500500', 'Amirtha Curd 500ml', 'Amirtha Curd - 500ml', 'Curd', 'Piece', 'Tray', 12, 620.00, 780.00, 65.00, 90, 15, 1, '🥣', '/images/amirthaa_curd_500ml.jpg'),
+(9, 2, 'CURD-1000', '8901234501000', 'Amirtha Curd 1L', 'Amirtha Curd - 1L', 'Curd', 'Piece', 'Tray', 10, 760.00, 950.00, 95.00, 40, 10, 1, '🥣', '/images/amirthaa_curd_1l.jpg'),
+(10, 3, 'COC-200', '8901234502000', 'Coccola 200ml', 'Coccola - 200ml', 'Beverage', 'Piece', 'Box', 24, 480.00, 600.00, 25.00, 140, 25, 1, '🥤', '/images/coccola_200ml.png'),
+(3, 3, 'COC-500', '8901234505000', 'Coccola 500ml', 'Coccola - 500ml', 'Beverage', 'Piece', 'Box', 12, 540.00, 720.00, 60.00, 120, 20, 1, '🥤', '/images/coccola_500ml.png'),
+(11, 3, 'COC-1000', '8901234510000', 'Coccola 1L', 'Coccola - 1L', 'Beverage', 'Piece', 'Box', 6, 420.00, 570.00, 95.00, 80, 10, 1, '🥤', '/images/coccola_1l.png'),
+(12, 4, 'JUICE-200', '8901234520000', 'Juice Pack 200ml', 'Juice Pack - 200ml', 'Juice', 'Piece', 'Box', 24, 400.00, 520.00, 22.00, 95, 15, 1, '🧃', '/images/juice_hero.jpg'),
+(15, 4, 'TATA-200', '8901234530000', 'Tata Drink 200ml', 'Tata Drink - 200ml', 'Juice', 'Piece', 'Box', 24, 380.00, 480.00, 20.00, 110, 15, 1, '🧃', '/images/tata_hero.jpg'),
+(18, 5, 'AQUA-200', '8901234540000', 'Aquafresh Water 200ml', 'Aquafresh Water - 200ml', 'Water', 'Piece', 'Box', 48, 200.00, 280.00, 6.00, 210, 30, 1, '💧', '/images/aquafresh_water_200ml.png'),
+(19, 5, 'AQUA-500', '8901234550000', 'Aquafresh Water 500ml', 'Aquafresh Water - 500ml', 'Water', 'Piece', 'Box', 24, 240.00, 340.00, 14.00, 180, 20, 1, '💧', '/images/aquafresh_water_500ml.png'),
+(2, 5, 'AQUA-1000', '8901234560000', 'Aquafresh Water 1L', 'Aquafresh Water - 1L', 'Water', 'Piece', 'Box', 12, 280.00, 380.00, 32.00, 250, 25, 1, '💧', '/images/aquafresh_water_1l.png'),
+(20, 5, 'AQUA-2000', '8901234570000', 'Aquafresh Water 2L', 'Aquafresh Water - 2L', 'Water', 'Piece', 'Box', 6, 220.00, 300.00, 50.00, 90, 10, 1, '💧', '/images/aquafresh_water_2l.png');
 
 -- Shops Master (6 Retail Stores)
 INSERT INTO `shops` (`id`, `code`, `name`, `owner_name`, `phone`, `distance`, `route_id`, `current_due`, `completed`, `has_freezer`, `freezer_model`, `freezer_serial`, `freezer_date`, `freezer_status`) VALUES

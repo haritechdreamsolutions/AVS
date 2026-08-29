@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { ProductImage } from '../common/ProductImage';
 import { ArrowLeft, CheckCircle2, Printer, Save, ShoppingBag, AlertTriangle, X } from 'lucide-react';
 
 const PRODUCT_GROUPS = [
@@ -252,19 +253,12 @@ export const BillingPOS = ({ shop, onProceedToPayment, onBack }) => {
               <div key={product.id} className="bg-white border-2 border-slate-200 rounded-3xl overflow-hidden shadow-xl space-y-0">
                 {/* 80% PRODUCT PHOTO DISPLAY (280px Tall Image Area) */}
                 <div className="h-72 w-full bg-slate-50 border-b-2 border-slate-100 flex items-center justify-center p-4 relative shadow-inner">
-                  {PRODUCT_IMAGES[product.id] ? (
-                    <img
-                      src={PRODUCT_IMAGES[product.id]}
-                      alt={product.display_name}
-                      className="h-full w-full object-contain drop-shadow-md"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="text-center">
-                      <div className="text-5xl font-black text-slate-800">{sizeLabel}</div>
-                      <div className="text-base font-black text-slate-500 mt-2">{activeGroup.title}</div>
-                    </div>
-                  )}
+                  <ProductImage
+                    src={PRODUCT_IMAGES[product.id] || product.image}
+                    alt={product.display_name}
+                    size={128}
+                    icon={product.icon}
+                  />
                   {/* HUGE OVERLAY SIZE BADGE (80% Visual Focus) */}
                   <span className="absolute left-4 top-4 px-5 py-2.5 rounded-2xl bg-blue-600 text-white text-lg font-black tracking-wider shadow-2xl border-2 border-white">
                     {sizeLabel}

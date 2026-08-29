@@ -65,7 +65,7 @@ export const KeeperDashboard = () => {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto p-3 sm:p-5 space-y-5 pb-24">
+    <div className="max-w-7xl mx-auto p-3 sm:p-5 space-y-5 pb-6">
       
       {/* Executive Dual-Level Header Banner */}
       <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white border border-slate-800 shadow-xl space-y-4 relative overflow-hidden">
@@ -100,38 +100,38 @@ export const KeeperDashboard = () => {
         </div>
 
         {/* Level 2: Operations Quick Toolbar */}
-        <div className="relative z-10 flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5 flex-wrap">
+        <div className="relative z-10 grid grid-cols-2 sm:flex items-center gap-2 py-0.5 w-full sm:w-auto">
           <span className="text-[11px] font-extrabold uppercase text-slate-400 tracking-wider mr-1 hidden sm:inline-block">Quick Actions:</span>
           
           <button
             onClick={() => setActiveModal('ADD_SHOP')}
-            className="px-3.5 py-2 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white font-extrabold text-xs flex items-center gap-1.5 border border-purple-400/30 shadow-xs transition shrink-0"
+            className="px-3.5 py-2.5 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-purple-400/30 shadow-xs transition min-h-[44px]"
           >
-            <Plus className="w-3.5 h-3.5" />
-            + Add Shop
+            <Plus className="w-4 h-4" />
+            Add Shop
           </button>
 
           <button
             onClick={() => setActiveModal('RECEIVE')}
-            className="px-3.5 py-2 rounded-xl bg-blue-600/90 hover:bg-blue-500 text-white font-extrabold text-xs flex items-center gap-1.5 border border-blue-400/30 shadow-xs transition shrink-0"
+            className="px-3.5 py-2.5 rounded-xl bg-blue-600/90 hover:bg-blue-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-blue-400/30 shadow-xs transition min-h-[44px]"
           >
-            <ArrowDownLeft className="w-3.5 h-3.5" />
+            <ArrowDownLeft className="w-4 h-4" />
             Receive Stock
           </button>
           
           <button
             onClick={() => setActiveModal('ALLOCATE')}
-            className="px-3.5 py-2 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-extrabold text-xs flex items-center gap-1.5 border border-indigo-400/30 shadow-xs transition shrink-0"
+            className="px-3.5 py-2.5 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-indigo-400/30 shadow-xs transition min-h-[44px]"
           >
-            <ArrowUpRight className="w-3.5 h-3.5" />
+            <ArrowUpRight className="w-4 h-4" />
             Give Stock (Allocate)
           </button>
 
           <button
             onClick={() => setActiveModal('SETTLEMENT')}
-            className="px-3.5 py-2 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white font-extrabold text-xs flex items-center gap-1.5 border border-amber-400/30 shadow-xs transition shrink-0"
+            className="px-3.5 py-2.5 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-amber-400/30 shadow-xs transition min-h-[44px]"
           >
-            <DollarSign className="w-3.5 h-3.5" />
+            <DollarSign className="w-4 h-4" />
             Cash Settlement
           </button>
         </div>

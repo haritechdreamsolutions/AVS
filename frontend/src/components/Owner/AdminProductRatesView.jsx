@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { ProductImage } from '../common/ProductImage';
 import { 
   Tag, Search, Save, CheckCircle2, DollarSign, Package, 
   Sparkles, TrendingUp, Layers, RefreshCw, AlertCircle, Percent, Calculator, Layers3 
@@ -35,7 +36,7 @@ const CATEGORIES = [
 ];
 
 export const AdminProductRatesView = () => {
-  const { products = [], updateProductPrice } = useApp();
+  const { products = [], categories = [], updateProductPrice } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
 
@@ -218,17 +219,27 @@ export const AdminProductRatesView = () => {
 
         {/* Category Pills Filter */}
         <div className="flex flex-wrap items-center gap-1.5 py-0.5">
-          {CATEGORIES.map(cat => (
+          <button
+            onClick={() => setActiveCategory('all')}
+            className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition ${
+              activeCategory === 'all'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            All Products
+          </button>
+          {categories.map(cat => (
             <button
               key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
+              onClick={() => setActiveCategory(cat.name)}
               className={`px-3 py-1.5 rounded-xl font-extrabold text-xs transition ${
-                activeCategory === cat.id
+                activeCategory === cat.name
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              {cat.label}
+              {cat.name}
             </button>
           ))}
         </div>
@@ -255,13 +266,12 @@ export const AdminProductRatesView = () => {
                 <div className="space-y-3.5">
                   {/* Top Photo & Variant Header */}
                   <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-                    <div className={`w-16 h-16 rounded-2xl bg-gradient-to-b ${meta.bgTone} border border-slate-200 p-1 flex items-center justify-center shrink-0`}>
-                      {meta.image ? (
-                        <img src={meta.image} alt={product.display_name} className="h-full w-full object-contain drop-shadow-xs" />
-                      ) : (
-                        <span className="text-2xl">{product.icon || '📦'}</span>
-                      )}
-                    </div>
+                    <ProductImage
+                      src={meta.image}
+                      alt={product.display_name}
+                      size={64}
+                      icon={product.icon}
+                    />
 
                     <div className="flex-1">
                       <h4 className="font-black text-sm text-slate-900 leading-tight">{product.display_name}</h4>

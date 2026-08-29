@@ -7,9 +7,8 @@
     "install:all": "npm --prefix backend install && npm --prefix frontend install",
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
-    "dev": "concurrently \"npm --prefix backend start\" \"npm --prefix frontend run dev\"",
+    "dev": "concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
     "start": "concurrently \"npm --prefix backend start\" \"npm --prefix frontend run dev\"",
-    "build": "npm --prefix frontend run build",
     "test": "node backend/test/unit.test.js"
   },
   "devDependencies": {
