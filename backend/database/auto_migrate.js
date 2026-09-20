@@ -219,6 +219,28 @@ export async function runAutoMigrations() {
     await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS icon VARCHAR(10) DEFAULT '🥛';", [], 'products.icon');
     await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url TEXT;', [], 'products.image_url');
     await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'products.is_active');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS pack_size VARCHAR(50);', [], 'products.pack_size');
+    await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS buy_rate_uom VARCHAR(50) DEFAULT 'Tray';", [], 'products.buy_rate_uom');
+    await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_rate_uom VARCHAR(50) DEFAULT 'Tray';", [], 'products.selling_rate_uom');
+
+    // 9.5 Product UOMs Table
+    await safeQuery(client, `
+      CREATE TABLE IF NOT EXISTS product_uoms (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER NOT NULL DEFAULT 1,
+        product_id INTEGER NOT NULL,
+        uom VARCHAR(50) NOT NULL,
+        conversion_to_base NUMERIC(10,2) NOT NULL DEFAULT 1,
+        is_base_uom BOOLEAN NOT NULL DEFAULT FALSE,
+        is_purchase_uom BOOLEAN NOT NULL DEFAULT FALSE,
+        is_sales_uom BOOLEAN NOT NULL DEFAULT FALSE,
+        buy_rate NUMERIC(10,2) DEFAULT 0.00,
+        selling_rate NUMERIC(10,2) DEFAULT 0.00,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `, [], 'create product_uoms');
 
     // 10. Shops Table
     await safeQuery(client, `
@@ -362,7 +384,7 @@ export async function runAutoMigrations() {
     await safeQuery(client, "ALTER TABLE damages ADD COLUMN IF NOT EXISTS damage_unit VARCHAR(20) DEFAULT 'Piece';", [], 'damages.damage_unit');
     await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS base_quantity NUMERIC(12,4) DEFAULT 0;', [], 'damages.base_quantity');
     await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS notes TEXT;', [], 'damages.notes');
-    await safeQuery(client, "ALTER TABLE damages ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'VERIFIED';", [], 'damages.status');
+    await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS damage_cost NUMERIC(10,2) DEFAULT 0.00;', [], 'damages.damage_cost');
     await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS verified_by INTEGER;', [], 'damages.verified_by');
     await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;', [], 'damages.verified_at');
 
