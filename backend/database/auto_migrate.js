@@ -218,8 +218,9 @@ export async function runAutoMigrations() {
     await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS min_stock_level INTEGER NOT NULL DEFAULT 0;', [], 'products.min_stock_level');
     await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS icon VARCHAR(10) DEFAULT '🥛';", [], 'products.icon');
     await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url TEXT;', [], 'products.image_url');
-    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'products.is_active');
     await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS pack_size VARCHAR(50);', [], 'products.pack_size');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS sku VARCHAR(50);', [], 'products.sku');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS display_name VARCHAR(150);', [], 'products.display_name');
     await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS buy_rate_uom VARCHAR(50) DEFAULT 'Tray';", [], 'products.buy_rate_uom');
     await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_rate_uom VARCHAR(50) DEFAULT 'Tray';", [], 'products.selling_rate_uom');
 
@@ -387,6 +388,7 @@ export async function runAutoMigrations() {
     await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS damage_cost NUMERIC(10,2) DEFAULT 0.00;', [], 'damages.damage_cost');
     await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS verified_by INTEGER;', [], 'damages.verified_by');
     await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;', [], 'damages.verified_at');
+    await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();', [], 'damages.updated_at');
 
     // 15. Expenses Table
     await safeQuery(client, `

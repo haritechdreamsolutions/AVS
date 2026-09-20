@@ -5807,6 +5807,50 @@ export async function adjustStock(cid, payload, actorUserId) {
   }
 }
 
+export async function getKeeperDashboard(cid) {
+  const [products, movements, pendingReturns, alerts] = await Promise.all([
+    getProducts(cid, { active: true }),
+    queryAll(`
+      SELECT st.*, p.name as product_name, p.display_name, p.selling_unit 
+      FROM stock_transactions st
+      LEFT JOIN products p ON p.id = st.product_id
+      WHERE st.company_id = $1 
+      ORDER BY st.created_at DESC 
+      LIMIT 20
+    `, [cid]),
+    queryAll(`
+      SELECT ds.*, e.full_name as driver_name, r.name as route_name
+      FROM driver_sessions ds
+      JOIN employees e ON e.id = ds.employee_id
+      LEFT JOIN routes r ON r.id = ds.route_id
+      WHERE ds.company_id = $1 AND ds.status = 'END_DAY_SUBMITTED'
+      ORDER BY ds.created_at DESC
+    `, [cid]),
+    queryAll(`
+      SELECT * FROM notifications 
+      WHERE company_id = $1 AND (recipient_role = 'STORE_KEEPER' OR recipient_role = 'OWNER') AND is_read = FALSE
+      ORDER BY created_at DESC 
+      LIMIT 10
+    `, [cid])
+  ]);
+
+  const totalStockUnits = products.reduce((acc, p) => acc + (Number(p.warehouse_stock_units) || 0), 0);
+  const totalStockValue = products.reduce((acc, p) => acc + ((Number(p.warehouse_stock_units) || 0) * (Number(p.purchase_price) || 0)), 0);
+  const lowStockCount = products.filter(p => (Number(p.warehouse_stock_units) || 0) <= (Number(p.min_stock_level) || 0)).length;
+
+  return {
+    success: true,
+    total_products: products.length,
+    total_stock_units: totalStockUnits,
+    total_stock_value: totalStockValue,
+    low_stock_count: lowStockCount,
+    products,
+    recent_movements: movements,
+    pending_returns: pendingReturns,
+    notifications: alerts
+  };
+}
+
 // ====== PHASE 5: REAL-TIME NOTIFICATIONS ENGINE ======
 
 export async function generateSystemAlertNotifications(cid) {
