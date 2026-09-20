@@ -539,28 +539,28 @@ export async function runAutoMigrations() {
     // Check & ensure Owner user
     if (ownerRole) {
       const hash = await bcrypt.hash('1234', ROUNDS);
-      const ownerUser = await safeQuery(client, 'SELECT id, failed_attempts, pin_hash FROM user_accounts WHERE company_id=$1 AND role_id=$2', [cid, ownerRole]);
+      const ownerUser = await safeQuery(client, 'SELECT id FROM user_accounts WHERE LOWER(TRIM(login_id)) = $1', ['owner']);
       if (!ownerUser || ownerUser.rows.length === 0) {
         await safeQuery(client, 
           'INSERT INTO user_accounts (company_id, role_id, login_id, name, pin_hash, account_status) VALUES ($1,$2,$3,$4,$5,$6)',
           [cid, ownerRole, 'owner', 'Owner Admin', hash, 'ACTIVE']
         );
       } else {
-        await safeQuery(client, 'UPDATE user_accounts SET pin_hash=$1, failed_attempts=0, locked_until=NULL, account_status=\'ACTIVE\' WHERE id=$2', [hash, ownerUser.rows[0].id]);
+        await safeQuery(client, 'UPDATE user_accounts SET company_id=$1, role_id=$2, pin_hash=$3, failed_attempts=0, locked_until=NULL, account_status=\'ACTIVE\' WHERE LOWER(TRIM(login_id)) = $4', [cid, ownerRole, hash, 'owner']);
       }
     }
 
     // Check & ensure Storekeeper user
     if (skRole) {
       const hash = await bcrypt.hash('1234', ROUNDS);
-      const skUser = await safeQuery(client, 'SELECT id FROM user_accounts WHERE company_id=$1 AND role_id=$2', [cid, skRole]);
+      const skUser = await safeQuery(client, 'SELECT id FROM user_accounts WHERE LOWER(TRIM(login_id)) = $1', ['storekeeper']);
       if (!skUser || skUser.rows.length === 0) {
         await safeQuery(client, 
           'INSERT INTO user_accounts (company_id, role_id, login_id, name, pin_hash, account_status) VALUES ($1,$2,$3,$4,$5,$6)',
           [cid, skRole, 'storekeeper', 'Store Keeper Admin', hash, 'ACTIVE']
         );
       } else {
-        await safeQuery(client, 'UPDATE user_accounts SET pin_hash=$1, failed_attempts=0, locked_until=NULL, account_status=\'ACTIVE\' WHERE id=$2', [hash, skUser.rows[0].id]);
+        await safeQuery(client, 'UPDATE user_accounts SET company_id=$1, role_id=$2, pin_hash=$3, failed_attempts=0, locked_until=NULL, account_status=\'ACTIVE\' WHERE LOWER(TRIM(login_id)) = $4', [cid, skRole, hash, 'storekeeper']);
       }
     }
 
