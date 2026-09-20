@@ -45,49 +45,59 @@ export const printBillViaBluetooth = async (bill) => {
   addBytes(INITIALIZE);
 
   // Header
-  addText("AVS DISTRIBUTORS", 'CENTER', true);
-  addText("Distribution Management System", 'CENTER');
+  const companyName = bill.company_name || 'AVS AGENCIES';
+  const companySubtitle = bill.company_subtitle || 'Agencies Management System';
+  addText(companyName, 'CENTER', true);
+  addText(companySubtitle, 'CENTER');
   addText("Salem, Tamil Nadu | +91 98765 43210", 'CENTER');
   addLine();
 
   // Bill & Shop Info
-  addText(`Bill No: ${bill.bill_no || '#81021'}`, 'LEFT', true);
-  addText(`Date: ${bill.date || '08-08-2026'} ${bill.time || '10:45 AM'}`, 'LEFT');
-  addText(`Shop: ${bill.shop_name || 'Mani Store #102'}`, 'LEFT', true);
-  addText(`Emp: ${bill.employee_name || 'Tharun'} (${bill.vehicle_no || 'TN 32 XX 2222'})`, 'LEFT');
+  addText(`Bill No: ${bill.bill_no || 'INV-000000'}`, 'LEFT', true);
+  addText(`Date: ${bill.sale_date || bill.date || ''} ${bill.sale_time || bill.time || ''}`, 'LEFT');
+  addText(`Shop: ${bill.shop_name || 'Customer'} (${bill.shop_code || 'SHP-001'})`, 'LEFT', true);
+  addText(`Emp: ${bill.employee_name || 'Driver'} ${bill.vehicle_no ? `| Veh: ${bill.vehicle_no}` : ''}`, 'LEFT');
   addLine();
 
   // Itemized Table Header
   addText("ITEM             QTY   RATE   TOTAL", 'LEFT', true);
   addLine();
 
-  // Items
-  const items = bill.items || [
-    { product_name: "200ml Milk", qty: 1, rate: 850, amount: 850 },
-    { product_name: "Coccola 500ml", qty: 2, rate: 400, amount: 800 }
-  ];
+  // Items (Strictly actual bill items)
+  const items = bill.items || [];
 
   items.forEach(item => {
     const pName = (item.product_name || 'Item').padEnd(14, ' ').substring(0, 14);
-    const qty = String(item.qty).padStart(3, ' ');
-    const rate = String(item.rate).padStart(6, ' ');
-    const amt = String(item.amount).padStart(7, ' ');
+    const qty = String(Math.floor(Number(item.qty || 1))).padStart(3, ' ');
+    const rate = `₹${Number(item.rate || 0).toFixed(2)}`.padStart(7, ' ');
+    const amt = `₹${Number(item.amount || 0).toFixed(2)}`.padStart(8, ' ');
     addText(`${pName} ${qty} ${rate} ${amt}`, 'LEFT');
   });
 
   addLine();
 
   // Totals & Payment
-  addText(`TOTAL AMOUNT: RS. ${bill.total_amount || 1650}`, 'RIGHT', true);
-  addText(`PAYMENT MODE: ${bill.payment_mode || 'SPLIT'}`, 'RIGHT', true);
+  const totalQty = items.reduce((acc, it) => acc + (Math.floor(Number(it.qty)) || 0), 0);
+  addText(`TOTAL QTY: ${totalQty}`, 'LEFT', true);
+  addText(`TOTAL AMOUNT: RS. ${Number(bill.total_amount || 0).toFixed(2)}`, 'RIGHT', true);
+  addText(`PAYMENT MODE: ${bill.payment_mode || 'CASH'}`, 'RIGHT', true);
 
-  if (bill.cash_paid > 0) addText(`Cash Paid: RS. ${bill.cash_paid}`, 'RIGHT');
-  if (bill.gpay_paid > 0) addText(`GPay Paid: RS. ${bill.gpay_paid}`, 'RIGHT');
-  if (bill.credit_paid > 0) addText(`Credit Due: RS. ${bill.credit_paid}`, 'RIGHT');
+  if (bill.payment_mode === 'SPLIT') {
+    if (Number(bill.cash_paid) > 0) addText(`Cash Paid: RS. ${Number(bill.cash_paid).toFixed(2)}`, 'RIGHT');
+    if (Number(bill.gpay_paid) > 0) addText(`GPay Paid: RS. ${Number(bill.gpay_paid).toFixed(2)}`, 'RIGHT');
+    if (Number(bill.credit_paid) > 0) addText(`Credit Due: RS. ${Number(bill.credit_paid).toFixed(2)}`, 'RIGHT');
+    addText(`Balance: RS. 0.00`, 'RIGHT');
+  } else if (bill.payment_mode === 'CASH') {
+    addText(`Cash Paid: RS. ${Number(bill.total_amount || 0).toFixed(2)}`, 'RIGHT');
+  } else if (bill.payment_mode === 'GPAY') {
+    addText(`GPay Paid: RS. ${Number(bill.total_amount || 0).toFixed(2)}`, 'RIGHT');
+  } else {
+    addText(`Credit Due: RS. ${Number(bill.total_amount || 0).toFixed(2)}`, 'RIGHT');
+  }
 
   addLine();
   addText("Thank You! Visit Again", 'CENTER', true);
-  addText("AVS POS System", 'CENTER');
+  addText(companyName, 'CENTER');
   addBytes(LINE_FEED);
   addBytes(LINE_FEED);
   addBytes(LINE_FEED);

@@ -18,10 +18,16 @@ export const AdminCategoriesMasterView = () => {
     name: '',
     code: '',
     description: '',
+    operational_unit: 'Piece',
     is_active: 1
   });
 
   const [formErrors, setFormErrors] = useState({});
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState({
+    isOpen: false,
+    category: null,
+    productCount: 0
+  });
 
   // Filtered Categories List
   const filteredCategories = useMemo(() => {
@@ -32,6 +38,7 @@ export const AdminCategoriesMasterView = () => {
       return (
         (cat.name && cat.name.toLowerCase().includes(q)) ||
         (cat.code && cat.code.toLowerCase().includes(q)) ||
+        (cat.operational_unit && cat.operational_unit.toLowerCase().includes(q)) ||
         (cat.description && cat.description.toLowerCase().includes(q))
       );
     });
@@ -52,6 +59,7 @@ export const AdminCategoriesMasterView = () => {
       name: '',
       code: '',
       description: '',
+      operational_unit: 'Piece',
       is_active: 1
     });
     setFormErrors({});
@@ -64,6 +72,7 @@ export const AdminCategoriesMasterView = () => {
       name: cat.name,
       code: cat.code || '',
       description: cat.description || '',
+      operational_unit: cat.operational_unit || 'Piece',
       is_active: cat.is_active !== undefined ? Number(cat.is_active) : 1
     });
     setFormErrors({});
@@ -85,6 +94,17 @@ export const AdminCategoriesMasterView = () => {
       }
     }
 
+    if (formData.code && formData.code.trim()) {
+      const codeNorm = formData.code.trim().toUpperCase();
+      const dupCode = categories.find(c =>
+        (!editingCategory || Number(c.id) !== Number(editingCategory.id)) &&
+        c.code && c.code.toUpperCase() === codeNorm
+      );
+      if (dupCode) {
+        errors.code = `Category code '${codeNorm}' is already taken.`;
+      }
+    }
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -96,9 +116,17 @@ export const AdminCategoriesMasterView = () => {
       return;
     }
 
+    const payload = {
+      ...formData,
+      name: formData.name.trim(),
+      code: (formData.code.trim() || formData.name.trim().replace(/[^a-zA-Z0-9]/g, '')).toUpperCase(),
+      description: formData.description ? formData.description.trim() : '',
+      operational_unit: formData.operational_unit || 'Piece'
+    };
+
     if (editingCategory) {
       // UPDATE CATEGORY
-      const res = await updateCategory(editingCategory.id, formData);
+      const res = await updateCategory(editingCategory.id, payload);
       if (res.success) {
         toast.success(`Category '${res.category.name}' updated successfully!`);
         setIsModalOpen(false);
@@ -107,7 +135,7 @@ export const AdminCategoriesMasterView = () => {
       }
     } else {
       // ADD CATEGORY
-      const res = await addCategory(formData);
+      const res = await addCategory(payload);
       if (res.success) {
         toast.success(`🎉 Category '${res.category.name}' created successfully!`);
         setIsModalOpen(false);
@@ -129,19 +157,32 @@ export const AdminCategoriesMasterView = () => {
     }
   };
 
-  const handleDeleteCategory = async (cat) => {
-    if (cat.product_count > 0) {
-      toast.error(`⚠️ Category '${cat.name}' is currently used by ${cat.product_count} product(s) and cannot be deleted. Deactivate it instead.`);
+  const handleRequestDelete = (cat) => {
+    const linkedFromProducts = products.filter(p => Number(p.category_id) === Number(cat.id)).length;
+    const linkedCount = Math.max(linkedFromProducts, Number(cat.product_count || 0));
+
+    if (linkedCount > 0) {
+      toast.error(`Cannot delete category '${cat.name}' because ${linkedCount} product(s) are linked to it.`);
       return;
     }
 
-    if (window.confirm(`Are you sure you want to delete category '${cat.name}'?`)) {
-      const res = await deleteCategory(cat.id);
-      if (res.success) {
-        toast.success(res.message);
-      } else {
-        toast.error(res.message);
-      }
+    setDeleteConfirmModal({
+      isOpen: true,
+      category: cat,
+      productCount: linkedCount
+    });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmModal.category) return;
+    const cat = deleteConfirmModal.category;
+
+    const res = await deleteCategory(cat.id);
+    if (res.success) {
+      toast.success(res.message || `Category '${cat.name}' deleted successfully.`);
+      setDeleteConfirmModal({ isOpen: false, category: null, productCount: 0 });
+    } else {
+      toast.error(res.message || "Failed to delete category.");
     }
   };
 
@@ -164,7 +205,7 @@ export const AdminCategoriesMasterView = () => {
                   {metrics.total} Master Categories
                 </span>
               </h2>
-              <p className="text-xs text-slate-300 font-medium mt-0.5">Manage Product Categories, Uniqueness Validation, Status, and Relationships</p>
+              <p className="text-xs text-slate-300 font-medium mt-0.5">Manage Product Categories, Operational Units (Piece, Box, Case), Uniqueness Validation, Status, and Relationships</p>
             </div>
           </div>
         </div>
@@ -213,7 +254,7 @@ export const AdminCategoriesMasterView = () => {
               placeholder="Search category name, code, description..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-indigo-500 focus:bg-white transition"
+              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-indigo-500"
             />
           </div>
 
@@ -230,6 +271,7 @@ export const AdminCategoriesMasterView = () => {
                 <th className="p-3.5">Category Code</th>
                 <th className="p-3.5">Category Name</th>
                 <th className="p-3.5">Description</th>
+                <th className="p-3.5 text-center">Operational Unit</th>
                 <th className="p-3.5 text-center">Linked Products</th>
                 <th className="p-3.5 text-center">Status</th>
                 <th className="p-3.5 text-center">Actions</th>
@@ -258,6 +300,13 @@ export const AdminCategoriesMasterView = () => {
                     {/* Description */}
                     <td className="p-3.5 text-slate-600 font-medium max-w-xs truncate">
                       {cat.description || 'No description provided.'}
+                    </td>
+
+                    {/* Operational Sales Unit */}
+                    <td className="p-3.5 text-center">
+                      <span className="px-2.5 py-1 bg-indigo-50 text-indigo-800 font-black text-xs rounded-xl border border-indigo-200">
+                        {cat.operational_unit || 'Piece'}
+                      </span>
                     </td>
 
                     {/* Linked Products Count */}
@@ -300,9 +349,9 @@ export const AdminCategoriesMasterView = () => {
                         </button>
 
                         <button
-                          onClick={() => handleDeleteCategory(cat)}
-                          className={`p-1.5 rounded-xl transition ${cat.product_count > 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'}`}
-                          title={cat.product_count > 0 ? 'Cannot delete used category' : 'Delete Category'}
+                          onClick={() => handleRequestDelete(cat)}
+                          className={`p-1.5 rounded-xl transition ${(cat.product_count > 0 || products.some(p => Number(p.category_id) === Number(cat.id))) ? 'bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-200' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'}`}
+                          title={(cat.product_count > 0 || products.some(p => Number(p.category_id) === Number(cat.id))) ? `Cannot delete category: ${cat.product_count || 0} product(s) linked` : `Delete category '${cat.name}'`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -367,6 +416,24 @@ export const AdminCategoriesMasterView = () => {
               </div>
 
               <div>
+                <label className="font-extrabold text-slate-700 block mb-1">Operational / Sales Unit</label>
+                <select
+                  value={formData.operational_unit || 'Piece'}
+                  onChange={(e) => setFormData(prev => ({ ...prev, operational_unit: e.target.value }))}
+                  className="w-full p-2.5 font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="Piece">Piece (Milk, Curd, Single Packets, Bottles)</option>
+                  <option value="Box">Box (Bulk Boxes, Cones, Tubs)</option>
+                  <option value="Case">Case (Cartons, Multi-pack Cases)</option>
+                  <option value="Tray">Tray (Crates, Trays)</option>
+                  <option value="Packet">Packet (Packets)</option>
+                  <option value="Bottle">Bottle (Bottles, Cans)</option>
+                  <option value="Bag">Bag (Sacks, Bags)</option>
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1 font-medium">For Milk and Curd, the operational sales unit is always Piece (Trays are packaging conversion only).</p>
+              </div>
+
+              <div>
                 <label className="font-extrabold text-slate-700 block mb-1">Description / Notes</label>
                 <textarea
                   rows={3}
@@ -405,6 +472,52 @@ export const AdminCategoriesMasterView = () => {
                 </button>
               </div>
             </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {deleteConfirmModal.isOpen && deleteConfirmModal.category && (
+        <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold border border-rose-200 shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-black text-base text-slate-900 leading-tight">
+                  Delete category '{deleteConfirmModal.category.name}'?
+                </h3>
+                <p className="text-xs text-slate-500 font-bold">
+                  {deleteConfirmModal.productCount} products are linked to this category.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-xs text-slate-600">
+              <p>
+                Are you sure you want to permanently delete category <strong className="font-bold text-slate-900">'{deleteConfirmModal.category.name}'</strong>? This category will be permanently removed from master records.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmModal({ isOpen: false, category: null, productCount: 0 })}
+                className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="py-2.5 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/20 transition"
+              >
+                <Trash2 className="w-4 h-4" /> Delete Category
+              </button>
+            </div>
 
           </div>
         </div>

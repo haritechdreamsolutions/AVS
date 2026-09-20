@@ -1,6 +1,10 @@
 import pg from 'pg';
 import 'dotenv/config';
 
+// Force PostgreSQL DATE columns (OID 1082) to be returned as exact 'YYYY-MM-DD' strings
+// to avoid unwanted UTC midnight date shifting in JavaScript
+pg.types.setTypeParser(1082, str => str);
+
 const { Pool } = pg;
 
 const poolConfig = process.env.DATABASE_URL

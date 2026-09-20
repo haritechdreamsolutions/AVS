@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { AdminProductRatesView } from './AdminProductRatesView';
 import { AdminCategoriesMasterView } from './AdminCategoriesMasterView';
@@ -31,33 +31,60 @@ export const AdminProductsMasterView = () => {
   // Inline Quick Add Category Modal State
   const [isQuickAddCategoryOpen, setIsQuickAddCategoryOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
+  const [newCatCode, setNewCatCode] = useState('');
   const [newCatDesc, setNewCatDesc] = useState('');
 
   // Active Categories list for dropdown selection
   const activeCategories = useMemo(() => {
-    return categories.filter(c => c.is_active !== 0);
+    return categories.filter(c => c.is_active !== 0 && c.is_active !== false);
   }, [categories]);
 
   // Add Product Form State
   const [formData, setFormData] = useState({
     name: '',
     display_name: '',
+    pack_size: '200ml',
     sku: '',
     barcode: '',
-    category_id: 1,
-    category: 'Dairy',
+    category_id: '',
+    category: '',
     base_unit: 'Piece',
     selling_unit: 'Tray',
-    pieces_per_unit: 20,
-    purchase_price: 700,
-    unit_selling_price: 880,
-    piece_selling_price: 44,
-    warehouse_stock_units: 50,
-    min_stock_level: 10,
+    buy_rate_uom: 'Tray',
+    selling_rate_uom: 'Tray',
+    pieces_per_unit: 72,
+    purchase_price: 600,
+    unit_selling_price: 700,
+    piece_selling_price: 9.72,
+    warehouse_stock_units: 4,
+    min_stock_level: 1,
     is_active: 1,
     image: '',
     icon: '🥛'
   });
+
+  // Automatically keep formData.category_id synchronized with existing activeCategories
+  useEffect(() => {
+    if (activeCategories.length > 0) {
+      setFormData(prev => {
+        const isValid = activeCategories.some(c => String(c.id) === String(prev.category_id));
+        if (!isValid || !prev.category_id) {
+          return {
+            ...prev,
+            category_id: activeCategories[0].id,
+            category: activeCategories[0].name
+          };
+        }
+        return prev;
+      });
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        category_id: '',
+        category: ''
+      }));
+    }
+  }, [activeCategories]);
 
   const [formErrors, setFormErrors] = useState({});
 
@@ -101,10 +128,18 @@ export const AdminProductsMasterView = () => {
   const validateForm = () => {
     const errors = {};
     if (!formData.name.trim()) errors.name = 'Product name is required';
-    if (!formData.category) errors.category = 'Category is required';
+    if (!formData.pack_size.trim()) errors.pack_size = 'Pack size is required (e.g. 200ml, 300ml)';
+    
+    // Category validation
+    if (activeCategories.length === 0) {
+      errors.category = 'Create a category first before registering a product.';
+    } else if (!formData.category_id || !activeCategories.some(c => String(c.id) === String(formData.category_id))) {
+      errors.category = 'Please select a valid category.';
+    }
+
     if (Number(formData.unit_selling_price) < 0) errors.unit_selling_price = 'Selling price cannot be negative';
-    if (Number(formData.purchase_price) < 0) errors.purchase_price = 'Purchase price cannot be negative';
-    if (Number(formData.pieces_per_unit) <= 0) errors.pieces_per_unit = 'Pieces per unit must be at least 1';
+    if (Number(formData.purchase_price) < 0) errors.purchase_price = 'Buy rate cannot be negative';
+    if (Number(formData.pieces_per_unit) <= 0) errors.pieces_per_unit = 'Conversion factor must be at least 1';
 
     // Duplicate SKU check
     if (formData.sku.trim()) {
@@ -128,8 +163,42 @@ export const AdminProductsMasterView = () => {
     setFormData(prev => {
       const updated = { ...prev, [field]: value };
       
-      // When category changes, update both category_id and category name
-      if (field === 'category') {
+      // When category changes (by ID or name)
+      if (field === 'category_id') {
+        const foundCat = categories.find(c => String(c.id) === String(value));
+        if (foundCat) {
+          updated.category_id = foundCat.id;
+          updated.category = foundCat.name;
+          const opUnit = (foundCat.operational_unit || 'Piece').trim();
+          const cName = foundCat.name.toLowerCase();
+          if (cName.includes('milk') || cName.includes('curd') || cName === 'tray' || opUnit === 'Piece') {
+            updated.base_unit = 'Piece';
+            updated.selling_unit = 'Tray';
+            updated.buy_rate_uom = 'Tray';
+            updated.selling_rate_uom = 'Tray';
+            if (cName.includes('curd')) {
+              updated.pieces_per_unit = 30;
+            } else if (cName.includes('milk')) {
+              updated.pieces_per_unit = 72;
+            }
+          } else if (opUnit === 'Box' || cName === 'box') {
+            updated.base_unit = 'Box';
+            updated.selling_unit = 'Box';
+            updated.buy_rate_uom = 'Box';
+            updated.selling_rate_uom = 'Box';
+            updated.pieces_per_unit = 1;
+          } else if (opUnit === 'Case' || cName === 'case') {
+            updated.base_unit = 'Case';
+            updated.selling_unit = 'Case';
+            updated.buy_rate_uom = 'Case';
+            updated.selling_rate_uom = 'Case';
+            updated.pieces_per_unit = 1;
+          }
+        } else {
+          updated.category_id = '';
+          updated.category = '';
+        }
+      } else if (field === 'category') {
         const foundCat = categories.find(c => c.name === value || String(c.id) === String(value));
         if (foundCat) {
           updated.category_id = foundCat.id;
@@ -137,9 +206,18 @@ export const AdminProductsMasterView = () => {
         }
       }
 
-      // Auto-generate display name if empty
-      if (field === 'name' && (!prev.display_name || prev.display_name === prev.name)) {
-        updated.display_name = value;
+      // Auto-generate display name if empty or default
+      if (field === 'name' || field === 'pack_size') {
+        const pName = field === 'name' ? value : prev.name;
+        const pPack = field === 'pack_size' ? value : prev.pack_size;
+        if (pName && pPack && (!prev.display_name || prev.display_name === `${prev.name} ${prev.pack_size}` || prev.display_name === prev.name)) {
+          updated.display_name = `${pName} ${pPack}`.trim();
+        }
+      }
+
+      if (field === 'selling_unit') {
+        updated.buy_rate_uom = value;
+        updated.selling_rate_uom = value;
       }
 
       // Auto-recalculate piece price when unit price or pieces/unit changes
@@ -165,7 +243,18 @@ export const AdminProductsMasterView = () => {
       return;
     }
 
-    const res = await addCategory({ name: newCatName.trim(), description: newCatDesc.trim() });
+    const codeToSend = (newCatCode.trim() || newCatName.trim().replace(/[^a-zA-Z0-9]/g, '')).toUpperCase();
+    if (!codeToSend) {
+      toast.error("Category code is required");
+      return;
+    }
+
+    const res = await addCategory({ 
+      name: newCatName.trim(), 
+      code: codeToSend, 
+      description: newCatDesc.trim() 
+    });
+
     if (res.success) {
       toast.success(`🎉 Category '${res.category.name}' created and selected!`);
       setFormData(prev => ({
@@ -174,10 +263,11 @@ export const AdminProductsMasterView = () => {
         category: res.category.name
       }));
       setNewCatName('');
+      setNewCatCode('');
       setNewCatDesc('');
       setIsQuickAddCategoryOpen(false);
     } else {
-      toast.error(res.message);
+      toast.error(res.message || "Failed to create category");
     }
   };
 
@@ -218,18 +308,21 @@ export const AdminProductsMasterView = () => {
         setFormData({
           name: '',
           display_name: '',
+          pack_size: '200ml',
           sku: '',
           barcode: '',
-          category_id: activeCategories[0]?.id || 1,
-          category: activeCategories[0]?.name || 'Dairy',
+          category_id: activeCategories[0]?.id || '',
+          category: activeCategories[0]?.name || '',
           base_unit: 'Piece',
           selling_unit: 'Tray',
-          pieces_per_unit: 20,
-          purchase_price: 700,
-          unit_selling_price: 880,
-          piece_selling_price: 44,
-          warehouse_stock_units: 50,
-          min_stock_level: 10,
+          buy_rate_uom: 'Tray',
+          selling_rate_uom: 'Tray',
+          pieces_per_unit: 72,
+          purchase_price: 600,
+          unit_selling_price: 700,
+          piece_selling_price: 9.72,
+          warehouse_stock_units: 4,
+          min_stock_level: 1,
           is_active: 1,
           image: '',
           icon: '🥛'
@@ -495,7 +588,14 @@ export const AdminProductsMasterView = () => {
                           />
                           <div>
                             <span className="font-black text-slate-900 block leading-tight">{product.display_name}</span>
-                            <span className="text-[10px] text-slate-400 font-mono">ID #{product.id}</span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {product.pack_size && (
+                                <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-1.5 py-0.5 rounded border border-blue-200">
+                                  {product.pack_size}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-slate-400 font-mono">ID #{product.id}</span>
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -522,18 +622,21 @@ export const AdminProductsMasterView = () => {
                       {/* Packaging & Ratio */}
                       <td className="p-3.5 font-mono text-[11px]">
                         <span className="font-bold text-slate-900">1 {product.selling_unit || 'Tray'}</span>
-                        <span className="text-slate-400 block text-[10px]">= {product.pieces_per_unit || 20} {product.base_unit || 'Pcs'}</span>
+                        <span className="text-slate-400 block text-[10px]">= {product.pieces_per_unit || 1} {product.base_unit || 'Piece'}</span>
                       </td>
 
-                      {/* Purchase Rate */}
-                      <td className="p-3.5 text-right font-mono font-bold text-slate-600">
-                        ₹{Number(product.purchase_price || 0).toLocaleString()}
+                      {/* Purchase Rate (Buy Rate) with UOM */}
+                      <td className="p-3.5 text-right font-mono">
+                        <span className="font-black text-amber-800 block">₹{Number(product.purchase_price || 0).toLocaleString()} / {product.buy_rate_uom || product.selling_unit || 'Tray'}</span>
+                        <span className="text-[10px] text-slate-500 font-bold block">
+                          ₹{Number(product.pieces_per_unit) > 0 ? (Number(product.purchase_price || 0) / Number(product.pieces_per_unit)).toFixed(2) : product.purchase_price} / {product.base_unit || 'Piece'}
+                        </span>
                       </td>
 
                       {/* Selling Rate */}
                       <td className="p-3.5 text-right font-mono">
-                        <span className="font-black text-emerald-700 block">₹{Number(product.unit_selling_price || 0).toLocaleString()} / {product.selling_unit}</span>
-                        <span className="text-[10px] text-slate-500 font-bold block">₹{Number(product.piece_selling_price || 0).toLocaleString()} / Pc</span>
+                        <span className="font-black text-emerald-700 block">₹{Number(product.unit_selling_price || 0).toLocaleString()} / {product.selling_rate_uom || product.selling_unit || 'Tray'}</span>
+                        <span className="text-[10px] text-slate-500 font-bold block">₹{Number(product.piece_selling_price || 0).toLocaleString()} / {product.base_unit || 'Piece'}</span>
                       </td>
 
                       {/* Warehouse Stock */}
@@ -671,14 +774,14 @@ export const AdminProductsMasterView = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div>
                 <label className="font-extrabold text-slate-700 block mb-1">
                   Product Name <span className="text-rose-600">*</span>
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Badam Milk 200ml"
+                  placeholder="e.g. Milk, Water, Curd"
                   value={formData.name}
                   onChange={(e) => handleFormChange('name', e.target.value)}
                   className={`w-full p-2.5 font-bold bg-white border rounded-xl focus:outline-none ${formErrors.name ? 'border-rose-500' : 'border-slate-300 focus:border-blue-500'}`}
@@ -687,10 +790,24 @@ export const AdminProductsMasterView = () => {
               </div>
 
               <div>
+                <label className="font-extrabold text-slate-700 block mb-1">
+                  Pack Size <span className="text-rose-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 200ml, 300ml, 500ml, 1L"
+                  value={formData.pack_size}
+                  onChange={(e) => handleFormChange('pack_size', e.target.value)}
+                  className={`w-full p-2.5 font-bold bg-white border rounded-xl focus:outline-none ${formErrors.pack_size ? 'border-rose-500' : 'border-slate-300 focus:border-blue-500'}`}
+                />
+                {formErrors.pack_size && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.pack_size}</span>}
+              </div>
+
+              <div>
                 <label className="font-extrabold text-slate-700 block mb-1">Display Name (Receipt Name)</label>
                 <input
                   type="text"
-                  placeholder="e.g. Badam Milk - 200ml"
+                  placeholder="e.g. Milk 200ml"
                   value={formData.display_name}
                   onChange={(e) => handleFormChange('display_name', e.target.value)}
                   className="w-full p-2.5 font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500"
@@ -701,7 +818,7 @@ export const AdminProductsMasterView = () => {
                 <label className="font-extrabold text-slate-700 block mb-1">Product Code / SKU (Unique)</label>
                 <input
                   type="text"
-                  placeholder="e.g. BADAM-200"
+                  placeholder="e.g. MILK-200"
                   value={formData.sku}
                   onChange={(e) => handleFormChange('sku', e.target.value)}
                   className={`w-full p-2.5 font-mono font-black uppercase bg-white border rounded-xl focus:outline-none ${formErrors.sku ? 'border-rose-500' : 'border-slate-300 focus:border-blue-500'}`}
@@ -736,16 +853,28 @@ export const AdminProductsMasterView = () => {
                   </button>
                 </div>
                 <select
-                  value={formData.category}
-                  onChange={(e) => handleFormChange('category', e.target.value)}
+                  value={formData.category_id || ''}
+                  onChange={(e) => handleFormChange('category_id', e.target.value)}
                   className={`w-full p-2.5 font-bold bg-white border rounded-xl focus:outline-none ${formErrors.category ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'}`}
                 >
-                  {activeCategories.map(cat => (
-                    <option key={cat.id} value={cat.name}>
-                      {cat.name} ({cat.code})
-                    </option>
-                  ))}
+                  {activeCategories.length === 0 ? (
+                    <option value="">No categories available — Please create a category first</option>
+                  ) : (
+                    <>
+                      <option value="" disabled>-- Select Product Category --</option>
+                      {activeCategories.map(cat => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name} ({cat.code})
+                        </option>
+                      ))}
+                    </>
+                  )}
                 </select>
+                {activeCategories.length === 0 && (
+                  <p className="text-[11px] text-amber-600 font-bold mt-1">
+                    ⚠️ Create a category first before registering a product.
+                  </p>
+                )}
                 {formErrors.category && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.category}</span>}
               </div>
 
@@ -814,8 +943,28 @@ export const AdminProductsMasterView = () => {
             </h4>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              <div className="bg-amber-50/70 p-3 rounded-2xl border border-amber-200">
+                <label className="font-extrabold text-amber-900 block mb-1">
+                  Buy Rate (₹ / {formData.buy_rate_uom || formData.selling_unit}) <span className="text-rose-600">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-black text-amber-600">₹</span>
+                  <input
+                    type="number"
+                    value={formData.purchase_price}
+                    onChange={(e) => handleFormChange('purchase_price', e.target.value)}
+                    className="w-full pl-7 pr-3 p-2 font-mono font-black bg-white border border-amber-300 rounded-xl focus:outline-none focus:border-amber-500 text-slate-900"
+                  />
+                </div>
+                <span className="text-[10px] font-mono text-amber-800 font-bold block mt-1">
+                  Derived: ₹{formData.pieces_per_unit > 0 ? (formData.purchase_price / formData.pieces_per_unit).toFixed(2) : formData.purchase_price} / {formData.base_unit}
+                </span>
+              </div>
+
               <div>
-                <label className="font-extrabold text-slate-700 block mb-1">Tray Selling Price (₹ / {formData.selling_unit})</label>
+                <label className="font-extrabold text-slate-700 block mb-1">
+                  Selling Rate (₹ / {formData.selling_rate_uom || formData.selling_unit})
+                </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-black text-slate-400">₹</span>
                   <input
@@ -828,7 +977,9 @@ export const AdminProductsMasterView = () => {
               </div>
 
               <div>
-                <label className="font-extrabold text-slate-700 block mb-1">Single Piece Rate (₹ / {formData.base_unit})</label>
+                <label className="font-extrabold text-slate-700 block mb-1">
+                  Single Piece Rate (₹ / {formData.base_unit})
+                </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-black text-slate-400">₹</span>
                   <input
@@ -836,19 +987,6 @@ export const AdminProductsMasterView = () => {
                     value={formData.piece_selling_price}
                     onChange={(e) => handleFormChange('piece_selling_price', e.target.value)}
                     className="w-full pl-7 pr-3 p-2.5 font-mono font-black bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="font-extrabold text-slate-700 block mb-1">Purchase Cost (COGS ₹ / {formData.selling_unit})</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-black text-slate-400">₹</span>
-                  <input
-                    type="number"
-                    value={formData.purchase_price}
-                    onChange={(e) => handleFormChange('purchase_price', e.target.value)}
-                    className="w-full pl-7 pr-3 p-2.5 font-mono font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
@@ -934,11 +1072,28 @@ export const AdminProductsMasterView = () => {
                 <label className="font-extrabold text-slate-700 block mb-1">Category Name *</label>
                 <input
                   type="text"
-                  placeholder="e.g. Ice Cream, Flavoured Milk"
+                  placeholder="e.g. Ice Cream, Rasna"
                   value={newCatName}
-                  onChange={(e) => setNewCatName(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewCatName(val);
+                    if (!newCatCode || newCatCode === newCatName.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')) {
+                      setNewCatCode(val.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''));
+                    }
+                  }}
                   className="w-full p-2.5 font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500"
                   autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="font-extrabold text-slate-700 block mb-1">Category Code * (Unique)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. RASNA, CAT-ICE"
+                  value={newCatCode}
+                  onChange={(e) => setNewCatCode(e.target.value.toUpperCase())}
+                  className="w-full p-2.5 font-mono font-bold uppercase bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
@@ -946,7 +1101,7 @@ export const AdminProductsMasterView = () => {
                 <label className="font-extrabold text-slate-700 block mb-1">Description (Optional)</label>
                 <input
                   type="text"
-                  placeholder="e.g. Dairy desserts"
+                  placeholder="e.g. Instant drink concentrates"
                   value={newCatDesc}
                   onChange={(e) => setNewCatDesc(e.target.value)}
                   className="w-full p-2.5 font-medium bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500"
@@ -1001,35 +1156,35 @@ export const AdminProductsMasterView = () => {
               <div className="space-y-4 text-xs">
                 <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200 font-mono">
                   <div>
-                    <span className="text-slate-500 font-sans block text-[10px] uppercase font-bold">Category Master</span>
-                    <span className="font-black text-indigo-700">{selectedProduct.category || 'General'}</span>
+                    <span className="text-slate-500 font-sans block text-[10px] uppercase font-bold">Category</span>
+                    <span className="font-black text-indigo-700">{selectedProduct.category || selectedProduct.category_name || 'General'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500 font-sans block text-[10px] uppercase font-bold">Barcode</span>
-                    <span className="font-black text-slate-900">{selectedProduct.barcode || 'N/A'}</span>
+                    <span className="text-slate-500 font-sans block text-[10px] uppercase font-bold">Pack Size</span>
+                    <span className="font-black text-slate-900">{selectedProduct.pack_size || 'N/A'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-500 font-sans block text-[10px] uppercase font-bold">Selling Unit Ratio</span>
-                    <span className="font-black text-slate-900">1 {selectedProduct.selling_unit} = {selectedProduct.pieces_per_unit} Pcs</span>
+                    <span className="text-slate-500 font-sans block text-[10px] uppercase font-bold">Packaging Conversion</span>
+                    <span className="font-black text-slate-900">1 {selectedProduct.selling_unit || 'Tray'} = {selectedProduct.pieces_per_unit || 1} {selectedProduct.base_unit || 'Piece'}</span>
                   </div>
                   <div>
                     <span className="text-slate-500 font-sans block text-[10px] uppercase font-bold">Warehouse Stock</span>
-                    <span className="font-black text-emerald-600">{selectedProduct.warehouse_stock_units} {selectedProduct.selling_unit}</span>
+                    <span className="font-black text-emerald-600">{selectedProduct.warehouse_stock_units || 0} {selectedProduct.selling_unit || 'Tray'}</span>
                   </div>
                 </div>
 
                 <div className="bg-emerald-50/70 p-3.5 rounded-2xl border border-emerald-200 font-mono space-y-1">
                   <div className="flex justify-between">
-                    <span className="text-slate-600 font-sans font-bold">Tray Selling Rate:</span>
-                    <span className="font-black text-emerald-800 text-sm">₹{selectedProduct.unit_selling_price}</span>
+                    <span className="text-slate-600 font-sans font-bold">Buy Rate (COGS):</span>
+                    <span className="font-black text-amber-800 text-sm">₹{selectedProduct.purchase_price} / {selectedProduct.buy_rate_uom || selectedProduct.selling_unit || 'Tray'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-600 font-sans font-bold">Single Piece Rate:</span>
-                    <span className="font-black text-emerald-800">₹{selectedProduct.piece_selling_price}</span>
+                    <span className="text-slate-600 font-sans font-bold">Selling Rate:</span>
+                    <span className="font-black text-emerald-800 text-sm">₹{selectedProduct.unit_selling_price} / {selectedProduct.selling_rate_uom || selectedProduct.selling_unit || 'Tray'}</span>
                   </div>
                   <div className="flex justify-between border-t border-emerald-200/60 pt-1">
-                    <span className="text-slate-600 font-sans font-bold">Purchase Cost (COGS):</span>
-                    <span className="font-black text-slate-800">₹{selectedProduct.purchase_price}</span>
+                    <span className="text-slate-600 font-sans font-bold">Single Piece Rate:</span>
+                    <span className="font-black text-emerald-800">₹{selectedProduct.piece_selling_price} / {selectedProduct.base_unit || 'Piece'}</span>
                   </div>
                 </div>
 
@@ -1050,7 +1205,7 @@ export const AdminProductsMasterView = () => {
                 </div>
               </div>
             ) : (
-              // EDIT PRODUCT SPECS FORM WITH DYNAMIC CATEGORY MASTER
+              // EDIT PRODUCT SPECS FORM
               <form onSubmit={handleSaveEdit} className="space-y-3 text-xs">
                 <div>
                   <label className="font-extrabold text-slate-700 block mb-1">Display Name</label>
@@ -1062,24 +1217,38 @@ export const AdminProductsMasterView = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="font-extrabold text-slate-700 block mb-1">Category Master</label>
-                  <select
-                    value={selectedProduct.category}
-                    onChange={(e) => {
-                      const selCat = categories.find(c => c.name === e.target.value);
-                      setSelectedProduct({
-                        ...selectedProduct,
-                        category: e.target.value,
-                        category_id: selCat ? selCat.id : selectedProduct.category_id
-                      });
-                    }}
-                    className="w-full p-2 border border-slate-300 rounded-xl font-bold bg-white"
-                  >
-                    {categories.map(cat => (
-                      <option key={cat.id} value={cat.name}>{cat.name}</option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="font-extrabold text-slate-700 block mb-1">Pack Size</label>
+                    <input
+                      type="text"
+                      value={selectedProduct.pack_size || ''}
+                      onChange={(e) => setSelectedProduct({ ...selectedProduct, pack_size: e.target.value })}
+                      className="w-full p-2 border border-slate-300 rounded-xl font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-extrabold text-slate-700 block mb-1">Category</label>
+                    <select
+                      value={selectedProduct.category_id || ''}
+                      onChange={(e) => {
+                        const selCat = categories.find(c => String(c.id) === String(e.target.value));
+                        setSelectedProduct({
+                          ...selectedProduct,
+                          category_id: selCat ? selCat.id : null,
+                          category: selCat ? selCat.name : '',
+                          category_name: selCat ? selCat.name : ''
+                        });
+                      }}
+                      className="w-full p-2 border border-slate-300 rounded-xl font-bold bg-white"
+                    >
+                      {categories.map(cat => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name} ({cat.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 {/* 512x512 MASTER IMAGE NORMALIZATION UPLOAD CONTROL */}
@@ -1124,28 +1293,28 @@ export const AdminProductsMasterView = () => {
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="font-extrabold text-slate-700 block mb-1">SKU Code</label>
+                    <label className="font-extrabold text-slate-700 block mb-1">1 {selectedProduct.selling_unit || 'Tray'} = (Pieces)</label>
                     <input
-                      type="text"
-                      value={selectedProduct.sku}
-                      onChange={(e) => setSelectedProduct({ ...selectedProduct, sku: e.target.value })}
-                      className="w-full p-2 border border-slate-300 rounded-xl font-mono uppercase font-bold"
+                      type="number"
+                      value={selectedProduct.pieces_per_unit}
+                      onChange={(e) => setSelectedProduct({ ...selectedProduct, pieces_per_unit: Number(e.target.value) })}
+                      className="w-full p-2 border border-slate-300 rounded-xl font-mono font-bold"
                     />
                   </div>
                   <div>
-                    <label className="font-extrabold text-slate-700 block mb-1">Barcode</label>
+                    <label className="font-extrabold text-slate-700 block mb-1">Buy Rate (₹ / {selectedProduct.buy_rate_uom || selectedProduct.selling_unit || 'Tray'})</label>
                     <input
-                      type="text"
-                      value={selectedProduct.barcode || ''}
-                      onChange={(e) => setSelectedProduct({ ...selectedProduct, barcode: e.target.value })}
-                      className="w-full p-2 border border-slate-300 rounded-xl font-mono font-bold"
+                      type="number"
+                      value={selectedProduct.purchase_price}
+                      onChange={(e) => setSelectedProduct({ ...selectedProduct, purchase_price: Number(e.target.value) })}
+                      className="w-full p-2 border border-slate-300 rounded-xl font-mono font-bold text-amber-800"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="font-extrabold text-slate-700 block mb-1">Tray Selling Price (₹)</label>
+                    <label className="font-extrabold text-slate-700 block mb-1">Selling Rate (₹ / {selectedProduct.selling_rate_uom || selectedProduct.selling_unit || 'Tray'})</label>
                     <input
                       type="number"
                       value={selectedProduct.unit_selling_price}
@@ -1154,12 +1323,12 @@ export const AdminProductsMasterView = () => {
                     />
                   </div>
                   <div>
-                    <label className="font-extrabold text-slate-700 block mb-1">Purchase Cost (COGS ₹)</label>
+                    <label className="font-extrabold text-slate-700 block mb-1">SKU Code</label>
                     <input
-                      type="number"
-                      value={selectedProduct.purchase_price}
-                      onChange={(e) => setSelectedProduct({ ...selectedProduct, purchase_price: Number(e.target.value) })}
-                      className="w-full p-2 border border-slate-300 rounded-xl font-mono font-bold"
+                      type="text"
+                      value={selectedProduct.sku || ''}
+                      onChange={(e) => setSelectedProduct({ ...selectedProduct, sku: e.target.value })}
+                      className="w-full p-2 border border-slate-300 rounded-xl font-mono uppercase font-bold"
                     />
                   </div>
                 </div>

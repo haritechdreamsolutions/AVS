@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { ProductImage } from '../common/ProductImage';
 import { 
   Tag, Search, Save, CheckCircle2, DollarSign, Package, 
-  Sparkles, TrendingUp, Layers, RefreshCw, AlertCircle, Percent, Calculator, Layers3 
+  Sparkles, TrendingUp, Layers, RefreshCw, AlertCircle, Percent, Calculator, Layers3, Scale 
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -25,16 +25,6 @@ const PRODUCT_IMAGES = {
   20: { image: '/images/aquafresh_water_2l.png', sizeBadge: '2 Ltr', category: 'Water', bgTone: 'from-cyan-500/10 to-cyan-50 border-cyan-200' }
 };
 
-const CATEGORIES = [
-  { id: 'all', label: 'All Products (அனைத்தும்)' },
-  { id: 'Milk', label: 'Milk (பால்)' },
-  { id: 'Curd', label: 'Curd (தயிர்)' },
-  { id: 'Coccola', label: 'Coccola (கூலா)' },
-  { id: 'Juice', label: 'Juice (ஜூஸ்)' },
-  { id: 'Tata', label: 'Tata Drink' },
-  { id: 'Water', label: 'Water (தண்ணீர்)' }
-];
-
 export const AdminProductRatesView = () => {
   const { products = [], categories = [], updateProductPrice } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,30 +35,42 @@ export const AdminProductRatesView = () => {
 
   const getProductPriceForm = (p) => {
     if (priceForm[p.id]) return priceForm[p.id];
+    const buyUom = p.buy_rate_uom || p.selling_unit || 'Tray';
+    const sellUom = p.selling_rate_uom || p.selling_unit || 'Tray';
+    const baseUom = p.base_unit || 'Piece';
+    const pcs = Number(p.pieces_per_unit || 1);
+    const buyRate = Number(p.purchase_price || 0);
+    const unitSell = Number(p.unit_selling_price || 0);
+    const pieceSell = p.piece_selling_price !== undefined ? Number(p.piece_selling_price) : Number((unitSell / pcs).toFixed(2));
+    
     return {
-      unit_selling_price: p.unit_selling_price || 0,
-      piece_selling_price: p.piece_selling_price || Math.round((p.unit_selling_price || 0) / (p.pieces_per_unit || 1)),
-      purchase_price: p.purchase_price || Math.round((p.unit_selling_price || 0) * 0.8),
-      pieces_per_unit: p.pieces_per_unit || 20
+      pack_size: p.pack_size || '',
+      base_unit: baseUom,
+      selling_unit: sellUom,
+      buy_rate_uom: buyUom,
+      selling_rate_uom: sellUom,
+      pieces_per_unit: pcs,
+      purchase_price: buyRate,
+      unit_selling_price: unitSell,
+      piece_selling_price: pieceSell,
     };
   };
 
   const handlePriceChange = (productId, field, value) => {
-    const numericVal = Number(value || 0);
     setPriceForm(prev => {
       const product = products.find(p => p.id === productId);
       const current = prev[productId] || getProductPriceForm(product);
       
       const updated = {
         ...current,
-        [field]: numericVal
+        [field]: field === 'pack_size' || field === 'buy_rate_uom' || field === 'selling_rate_uom' || field === 'base_unit' || field === 'selling_unit' ? value : Number(value || 0)
       };
 
-      // Auto-recalculate piece selling rate when Tray Price or Pieces per Tray changes
+      // Auto-recalculate piece selling rate when unit price or conversion factor changes
       if (field === 'unit_selling_price' || field === 'pieces_per_unit') {
-        const trayPrice = field === 'unit_selling_price' ? numericVal : current.unit_selling_price;
-        const pcsCount = field === 'pieces_per_unit' ? Math.max(1, numericVal) : Math.max(1, current.pieces_per_unit);
-        updated.piece_selling_price = parseFloat((trayPrice / pcsCount).toFixed(2));
+        const unitPrice = field === 'unit_selling_price' ? Number(value) : current.unit_selling_price;
+        const pcsCount = field === 'pieces_per_unit' ? Math.max(1, Number(value)) : Math.max(1, current.pieces_per_unit);
+        updated.piece_selling_price = parseFloat((unitPrice / pcsCount).toFixed(2));
       }
 
       return {
@@ -80,20 +82,25 @@ export const AdminProductRatesView = () => {
 
   const handleSavePrice = async (product) => {
     const currentForm = priceForm[product.id] || getProductPriceForm(product);
-    if (currentForm.unit_selling_price <= 0) {
-      toast.error("Unit selling price must be greater than ₹0!");
+    if (currentForm.unit_selling_price < 0) {
+      toast.error("Unit selling price cannot be negative!");
+      return;
+    }
+
+    if (currentForm.purchase_price < 0) {
+      toast.error("Buy rate cannot be negative!");
       return;
     }
 
     if (currentForm.pieces_per_unit <= 0) {
-      toast.error("Pieces per tray must be at least 1 Piece!");
+      toast.error("Conversion factor must be at least 1 Piece!");
       return;
     }
 
     if (updateProductPrice) {
       const res = await updateProductPrice(product.id, currentForm);
       if (res.success) {
-        toast.success(`🎉 Rates & Ratio updated for ${product.display_name}! 1 ${product.selling_unit} = ${currentForm.pieces_per_unit} Pcs @ ₹${currentForm.unit_selling_price}/${product.selling_unit}.`);
+        toast.success(`Rates & Packaging updated for ${product.display_name}! 1 ${currentForm.selling_unit} = ${currentForm.pieces_per_unit} ${currentForm.base_unit} @ Buy: ₹${currentForm.purchase_price}/${currentForm.buy_rate_uom}, Sell: ₹${currentForm.unit_selling_price}/${currentForm.selling_rate_uom}`);
       } else {
         toast.error("Failed to update rate: " + res.message);
       }
@@ -104,8 +111,8 @@ export const AdminProductRatesView = () => {
     return products.filter(p => {
       if (!p) return false;
       const meta = PRODUCT_IMAGES[p.id] || {};
-      const catMatch = activeCategory === 'all' || (meta.category && meta.category.toLowerCase() === activeCategory.toLowerCase());
-      const nameMatch = !searchQuery || p.display_name.toLowerCase().includes(searchQuery.toLowerCase());
+      const catMatch = activeCategory === 'all' || (meta.category && meta.category.toLowerCase() === activeCategory.toLowerCase()) || (p.category_name && p.category_name.toLowerCase() === activeCategory.toLowerCase());
+      const nameMatch = !searchQuery || p.display_name.toLowerCase().includes(searchQuery.toLowerCase()) || (p.name && p.name.toLowerCase().includes(searchQuery.toLowerCase())) || (p.pack_size && p.pack_size.toLowerCase().includes(searchQuery.toLowerCase()));
       return catMatch && nameMatch;
     });
   }, [products, activeCategory, searchQuery]);
@@ -141,21 +148,21 @@ export const AdminProductRatesView = () => {
             </div>
             <div>
               <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2 tracking-tight">
-                PRODUCT PRICING & TRAY/PIECE RATIO MASTER
+                PRODUCT UOM, PACKAGING & BUY/SELL RATES
                 <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-400/30">
-                  🟢 Live Rate Engine Active
+                  Live Master Active
                 </span>
               </h2>
-              <p className="text-xs text-slate-300 font-medium mt-0.5">Set Tray Selling Prices, Piece Rates & Tray-to-Piece Ratios (e.g. 72 Pcs / Tray) for POS Auto-Multiplication</p>
+              <p className="text-xs text-slate-300 font-medium mt-0.5">Configure Pack Sizes, Base UOMs, Purchase UOMs, Packaging Conversions & Authoritative Buy/Sell Rates</p>
             </div>
           </div>
         </div>
 
         <div className="relative z-10 flex items-center gap-2">
           <div className="px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-right">
-            <span className="text-[10px] text-slate-300 font-bold block uppercase tracking-wide">Average Tray Margin:</span>
+            <span className="text-[10px] text-slate-300 font-bold block uppercase tracking-wide">Average Unit Margin:</span>
             <span className="font-mono font-black text-lg text-emerald-400">
-              ₹{metrics.avgMargin} / Tray
+              ₹{metrics.avgMargin} / Unit
             </span>
           </div>
         </div>
@@ -187,7 +194,7 @@ export const AdminProductRatesView = () => {
         <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-amber-500 border border-slate-200 shadow-xs">
           <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-tight block">POS Calculation Engine</span>
           <div className="font-mono font-black text-lg text-amber-600 mt-1.5 flex items-center gap-1">
-            <Calculator className="w-4 h-4 text-amber-500" /> Qty * Rate Auto-Math
+            <Calculator className="w-4 h-4 text-amber-500" /> Qty × Rate Dynamic Math
           </div>
         </div>
       </div>
@@ -200,16 +207,16 @@ export const AdminProductRatesView = () => {
           <div>
             <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
               <Tag className="w-5 h-5 text-emerald-600" />
-              Owner Price Master & Tray Ratio Setting (பொருள் விலை & ட்ரே எண்ணிக்கை நிர்ணயம்)
+              Owner Price Master & Packaging Conversion Configuration
             </h3>
-            <p className="text-xs text-slate-500 font-semibold mt-0.5">Set Tray Selling Rates & Pieces per Tray (e.g. 72 Pcs). POS billing multiplies quantity by these exact rates!</p>
+            <p className="text-xs text-slate-500 font-semibold mt-0.5">Configure Pack Sizes, Conversion Ratios (e.g. 72 Pcs/Tray, 23 Pcs/Case) & Buy/Sell Rates with Explicit UOMs</p>
           </div>
 
           <div className="relative w-full sm:w-64">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search product name..."
+              placeholder="Search name, pack size..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:bg-white transition"
@@ -244,18 +251,22 @@ export const AdminProductRatesView = () => {
           ))}
         </div>
 
-        {/* Product Rate Setting Cards Grid (3 Columns Desktop, 1 Column Mobile) */}
+        {/* Product Rate Setting Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredProducts.map(product => {
-            const meta = PRODUCT_IMAGES[product.id] || {
-              image: product.image || '/images/milk_200ml.svg',
-              sizeBadge: 'Item',
-              category: product.category || 'Product',
-              bgTone: 'from-slate-50 to-slate-100/80'
+            const actualImage = product.image_url || product.image || (PRODUCT_IMAGES[product.id]?.image) || '';
+            const meta = {
+              image: actualImage,
+              sizeBadge: product.pack_size || (PRODUCT_IMAGES[product.id]?.sizeBadge) || 'Standard',
+              category: product.category || product.category_name || (PRODUCT_IMAGES[product.id]?.category) || 'Product',
+              bgTone: (PRODUCT_IMAGES[product.id]?.bgTone) || 'from-slate-50 to-slate-100/80'
             };
 
             const currentForm = priceForm[product.id] || getProductPriceForm(product);
             const marginVal = currentForm.unit_selling_price - currentForm.purchase_price;
+            const derivedBaseCost = currentForm.pieces_per_unit > 0 
+              ? (currentForm.purchase_price / currentForm.pieces_per_unit).toFixed(2)
+              : currentForm.purchase_price;
 
             return (
               <div 
@@ -275,50 +286,85 @@ export const AdminProductRatesView = () => {
 
                     <div className="flex-1">
                       <h4 className="font-black text-sm text-slate-900 leading-tight">{product.display_name}</h4>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
                         <span className="text-[10px] font-black uppercase text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-                          {meta.sizeBadge}
+                          {currentForm.pack_size || meta.sizeBadge || '200ml'}
                         </span>
-                        <span className="text-[10px] font-mono text-slate-500 font-bold">
-                          Unit: {product.selling_unit}
+                        <span className="text-[10px] font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded font-bold">
+                          Base: {currentForm.base_unit}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded font-bold">
+                          Purchase: {currentForm.selling_unit}
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Price & Ratio Setting Input Form */}
+                  {/* Packaging & Rate Setting Form */}
                   <div className="space-y-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs">
                     
-                    {/* Pieces per Tray Ratio Input */}
-                    <div className="bg-white p-2.5 rounded-xl border border-slate-200">
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="text-[10px] font-extrabold text-indigo-700 uppercase flex items-center gap-1">
-                          <Layers3 className="w-3.5 h-3.5 text-indigo-600" />
-                          Pieces per {product.selling_unit} (1 Tray = X Pcs):
+                    {/* Pack Size & Conversion Factor */}
+                    <div className="grid grid-cols-2 gap-2 bg-white p-2.5 rounded-xl border border-slate-200">
+                      <div>
+                        <label className="text-[10px] font-extrabold text-slate-700 uppercase block mb-1">
+                          Pack Size:
                         </label>
-                        <span className="font-mono text-[10px] font-bold text-indigo-600">
-                          Ratio Ratio
-                        </span>
-                      </div>
-                      <div className="relative">
                         <input
-                          type="number"
-                          value={currentForm.pieces_per_unit}
-                          onChange={(e) => handlePriceChange(product.id, 'pieces_per_unit', e.target.value)}
-                          className="w-full px-3 py-1.5 text-xs font-mono font-black text-indigo-900 bg-indigo-50/50 border border-indigo-200 rounded-xl focus:outline-none focus:border-indigo-500"
+                          type="text"
+                          placeholder="e.g. 200ml, 300ml"
+                          value={currentForm.pack_size}
+                          onChange={(e) => handlePriceChange(product.id, 'pack_size', e.target.value)}
+                          className="w-full px-2 py-1 text-xs font-bold bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs font-bold text-indigo-600">Pcs / {product.selling_unit}</span>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-extrabold text-indigo-700 uppercase block mb-1">
+                          1 {currentForm.selling_unit} =
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={currentForm.pieces_per_unit}
+                            onChange={(e) => handlePriceChange(product.id, 'pieces_per_unit', e.target.value)}
+                            className="w-full pl-2 pr-8 py-1 text-xs font-mono font-black text-indigo-900 bg-indigo-50/50 border border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 font-mono text-[10px] font-bold text-indigo-600">
+                            {currentForm.base_unit}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Unit Selling Price (Tray / Box Rate) */}
+                    {/* Buy Rate (COGS) with UOM */}
+                    <div className="bg-amber-50/60 p-2.5 rounded-xl border border-amber-200">
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[10px] font-extrabold text-amber-900 uppercase">
+                          Buy Rate (₹ / {currentForm.buy_rate_uom}):
+                        </label>
+                        <span className="font-mono text-[10px] font-bold text-amber-800">
+                          Derived: ₹{derivedBaseCost} / {currentForm.base_unit}
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-black text-amber-600">₹</span>
+                        <input
+                          type="number"
+                          value={currentForm.purchase_price}
+                          onChange={(e) => handlePriceChange(product.id, 'purchase_price', e.target.value)}
+                          className="w-full pl-7 pr-3 py-1.5 text-xs font-mono font-black bg-white border border-amber-300 rounded-xl focus:outline-none focus:border-amber-500 text-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Unit Selling Price */}
                     <div>
                       <div className="flex justify-between items-center mb-1">
-                        <label className="text-[10px] font-extrabold text-slate-600 uppercase">
-                          Tray Selling Price (per {product.selling_unit}):
+                        <label className="text-[10px] font-extrabold text-slate-700 uppercase">
+                          Selling Rate (₹ / {currentForm.selling_rate_uom}):
                         </label>
                         <span className="font-mono text-[10px] font-black text-emerald-600">
-                          POS Multiplier Rate
+                          ₹{currentForm.piece_selling_price} / {currentForm.base_unit}
                         </span>
                       </div>
                       <div className="relative">
@@ -332,51 +378,24 @@ export const AdminProductRatesView = () => {
                       </div>
                     </div>
 
-                    {/* Piece Selling Rate & Buying Cost (COGS) */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-extrabold text-slate-600 uppercase block mb-1">
-                          Single Piece Rate:
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-black text-slate-400">₹</span>
-                          <input
-                            type="number"
-                            value={currentForm.piece_selling_price}
-                            onChange={(e) => handlePriceChange(product.id, 'piece_selling_price', e.target.value)}
-                            className="w-full pl-7 pr-2 py-1 text-xs font-mono font-black bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-emerald-500"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] font-extrabold text-slate-600 uppercase block mb-1">
-                          Buying Cost (COGS):
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-black text-slate-400">₹</span>
-                          <input
-                            type="number"
-                            value={currentForm.purchase_price}
-                            onChange={(e) => handlePriceChange(product.id, 'purchase_price', e.target.value)}
-                            className="w-full pl-7 pr-2 py-1 text-xs font-mono font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-emerald-500"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Live Formula Explanation Box */}
+                    {/* Live Formula & UOM Badge Box */}
                     <div className="bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200 text-[10px] font-mono space-y-1">
                       <div className="flex justify-between">
-                        <span className="text-slate-600 font-sans font-bold">POS Formula:</span>
+                        <span className="text-slate-600 font-sans font-bold">Packaging:</span>
                         <span className="font-black text-emerald-800">
-                          1 {product.selling_unit} ({currentForm.pieces_per_unit} Pcs) = ₹{currentForm.unit_selling_price}
+                          1 {currentForm.selling_unit} = {currentForm.pieces_per_unit} {currentForm.base_unit}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600 font-sans font-bold">Buy Rate:</span>
+                        <span className="font-black text-amber-800">
+                          ₹{Number(currentForm.purchase_price).toLocaleString()} / {currentForm.buy_rate_uom}
                         </span>
                       </div>
                       <div className="flex justify-between border-t border-emerald-200/60 pt-1">
-                        <span className="text-slate-600 font-sans font-bold">Tray Margin:</span>
+                        <span className="text-slate-600 font-sans font-bold">Margin:</span>
                         <span className={`font-black ${marginVal >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                          +₹{marginVal} / {product.selling_unit}
+                          +₹{marginVal} / {currentForm.selling_unit}
                         </span>
                       </div>
                     </div>
@@ -389,7 +408,7 @@ export const AdminProductRatesView = () => {
                   onClick={() => handleSavePrice(product)}
                   className="mt-4 w-full py-2.5 rounded-xl bg-slate-900 hover:bg-emerald-600 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all duration-300"
                 >
-                  <Save className="w-3.5 h-3.5" /> SAVE & SYNC RATES & RATIO
+                  <Save className="w-3.5 h-3.5" /> SAVE & SYNC UOM / RATES
                 </button>
 
               </div>

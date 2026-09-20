@@ -5,8 +5,9 @@ import {
   Package, Search, DollarSign, ArrowUpRight, ArrowDownLeft, 
   Sparkles, CheckCircle2, AlertTriangle, Layers, Info, X, 
   Truck, RotateCcw, Plus, SlidersHorizontal, Eye, ShieldAlert, 
-  TrendingUp, Clock, FileText, CheckCircle, AlertCircle
+  TrendingUp, Clock, FileText, CheckCircle, AlertCircle, Bell, Download, Wrench, RefreshCw
 } from 'lucide-react';
+import { generateInventoryPDFReport } from '../../utils/pdfReportGenerator';
 
 const PRODUCT_IMAGES = {
   1: { image: '/images/amirthaa_milk_200ml.png', sizeBadge: '200 ml', category: 'Dairy', bgTone: 'from-blue-500/10 to-blue-50 border-blue-200', textTone: 'text-blue-700' },
@@ -26,34 +27,59 @@ const PRODUCT_IMAGES = {
   20: { image: '/images/aquafresh_water_2l.png', sizeBadge: '2 Ltr', category: 'Water', bgTone: 'from-cyan-500/10 to-cyan-50 border-cyan-200', textTone: 'text-cyan-700' }
 };
 
-export const AdminInventoryView = () => {
+export const AdminInventoryView = ({ hideActionButtons }) => {
   const { 
     products = [], categories = [], stockMovements = [], users = [],
     receiveDealerStock, allocateStock, processDriverReturn, submitDriverReturn,
-    fetchPendingReturns, verifyDriverReturn, addDamage, fetchStockHistory, 
-    fetchReconciliation, currentUser 
+    fetchPendingReturns, fetchEligibleDriversForReturn, fetchDriverExpectedReturn, verifyDriverReturn, fetchDriverReturnHistory, addDamage, fetchStockHistory, 
+    fetchReconciliation, fetchAdvancedReconciliation, fetchDamages, fetchDamageSummary, verifyDamageRecord,
+    fetchInventoryAlerts, adjustStock, exportReportData,
+    currentUser, activeRole 
   } = useApp();
 
-  const isDriverRole = currentUser?.role === 'EMPLOYEE';
-  const driverUsers = useMemo(() => (users || []).filter(u => u.role === 'EMPLOYEE'), [users]);
+  const userRole = (activeRole || currentUser?.role || '').toUpperCase();
+  const isOwnerRole = userRole === 'OWNER' || userRole === 'ADMIN';
+  const isDriverRole = userRole === 'EMPLOYEE' || userRole === 'DRIVER';
+  const showActionButtons = !hideActionButtons && !isOwnerRole && !isDriverRole;
+  const driverUsers = useMemo(() => (users || []).filter(u => u.role === 'EMPLOYEE' || u.role === 'DRIVER'), [users]);
 
-  const [activeTab, setActiveTab] = useState('OVERVIEW'); // OVERVIEW, MOVEMENTS, RECONCILIATION, PENDING_RETURNS
+  const [activeTab, setActiveTab] = useState('OVERVIEW'); // OVERVIEW, MOVEMENTS, RECONCILIATION, PENDING_RETURNS, SHORTAGES, DAMAGES, ALERTS
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [stockStatusFilter, setStockStatusFilter] = useState('ALL'); // ALL, HEALTHY, LOW, CRITICAL
   const [movementTypeFilter, setMovementTypeFilter] = useState('ALL');
   const [reconcileDriverFilter, setReconcileDriverFilter] = useState('ALL');
 
+  // Phase 5 Inventory Alerts State
+  const [alertsData, setAlertsData] = useState(null);
+  const [alertStatusFilter, setAlertStatusFilter] = useState('ALL'); // ALL, OUT_OF_STOCK, LOW_STOCK, NORMAL
+  const [loadingAlerts, setLoadingAlerts] = useState(false);
+
+  // Damage Records State (Phase 3)
+  const [damagesList, setDamagesList] = useState([]);
+  const [damageSummary, setDamageSummary] = useState(null);
+  const [loadingDamages, setLoadingDamages] = useState(false);
+  const [damageStatusFilter, setDamageStatusFilter] = useState('ALL');
+  const [damageDriverFilter, setDamageDriverFilter] = useState('ALL');
+  const [damageProductFilter, setDamageProductFilter] = useState('ALL');
+  const [damageReasonFilter, setDamageReasonFilter] = useState('ALL');
+  const [damageDateRange, setDamageDateRange] = useState('ALL');
+  const [selectedDamageForVerify, setSelectedDamageForVerify] = useState(null);
+  const [verifyActionNotes, setVerifyActionNotes] = useState('');
+  const [isVerifyingDamage, setIsVerifyingDamage] = useState(false);
+
   // Modals state
   const [showInwardModal, setShowInwardModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [showDamageModal, setShowDamageModal] = useState(false);
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [issueConfirmData, setIssueConfirmData] = useState(null); // Before/After stock confirmation dialog
   const [selectedProductTimeline, setSelectedProductTimeline] = useState(null);
   const [productHistoryLogs, setProductHistoryLogs] = useState([]);
   const [reconciliationList, setReconciliationList] = useState([]);
   const [pendingReturnsList, setPendingReturnsList] = useState([]);
+  const [returnHistoryList, setReturnHistoryList] = useState([]);
   const [actionError, setActionError] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
 
@@ -62,19 +88,171 @@ export const AdminInventoryView = () => {
   const [issueForm, setIssueForm] = useState({ employee_id: '1', product_id: '', quantity: '', unit_type: 'Tray', notes: '' });
   const [returnForm, setReturnForm] = useState({ employee_id: '1', product_id: '', quantity: '', damaged_quantity: '0', unit_type: 'Tray', notes: '' });
   const [damageForm, setDamageForm] = useState({ damage_source: 'WAREHOUSE', employee_id: '1', product_id: '', quantity: '', unit_type: 'Tray', reason: 'Leakage / Burst', notes: '' });
+  const [adjustForm, setAdjustForm] = useState({ product_id: '', quantity: '', unit_type: 'Tray', adjustment_type: 'ADD', reason: 'Physical count correction', notes: '' });
+
+  const loadAlertsData = async () => {
+    if (!fetchInventoryAlerts) return;
+    try {
+      setLoadingAlerts(true);
+      const data = await fetchInventoryAlerts();
+      if (data) setAlertsData(data);
+    } catch (e) {
+      console.error("Error loading alerts:", e);
+    } finally {
+      setLoadingAlerts(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAlertsData();
+  }, [products]);
 
   // Fetch Driver Reconciliation & Pending Returns Data
   const loadReconciliationData = async () => {
-    if (fetchReconciliation) {
-      const res = await fetchReconciliation(reconcileDriverFilter);
-      setReconciliationList(res || []);
+    try {
+      if (fetchAdvancedReconciliation) {
+        const filters = {};
+        if (reconcileDriverFilter !== 'ALL') filters.employee_id = reconcileDriverFilter;
+        const res = await fetchAdvancedReconciliation(filters);
+        if (res && res.success && Array.isArray(res.reconciliation)) {
+          setReconciliationList(res.reconciliation);
+          return;
+        }
+      }
+      if (fetchReconciliation) {
+        const res = await fetchReconciliation(reconcileDriverFilter === 'ALL' ? null : reconcileDriverFilter);
+        let list = [];
+        if (Array.isArray(res)) {
+          list = res;
+        } else if (Array.isArray(res?.reconciliation)) {
+          list = res.reconciliation;
+        } else if (Array.isArray(res?.products)) {
+          list = res.products;
+        } else if (Array.isArray(res?.data)) {
+          list = res.data;
+        }
+        setReconciliationList(list);
+      }
+    } catch (err) {
+      console.error("Error loading reconciliation data:", err);
     }
   };
 
   const loadPendingReturnsData = async () => {
-    if (fetchPendingReturns) {
+    if (!fetchPendingReturns) return;
+    try {
       const res = await fetchPendingReturns();
-      setPendingReturnsList(res || []);
+      let list = Array.isArray(res) ? res : [];
+      
+      const enriched = await Promise.all(list.map(async (driver) => {
+        if (Array.isArray(driver.items) && driver.items.length > 0) {
+          return {
+            ...driver,
+            id: driver.id || driver.session_id || driver.driver_id,
+            return_no: driver.return_no || (driver.session_id ? `RET-${driver.session_id}` : `RET-${driver.driver_id || driver.id}`),
+            date: driver.date || driver.session_date || new Date().toISOString().split('T')[0],
+            time: driver.time || (driver.updated_at ? new Date(driver.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending')
+          };
+        }
+
+        let items = [];
+        const driverId = driver.driver_id || driver.employee_id || driver.id;
+        if (fetchDriverExpectedReturn && driverId) {
+          try {
+            const exp = await fetchDriverExpectedReturn(driverId, driver.session_id);
+            if (exp && Array.isArray(exp.products)) {
+              items = exp.products.map(p => ({
+                product_id: p.product_id,
+                product_name: p.product_name,
+                category_name: p.category_name || 'General',
+                unit_name: p.unit_name || 'Box',
+                pieces_per_unit: p.pieces_per_unit || 1,
+                driver_good_pcs: Number(p.expected_return_good_pcs ?? p.good_return_pieces ?? 0),
+                driver_damaged_pcs: Number(p.expected_return_damage_pcs ?? p.damage_return_pieces ?? 0),
+                verified_good_pcs: Number(p.verified_good_pieces ?? p.expected_return_good_pcs ?? p.good_return_pieces ?? 0),
+                verified_damaged_pcs: Number(p.verified_damage_pieces ?? p.expected_return_damage_pcs ?? p.damage_return_pieces ?? 0)
+              }));
+            }
+          } catch (e) {
+            console.error("Error fetching expected return for driver:", e);
+          }
+        }
+
+        return {
+          ...driver,
+          id: driver.id || driver.session_id || driver.driver_id,
+          return_no: driver.return_no || (driver.session_id ? `RET-${driver.session_id}` : `RET-${driver.driver_id || driver.id}`),
+          date: driver.date || driver.session_date || new Date().toISOString().split('T')[0],
+          time: driver.time || (driver.updated_at ? new Date(driver.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending'),
+          items
+        };
+      }));
+
+      setPendingReturnsList(enriched);
+    } catch (err) {
+      console.error("Error loading pending returns data:", err);
+      setPendingReturnsList([]);
+    }
+  };
+
+  const loadDamagesData = async () => {
+    if (!fetchDamages) return;
+    try {
+      setLoadingDamages(true);
+      const filters = {};
+      if (damageStatusFilter !== 'ALL') filters.status = damageStatusFilter;
+      if (damageDriverFilter !== 'ALL') filters.employee_id = damageDriverFilter;
+      if (damageProductFilter !== 'ALL') filters.product_id = damageProductFilter;
+      if (damageReasonFilter !== 'ALL') filters.reason = damageReasonFilter;
+
+      const now = new Date();
+      if (damageDateRange === 'TODAY') {
+        filters.date = now.toISOString().split('T')[0];
+      } else if (damageDateRange === 'YESTERDAY') {
+        const y = new Date(now);
+        y.setDate(y.getDate() - 1);
+        filters.date = y.toISOString().split('T')[0];
+      } else if (damageDateRange === 'THIS_WEEK') {
+        const d = new Date(now);
+        d.setDate(d.getDate() - 7);
+        filters.start_date = d.toISOString().split('T')[0];
+        filters.end_date = now.toISOString().split('T')[0];
+      } else if (damageDateRange === 'THIS_MONTH') {
+        const d = new Date(now.getFullYear(), now.getMonth(), 1);
+        filters.start_date = d.toISOString().split('T')[0];
+        filters.end_date = now.toISOString().split('T')[0];
+      }
+
+      const [list, summaryRes] = await Promise.all([
+        fetchDamages(filters),
+        fetchDamageSummary ? fetchDamageSummary(filters) : Promise.resolve(null)
+      ]);
+      setDamagesList(Array.isArray(list) ? list : []);
+      if (summaryRes) setDamageSummary(summaryRes);
+    } catch (err) {
+      console.error("Error loading damage records:", err);
+    } finally {
+      setLoadingDamages(false);
+    }
+  };
+
+  const handleVerifyOrRejectDamage = async (action) => {
+    if (!selectedDamageForVerify || !verifyDamageRecord) return;
+    try {
+      setIsVerifyingDamage(true);
+      const res = await verifyDamageRecord(selectedDamageForVerify.id, action, verifyActionNotes);
+      if (res.success) {
+        setActionSuccess(`Damage #${selectedDamageForVerify.id} successfully marked as ${action === 'VERIFY' ? 'VERIFIED' : 'REJECTED'}`);
+        setSelectedDamageForVerify(null);
+        setVerifyActionNotes('');
+        loadDamagesData();
+      } else {
+        setActionError(res.message || 'Action failed');
+      }
+    } catch (err) {
+      setActionError(err.message || 'Action error');
+    } finally {
+      setIsVerifyingDamage(false);
     }
   };
 
@@ -83,8 +261,19 @@ export const AdminInventoryView = () => {
       loadReconciliationData();
     } else if (activeTab === 'PENDING_RETURNS') {
       loadPendingReturnsData();
+    } else if (activeTab === 'DAMAGES') {
+      loadDamagesData();
     }
-  }, [activeTab, reconcileDriverFilter]);
+  }, [activeTab, reconcileDriverFilter, damageStatusFilter, damageDriverFilter, damageProductFilter, damageReasonFilter, damageDateRange]);
+
+  // Initial load of damage summary for tab badge
+  useEffect(() => {
+    if (fetchDamageSummary) {
+      fetchDamageSummary().then(res => {
+        if (res) setDamageSummary(res);
+      }).catch(e => console.error(e));
+    }
+  }, []);
 
   // Handle Product Timeline Inspection
   const handleOpenTimeline = async (prod) => {
@@ -121,29 +310,30 @@ export const AdminInventoryView = () => {
     let totalTrays = 0;
 
     (products || []).forEach(p => {
-      const pcsPerUnit = p.pieces_per_unit || 1;
-      const pcs = Math.round((p.warehouse_stock_units || 0) * pcsPerUnit);
-      const val = (p.warehouse_stock_units || 0) * (p.unit_selling_price || 0);
+      const stockUnits = Number(p.warehouse_stock_units) || 0;
+      const pcsPerUnit = Number(p.pieces_per_unit) || 1;
+      const pcs = Math.round(stockUnits * pcsPerUnit);
+      const val = stockUnits * (Number(p.unit_selling_price) || 0);
 
       totalPcs += pcs;
-      totalTrays += (p.warehouse_stock_units || 0);
+      totalTrays += stockUnits;
       totalValuation += val;
     });
 
-    const inwardCount = (stockMovements || []).filter(m => m.movement_type === 'INWARD').reduce((acc, m) => acc + (m.qty_trays || 0), 0);
-    const issuedCount = (stockMovements || []).filter(m => m.movement_type === 'DRIVER_ISSUE').reduce((acc, m) => acc + (m.qty_trays || 0), 0);
-    const returnCount = (stockMovements || []).filter(m => m.movement_type === 'DRIVER_RETURN').reduce((acc, m) => acc + (m.qty_trays || 0), 0);
-    const damageCount = (stockMovements || []).filter(m => m.movement_type.includes('DAMAGE')).reduce((acc, m) => acc + (m.qty_trays || 0), 0);
+    const inwardCount = (stockMovements || []).filter(m => m.movement_type === 'INWARD').reduce((acc, m) => acc + (Number(m.qty_trays || m.qty_units) || 0), 0);
+    const issuedCount = (stockMovements || []).filter(m => m.movement_type === 'DRIVER_ISSUE' || m.movement_type === 'OUTWARD').reduce((acc, m) => acc + (Number(m.qty_trays || m.qty_units) || 0), 0);
+    const returnCount = (stockMovements || []).filter(m => m.movement_type === 'DRIVER_RETURN' || m.movement_type === 'RETURN').reduce((acc, m) => acc + (Number(m.qty_trays || m.qty_units) || 0), 0);
+    const damageCount = (stockMovements || []).filter(m => (m.movement_type || '').includes('DAMAGE')).reduce((acc, m) => acc + (Number(m.qty_trays || m.qty_units) || 0), 0);
 
     return {
       totalValuation: Math.round(totalValuation),
       totalPcs: totalPcs,
-      totalTrays: parseFloat(totalTrays.toFixed(1)),
-      totalVariants: products.length,
-      inwardTrays: parseFloat(inwardCount.toFixed(1)),
-      issuedTrays: parseFloat(issuedCount.toFixed(1)),
-      returnTrays: parseFloat(returnCount.toFixed(1)),
-      damageTrays: parseFloat(damageCount.toFixed(1))
+      totalTrays: parseFloat(Number(totalTrays || 0).toFixed(1)),
+      totalVariants: (products || []).length,
+      inwardTrays: parseFloat(Number(inwardCount || 0).toFixed(1)),
+      issuedTrays: parseFloat(Number(issuedCount || 0).toFixed(1)),
+      returnTrays: parseFloat(Number(returnCount || 0).toFixed(1)),
+      damageTrays: parseFloat(Number(damageCount || 0).toFixed(1))
     };
   }, [products, stockMovements]);
 
@@ -283,23 +473,42 @@ export const AdminInventoryView = () => {
   };
 
   // Storekeeper Return Verification (Step 2: Physical Verification & Approval)
-  const handleVerifyReturn = async (returnId) => {
+  const handleVerifyReturn = async (returnObjOrId) => {
     setActionError('');
     setActionSuccess('');
 
-    const res = await verifyDriverReturn(returnId, { verified_by: currentUser?.name || 'Store Keeper' });
-    if (res.success) {
-      setActionSuccess('Driver return physically verified and approved! Warehouse stock updated.');
-      if (fetchPendingReturns) {
-        const list = await fetchPendingReturns();
-        setPendingReturnsList(list || []);
+    try {
+      let res;
+      if (typeof returnObjOrId === 'object' && returnObjOrId !== null) {
+        const driverId = returnObjOrId.driver_id || returnObjOrId.employee_id || returnObjOrId.id;
+        const returnPayload = {
+          driver_id: Number(driverId),
+          session_id: returnObjOrId.session_id ? Number(returnObjOrId.session_id) : undefined,
+          verified_by: currentUser?.name || 'Store Keeper',
+          products: (returnObjOrId.items || []).map(i => ({
+            product_id: Number(i.product_id),
+            good_pieces: Number(i.verified_good_pcs ?? i.driver_good_pcs ?? 0),
+            damage_pieces: Number(i.verified_damaged_pcs ?? i.driver_damaged_pcs ?? 0),
+            damage_reason: 'DRIVER_RETURN_DAMAGE',
+            notes: 'Verified via Inventory Panel'
+          }))
+        };
+        res = await verifyDriverReturn(returnPayload);
+      } else {
+        res = await verifyDriverReturn(returnObjOrId, { verified_by: currentUser?.name || 'Store Keeper' });
       }
-      if (fetchReconciliation) {
-        const recs = await fetchReconciliation(reconcileDriverFilter);
-        setReconciliationList(recs || []);
+
+      if (res && res.success) {
+        setActionSuccess('Driver return physically verified and approved! Warehouse stock updated.');
+        await loadPendingReturnsData();
+        if (fetchReconciliation) {
+          await loadReconciliationData();
+        }
+      } else {
+        setActionError(res?.message || 'Failed to verify driver return.');
       }
-    } else {
-      setActionError(res.message || 'Failed to verify driver return.');
+    } catch (err) {
+      setActionError(err.message || 'Error verifying return');
     }
   };
 
@@ -333,6 +542,41 @@ export const AdminInventoryView = () => {
     }
   };
 
+  // Process Transaction-Safe Stock Adjustment (Phase 5)
+  const handleStockAdjustSubmit = async (e) => {
+    e.preventDefault();
+    setActionError('');
+    setActionSuccess('');
+
+    if (!adjustForm.product_id || !adjustForm.quantity) {
+      setActionError('Please select a product and enter an adjustment quantity.');
+      return;
+    }
+
+    try {
+      const payload = {
+        product_id: Number(adjustForm.product_id),
+        quantity: Number(adjustForm.quantity),
+        unit_type: adjustForm.unit_type,
+        adjustment_type: adjustForm.adjustment_type,
+        reason: adjustForm.reason,
+        notes: adjustForm.notes
+      };
+
+      const res = await adjustStock(payload);
+      if (res && res.success) {
+        setActionSuccess(`Stock adjusted successfully! ${res.product_name} new stock: ${res.new_warehouse_stock_units} Trays.`);
+        setShowAdjustModal(false);
+        setAdjustForm({ product_id: '', quantity: '', unit_type: 'Tray', adjustment_type: 'ADD', reason: 'Physical count correction', notes: '' });
+        loadAlertsData();
+      } else {
+        setActionError(res?.message || 'Failed to adjust stock.');
+      }
+    } catch (err) {
+      setActionError(err.message || 'Error executing stock adjustment.');
+    }
+  };
+
   return (
     <div className="space-y-5 pb-6">
       
@@ -352,14 +596,14 @@ export const AdminInventoryView = () => {
                   🟢 Ledger Traceable
                 </span>
               </h2>
-              <p className="text-xs text-slate-300 font-medium mt-0.5">Warehouse Inward, Driver Distribution, Route Returns & Damage Ledger</p>
+              <p className="text-xs text-slate-300 font-medium mt-0.5">Warehouse Inward, Driver Distribution, Route Returns, Damage Ledger & Stock Alerts</p>
             </div>
           </div>
         </div>
 
         {/* Action Buttons Bar */}
-        <div className="relative z-10 grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
-          {!isDriverRole && (
+        <div className="relative z-10 grid grid-cols-2 sm:flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {showActionButtons && (
             <>
               <button
                 onClick={() => setShowInwardModal(true)}
@@ -384,6 +628,23 @@ export const AdminInventoryView = () => {
                 className="px-3.5 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs shadow-sm flex items-center justify-center gap-1.5 transition min-h-[44px]"
               >
                 <AlertTriangle className="w-4 h-4" /> Record Damage
+              </button>
+            </>
+          )}
+          {!isDriverRole && (
+            <>
+              <button
+                onClick={() => setShowAdjustModal(true)}
+                className="px-3.5 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs shadow-sm flex items-center justify-center gap-1.5 transition min-h-[44px]"
+              >
+                <Wrench className="w-4 h-4" /> Adjust Stock
+              </button>
+              <button
+                onClick={() => generateInventoryPDFReport({ inventory: products })}
+                className="px-3.5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs shadow-sm flex items-center justify-center gap-1.5 transition min-h-[44px] cursor-pointer"
+                title="Download current warehouse inventory PDF Report"
+              >
+                <Download className="w-4 h-4" /> Download PDF Report
               </button>
             </>
           )}
@@ -489,6 +750,43 @@ export const AdminInventoryView = () => {
             <ShieldAlert className="w-4 h-4" /> Driver Route Stock Reconciliation Audit
           </button>
         )}
+
+        <button
+          onClick={() => setActiveTab('DAMAGES')}
+          className={`px-4 py-2.5 rounded-2xl font-black transition flex items-center gap-1.5 relative ${
+            activeTab === 'DAMAGES'
+              ? 'bg-rose-600 text-white shadow-xs'
+              : 'bg-white text-rose-700 hover:bg-rose-50 border border-rose-200'
+          }`}
+        >
+          <AlertTriangle className="w-4 h-4" /> Damage & Wastage Records
+          {damageSummary?.summary?.pending_count > 0 && (
+            <span className="ml-1 bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full">
+              {damageSummary.summary.pending_count} PENDING
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => { setActiveTab('ALERTS'); loadAlertsData(); }}
+          className={`px-4 py-2.5 rounded-2xl font-black transition flex items-center gap-1.5 relative ${
+            activeTab === 'ALERTS'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'bg-white text-amber-800 hover:bg-amber-50 border border-amber-200'
+          }`}
+        >
+          <Bell className="w-4 h-4" /> Stock Alerts & Reorders
+          {alertsData?.summary?.low_stock_count > 0 && (
+            <span className="ml-1 bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+              {alertsData.summary.low_stock_count} LOW
+            </span>
+          )}
+          {alertsData?.summary?.out_of_stock_count > 0 && (
+            <span className="ml-1 bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+              {alertsData.summary.out_of_stock_count} OOS
+            </span>
+          )}
+        </button>
       </div>
 
       {/* TAB 1: WAREHOUSE STOCK OVERVIEW */}
@@ -536,12 +834,13 @@ export const AdminInventoryView = () => {
           {/* Product Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filteredProducts.map(prod => {
-              const meta = PRODUCT_IMAGES[prod.id] || {
-                image: prod.image || '/images/milk_200ml.svg',
-                sizeBadge: 'Item',
-                category: prod.category || 'Product',
-                bgTone: 'from-slate-500/10 to-slate-50 border-slate-200',
-                textTone: 'text-slate-700'
+              const actualImage = prod.image_url || prod.image || (PRODUCT_IMAGES[prod.id]?.image) || '';
+              const meta = {
+                image: actualImage,
+                sizeBadge: prod.pack_size || (PRODUCT_IMAGES[prod.id]?.sizeBadge) || 'Standard',
+                category: prod.category || prod.category_name || (PRODUCT_IMAGES[prod.id]?.category) || 'Product',
+                bgTone: (PRODUCT_IMAGES[prod.id]?.bgTone) || 'from-slate-500/10 to-slate-50 border-slate-200',
+                textTone: (PRODUCT_IMAGES[prod.id]?.textTone) || 'text-slate-700'
               };
               const pcsCount = Math.round((prod.warehouse_stock_units || 0) * (prod.pieces_per_unit || 1));
               const stockValuation = Math.round((prod.warehouse_stock_units || 0) * (prod.unit_selling_price || 0));
@@ -575,7 +874,7 @@ export const AdminInventoryView = () => {
 
                     {/* Product Photo */}
                     <ProductImage
-                      src={meta.image}
+                      src={actualImage}
                       alt={prod.display_name}
                       size={96}
                       icon={prod.icon}
@@ -753,7 +1052,7 @@ export const AdminInventoryView = () => {
                 <div key={ret.id} className="p-4 rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-50/50 to-orange-50/30 space-y-3">
                   <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
                     <div>
-                      <span className="font-black text-slate-900 text-sm">{ret.driver_name}</span>
+                      <span className="font-black text-slate-900 text-sm">{ret.driver_name || ret.employee_name}</span>
                       <span className="ml-2 font-mono text-xs text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full font-bold">#{ret.return_no}</span>
                       <span className="ml-2 text-xs text-slate-500">{ret.date} • {ret.time}</span>
                     </div>
@@ -774,33 +1073,41 @@ export const AdminInventoryView = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-bold">
-                        {ret.items.map((item, idx) => (
-                          <tr key={idx}>
-                            <td className="p-2.5">
-                              <span className="font-black text-slate-900 block">{item.product_name}</span>
-                              <span className="text-[9px] text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">{item.category_name}</span>
-                            </td>
-                            <td className="p-2.5 text-center font-mono text-emerald-700">
-                              {Math.round(item.driver_good_pcs / item.pieces_per_unit)} {item.unit_name}s ({item.driver_good_pcs} Pcs)
-                            </td>
-                            <td className="p-2.5 text-center font-mono text-rose-700">
-                              {Math.round(item.driver_damaged_pcs / item.pieces_per_unit)} {item.unit_name}s ({item.driver_damaged_pcs} Pcs)
-                            </td>
-                            <td className="p-2.5 text-center font-mono font-black text-emerald-800">
-                              {item.verified_good_pcs} Pcs
-                            </td>
-                            <td className="p-2.5 text-center font-mono font-black text-rose-800">
-                              {item.verified_damaged_pcs} Pcs
+                        {(ret.items || []).length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="p-3 text-center text-slate-400 font-medium">
+                              No product line items found for this return session
                             </td>
                           </tr>
-                        ))}
+                        ) : (
+                          (ret.items || []).map((item, idx) => (
+                            <tr key={idx}>
+                              <td className="p-2.5">
+                                <span className="font-black text-slate-900 block">{item.product_name}</span>
+                                <span className="text-[9px] text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">{item.category_name}</span>
+                              </td>
+                              <td className="p-2.5 text-center font-mono text-emerald-700">
+                                {Math.round(item.driver_good_pcs / (item.pieces_per_unit || 1))} {item.unit_name || 'Box'}s ({item.driver_good_pcs} Pcs)
+                              </td>
+                              <td className="p-2.5 text-center font-mono text-rose-700">
+                                {Math.round(item.driver_damaged_pcs / (item.pieces_per_unit || 1))} {item.unit_name || 'Box'}s ({item.driver_damaged_pcs} Pcs)
+                              </td>
+                              <td className="p-2.5 text-center font-mono font-black text-emerald-800">
+                                {item.verified_good_pcs} Pcs
+                              </td>
+                              <td className="p-2.5 text-center font-mono font-black text-rose-800">
+                                {item.verified_damaged_pcs} Pcs
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
 
                   <div className="flex items-center justify-end gap-3 pt-1">
                     <button
-                      onClick={() => handleVerifyReturn(ret.id)}
+                      onClick={() => handleVerifyReturn(ret)}
                       className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-black text-xs hover:bg-emerald-700 shadow-md flex items-center gap-1.5"
                     >
                       <CheckCircle className="w-4 h-4" /> Approve & Update Warehouse Stock
@@ -857,53 +1164,727 @@ export const AdminInventoryView = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {reconciliationList.length === 0 ? (
+                {(!Array.isArray(reconciliationList) || reconciliationList.length === 0) ? (
                   <tr>
                     <td colSpan="9" className="p-8 text-center text-slate-400 font-bold">No driver stock allocation data recorded yet.</td>
                   </tr>
                 ) : (
-                  reconciliationList.map((rec, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="p-3 pl-4">
-                        <span className="font-black text-slate-900 text-xs block">{rec.driver_name}</span>
-                        <span className="text-[9px] text-slate-400 font-mono">{rec.vehicle_no || 'Driver'}</span>
-                      </td>
-                      <td className="p-3">
-                        <span className="font-extrabold text-slate-900 block">{rec.product_name}</span>
-                        <span className="text-[9px] text-purple-700 font-bold bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 inline-block">{rec.category_name}</span>
-                      </td>
-                      <td className="p-3 text-center font-mono font-bold text-blue-700">
-                        {rec.issued_trays} {rec.selling_unit}s ({rec.issued_pcs} Pcs)
-                      </td>
-                      <td className="p-3 text-center font-mono font-bold text-emerald-700">
-                        {rec.sold_trays} {rec.selling_unit}s ({rec.sold_pcs} Pcs)
-                      </td>
-                      <td className="p-3 text-center font-mono font-bold text-purple-700">
-                        {rec.good_return_trays} {rec.selling_unit}s ({rec.good_return_pcs} Pcs)
-                      </td>
-                      <td className="p-3 text-center font-mono font-bold text-rose-700">
-                        {rec.damaged_trays} {rec.selling_unit}s ({rec.damaged_pcs} Pcs)
-                      </td>
-                      <td className="p-3 text-center font-mono font-bold text-slate-900">
-                        {rec.current_balance_trays} {rec.selling_unit}s ({rec.current_balance_pcs} Pcs)
-                      </td>
-                      <td className="p-3 text-center font-mono font-black">
-                        {rec.variance_pcs === 0 ? '0 Pcs' : `${rec.variance_pcs > 0 ? '+' : ''}${rec.variance_pcs} Pcs`}
-                      </td>
-                      <td className="p-3 pr-4 text-center">
-                        {rec.status === 'RECONCILED' ? (
-                          <span className="px-3 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
-                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> RECONCILED
-                          </span>
-                        ) : (
-                          <span className="px-3 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300 inline-flex items-center gap-1">
-                            <AlertCircle className="w-3.5 h-3.5 text-rose-600" /> MISMATCH ({rec.variance_pcs} Pcs)
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                  reconciliationList.map((rec, idx) => {
+                    const piecesPerUnit = Number(rec.pieces_per_unit || 1);
+                    const sellingUnit = rec.selling_unit || rec.unit || 'Tray';
+                    const issuedTrays = Number(rec.issued_trays ?? rec.allocated ?? 0);
+                    const issuedPcs = Number(rec.issued_pcs ?? (issuedTrays * piecesPerUnit));
+                    const soldTrays = Number(rec.sold_trays ?? rec.sold ?? 0);
+                    const soldPcs = Number(rec.sold_pcs ?? (soldTrays * piecesPerUnit));
+                    const returnTrays = Number(rec.good_return_trays ?? rec.good_return ?? 0);
+                    const returnPcs = Number(rec.good_return_pcs ?? (returnTrays * piecesPerUnit));
+                    const dmgTrays = Number(rec.damaged_trays ?? rec.damage ?? 0);
+                    const dmgPcs = Number(rec.damaged_pcs ?? (dmgTrays * piecesPerUnit));
+                    const balTrays = Number(rec.current_balance_trays ?? rec.remaining_physical ?? 0);
+                    const balPcs = Number(rec.current_balance_pcs ?? (balTrays * piecesPerUnit));
+                    const variancePcs = Number(rec.variance_pcs ?? rec.difference ?? 0);
+                    const isReconciled = rec.status === 'RECONCILED' || rec.is_reconciled === true || variancePcs === 0;
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="p-3 pl-4">
+                          <span className="font-black text-slate-900 text-xs block">{rec.driver_name || 'Driver'}</span>
+                          <span className="text-[9px] text-slate-400 font-mono">{rec.vehicle_no || 'Route Driver'}</span>
+                        </td>
+                        <td className="p-3">
+                          <span className="font-extrabold text-slate-900 block">{rec.product_name}</span>
+                          <span className="text-[9px] text-purple-700 font-bold bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 inline-block">{rec.category_name || 'Dairy'}</span>
+                        </td>
+                        <td className="p-3 text-center font-mono font-bold text-blue-700">
+                          {issuedTrays} {sellingUnit}s ({issuedPcs} Pcs)
+                        </td>
+                        <td className="p-3 text-center font-mono font-bold text-emerald-700">
+                          {soldTrays} {sellingUnit}s ({soldPcs} Pcs)
+                        </td>
+                        <td className="p-3 text-center font-mono font-bold text-purple-700">
+                          {returnTrays} {sellingUnit}s ({returnPcs} Pcs)
+                        </td>
+                        <td className="p-3 text-center font-mono font-bold text-rose-700">
+                          {dmgTrays} {sellingUnit}s ({dmgPcs} Pcs)
+                        </td>
+                        <td className="p-3 text-center font-mono font-bold text-slate-900">
+                          {balTrays} {sellingUnit}s ({balPcs} Pcs)
+                        </td>
+                        <td className="p-3 text-center font-mono font-black">
+                          {variancePcs === 0 ? '0 Pcs' : `${variancePcs > 0 ? '+' : ''}${variancePcs} Pcs`}
+                        </td>
+                        <td className="p-3 pr-4 text-center">
+                          {isReconciled ? (
+                            <span className="px-3 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> RECONCILED
+                            </span>
+                          ) : (
+                            <span className="px-3 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300 inline-flex items-center gap-1">
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-600" /> MISMATCH ({variancePcs} Pcs)
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: DAMAGES & WASTAGE MANAGEMENT (PHASE 3) */}
+      {activeTab === 'DAMAGES' && (
+        <div className="space-y-4">
+          {/* Damages KPI Summary Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-rose-500 border border-slate-200 shadow-xs">
+              <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-tight block">Total Damage Loss</span>
+              <div className="font-mono font-black text-2xl text-rose-600 mt-1">
+                ₹{Number(damageSummary?.summary?.total_damage_cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <span className="text-[10px] text-slate-400 font-mono mt-0.5 block">
+                {damageSummary?.summary?.total_records || damagesList.length} total entries
+              </span>
+            </div>
+
+            <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-amber-500 border border-slate-200 shadow-xs">
+              <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-tight block">Pending Verification</span>
+              <div className="font-mono font-black text-2xl text-amber-600 mt-1">
+                ₹{Number(damageSummary?.summary?.pending_cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <span className="text-[10px] text-amber-700 font-bold mt-0.5 block">
+                {damageSummary?.summary?.pending_count || 0} records awaiting review
+              </span>
+            </div>
+
+            <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-emerald-500 border border-slate-200 shadow-xs">
+              <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-tight block">Verified Damage Loss</span>
+              <div className="font-mono font-black text-2xl text-emerald-600 mt-1">
+                ₹{Number(damageSummary?.summary?.verified_cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <span className="text-[10px] text-emerald-700 font-bold mt-0.5 block">
+                {damageSummary?.summary?.verified_count || 0} approved entries
+              </span>
+            </div>
+
+            <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-slate-500 border border-slate-200 shadow-xs">
+              <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-tight block">Rejected Claims</span>
+              <div className="font-mono font-black text-2xl text-slate-700 mt-1">
+                ₹{Number(damageSummary?.summary?.rejected_cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <span className="text-[10px] text-slate-500 font-bold mt-0.5 block">
+                {damageSummary?.summary?.rejected_count || 0} rejected records
+              </span>
+            </div>
+
+            <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-indigo-500 border border-slate-200 shadow-xs col-span-2 lg:col-span-1">
+              <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-tight block">Total Damaged Pieces</span>
+              <div className="font-mono font-black text-2xl text-indigo-700 mt-1">
+                {Math.round(Number(damageSummary?.summary?.total_base_pieces || 0)).toLocaleString()} <span className="text-xs font-bold text-indigo-500">Pcs</span>
+              </div>
+              <span className="text-[10px] text-indigo-600 font-medium mt-0.5 block">
+                Dynamic Piece Packaging
+              </span>
+            </div>
+          </div>
+
+          {/* Top Driver & Product Analytics Overview */}
+          {damageSummary && ((damageSummary.top_drivers && damageSummary.top_drivers.length > 0) || (damageSummary.top_products && damageSummary.top_products.length > 0)) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Top Drivers Card */}
+              {damageSummary.top_drivers && damageSummary.top_drivers.length > 0 && (
+                <div className="glass-panel p-4 rounded-2xl bg-white border border-slate-200 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                      <Truck className="w-4 h-4 text-amber-600" /> Driver Damage Rankings
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">Sorted by Total Loss</span>
+                  </div>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {damageSummary.top_drivers.slice(0, 5).map((d, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs p-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                        <div>
+                          <span className="font-black text-slate-900">{d.driver_name}</span>
+                          <span className="text-[10px] text-slate-500 ml-1.5">({d.route_name || 'Route'})</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono font-bold text-rose-600 block">₹{Number(d.total_cost).toFixed(2)}</span>
+                          <span className="text-[9px] text-slate-400 font-mono">{Math.round(Number(d.total_pieces))} Pcs</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Top Products Card */}
+              {damageSummary.top_products && damageSummary.top_products.length > 0 && (
+                <div className="glass-panel p-4 rounded-2xl bg-white border border-slate-200 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                      <Package className="w-4 h-4 text-rose-600" /> Top Damaged Products
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">High Loss Products</span>
+                  </div>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {damageSummary.top_products.slice(0, 5).map((p, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs p-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                        <div className="truncate max-w-[180px]">
+                          <span className="font-black text-slate-900">{p.product_name}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono font-bold text-rose-600 block">₹{Number(p.total_cost).toFixed(2)}</span>
+                          <span className="text-[9px] text-slate-400 font-mono">{Math.round(Number(p.total_pieces))} Pieces</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Main Damage Records Grid & Filters */}
+          <div className="glass-panel p-5 rounded-3xl bg-white border border-slate-200 space-y-4 shadow-sm">
+            {/* Header & Filter Bar */}
+            <div className="flex flex-col gap-3 border-b border-slate-100 pb-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-rose-600" />
+                    Damage & Wastage Audit Records
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                    Real-time persisted damage records • Dynamic Tray/Piece unit conversion & financial accounting
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={loadDamagesData}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                  >
+                    Refresh
+                  </button>
+                  {showActionButtons && (
+                    <button
+                      onClick={() => setShowDamageModal(true)}
+                      className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Plus className="w-4 h-4" /> Record Damage
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Advanced Filter Controls */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs pt-1">
+                {/* Status Filter */}
+                <div>
+                  <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">Status</label>
+                  <select
+                    value={damageStatusFilter}
+                    onChange={(e) => setDamageStatusFilter(e.target.value)}
+                    className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="PENDING">Pending Verification</option>
+                    <option value="VERIFIED">Verified Damage</option>
+                    <option value="REJECTED">Rejected</option>
+                  </select>
+                </div>
+
+                {/* Date Range Filter */}
+                <div>
+                  <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">Time Period</label>
+                  <select
+                    value={damageDateRange}
+                    onChange={(e) => setDamageDateRange(e.target.value)}
+                    className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="ALL">All Time</option>
+                    <option value="TODAY">Today</option>
+                    <option value="YESTERDAY">Yesterday</option>
+                    <option value="THIS_WEEK">Last 7 Days</option>
+                    <option value="THIS_MONTH">This Month</option>
+                  </select>
+                </div>
+
+                {/* Driver Filter */}
+                <div>
+                  <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">Driver / Source</label>
+                  <select
+                    value={damageDriverFilter}
+                    onChange={(e) => setDamageDriverFilter(e.target.value)}
+                    className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="ALL">All Drivers & Warehouse</option>
+                    {driverUsers.map(d => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Product Filter */}
+                <div>
+                  <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">Product</label>
+                  <select
+                    value={damageProductFilter}
+                    onChange={(e) => setDamageProductFilter(e.target.value)}
+                    className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="ALL">All Products</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>{p.display_name || p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Reason Filter */}
+                <div>
+                  <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">Damage Reason</label>
+                  <select
+                    value={damageReasonFilter}
+                    onChange={(e) => setDamageReasonFilter(e.target.value)}
+                    className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="ALL">All Reasons</option>
+                    <option value="Leakage">Leakage / Burst</option>
+                    <option value="Broken">Damaged / Broken</option>
+                    <option value="Expired">Expired</option>
+                    <option value="Missing">Missing</option>
+                    <option value="Transport">Transport Damage</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Table of Damage Records */}
+            {loadingDamages ? (
+              <div className="py-12 text-center text-xs text-slate-500 font-bold">
+                <div className="w-7 h-7 border-3 border-rose-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                Loading damage records...
+              </div>
+            ) : damagesList.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-500">
+                No damage records match the selected filters.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 font-extrabold text-slate-700 bg-slate-50 uppercase tracking-wider">
+                      <th className="p-3 pl-4">Date & Time</th>
+                      <th className="p-3">Driver / Route</th>
+                      <th className="p-3">Product</th>
+                      <th className="p-3 text-center">Damage Qty</th>
+                      <th className="p-3 text-center">Base Qty</th>
+                      <th className="p-3 text-right">Damage Cost</th>
+                      <th className="p-3">Reason / Notes</th>
+                      <th className="p-3 text-center">Status</th>
+                      <th className="p-3 pr-4 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {damagesList.map((dmg) => {
+                      const isPiece = String(dmg.damage_unit || dmg.unit || '').toLowerCase().includes('piece');
+                      const baseQty = Number(dmg.base_quantity || (isPiece ? dmg.qty_units : dmg.qty_units * Number(dmg.pieces_per_unit || 1)));
+                      const status = (dmg.status || 'PENDING').toUpperCase();
+
+                      return (
+                        <tr key={dmg.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="p-3 pl-4 whitespace-nowrap">
+                            <span className="font-bold text-slate-900 block">
+                              {dmg.created_at ? new Date(dmg.created_at).toLocaleDateString() : 'Today'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {dmg.created_at ? new Date(dmg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                            </span>
+                          </td>
+
+                          <td className="p-3">
+                            <span className="font-extrabold text-slate-900 block">
+                              {dmg.driver_name || dmg.employee_name || 'Warehouse Direct'}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              {dmg.route_name ? `Route: ${dmg.route_name}` : (dmg.vehicle_number || 'Direct Write-off')}
+                            </span>
+                          </td>
+
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              {dmg.product_image ? (
+                                <img src={dmg.product_image} alt="" className="w-6 h-6 rounded object-contain bg-white border border-slate-200 p-0.5" />
+                              ) : (
+                                <span>📦</span>
+                              )}
+                              <span className="font-bold text-slate-900">{dmg.product_name}</span>
+                            </div>
+                          </td>
+
+                          <td className="p-3 text-center font-mono font-bold text-rose-700">
+                            {Number(dmg.qty_units)} {dmg.damage_unit || dmg.unit || 'Tray'}
+                          </td>
+
+                          <td className="p-3 text-center font-mono text-slate-600">
+                            {Math.round(baseQty)} Pcs
+                          </td>
+
+                          <td className="p-3 text-right font-mono font-black text-rose-600">
+                            ₹{Number(dmg.damage_cost || 0).toFixed(2)}
+                          </td>
+
+                          <td className="p-3 max-w-[200px]">
+                            <span className="font-semibold text-slate-800 block truncate">{dmg.reason || 'Wastage'}</span>
+                            {dmg.notes && dmg.notes !== dmg.reason && (
+                              <span className="text-[10px] text-slate-400 block truncate">{dmg.notes}</span>
+                            )}
+                          </td>
+
+                          <td className="p-3 text-center whitespace-nowrap">
+                            {status === 'VERIFIED' ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3 text-emerald-600" /> VERIFIED
+                              </span>
+                            ) : status === 'REJECTED' ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300 inline-flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3 text-rose-600" /> REJECTED
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1 animate-pulse">
+                                <Clock className="w-3 h-3 text-amber-700" /> PENDING
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="p-3 pr-4 text-center whitespace-nowrap">
+                            {status === 'PENDING' && !isDriverRole ? (
+                              <button
+                                onClick={() => {
+                                  setSelectedDamageForVerify(dmg);
+                                  setVerifyActionNotes('');
+                                }}
+                                className="px-3 py-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-[11px] rounded-lg shadow-xs transition cursor-pointer"
+                              >
+                                Review & Verify
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                {dmg.verified_by_name ? `By ${dmg.verified_by_name}` : 'Completed'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* DAMAGE VERIFY / REJECT ACTION MODAL */}
+      {selectedDamageForVerify && (
+        <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-amber-600" />
+                Review & Verify Damage Record #{selectedDamageForVerify.id}
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => setSelectedDamageForVerify(null)}
+                disabled={isVerifyingDamage}
+              >
+                <X className="w-4 h-4 text-slate-400" />
+              </button>
+            </div>
+
+            {/* Damage Details Summary Box */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold">Driver / Source:</span>
+                <span className="font-black text-slate-900">{selectedDamageForVerify.driver_name || selectedDamageForVerify.employee_name || 'Warehouse'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold">Product:</span>
+                <span className="font-black text-slate-900">{selectedDamageForVerify.product_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold">Damage Quantity:</span>
+                <span className="font-mono font-black text-rose-600">
+                  {selectedDamageForVerify.qty_units} {selectedDamageForVerify.damage_unit || selectedDamageForVerify.unit} ({Math.round(selectedDamageForVerify.base_quantity || selectedDamageForVerify.qty_units)} Pcs)
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold">Financial Loss Amount:</span>
+                <span className="font-mono font-black text-rose-700 text-sm">
+                  ₹{Number(selectedDamageForVerify.damage_cost || 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-bold">Reported Reason:</span>
+                <span className="font-semibold text-slate-800">{selectedDamageForVerify.reason || 'Wastage'}</span>
+              </div>
+            </div>
+
+            {/* Verification Notes */}
+            <div className="space-y-1 text-xs">
+              <label className="font-extrabold text-slate-700 block">Verification Notes / Inspection Remarks:</label>
+              <textarea
+                value={verifyActionNotes}
+                onChange={(e) => setVerifyActionNotes(e.target.value)}
+                placeholder="e.g. Physical pouch verified broken by Storekeeper. Approved for wastage write-off."
+                rows={2}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs text-slate-800 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 font-medium">
+              💡 <b>Note:</b> Verifying will record the financial loss and inventory ledger movement (DAMAGE). Damaged stock will <b>NOT</b> be added to sellable warehouse inventory.
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isVerifyingDamage}
+                onClick={() => handleVerifyOrRejectDamage('REJECT')}
+                className="py-2.5 px-4 bg-rose-100 hover:bg-rose-200 text-rose-800 font-black text-xs rounded-xl border border-rose-300 transition cursor-pointer disabled:opacity-50"
+              >
+                {isVerifyingDamage ? 'Processing...' : '✕ Reject Claim'}
+              </button>
+
+              <button
+                type="button"
+                disabled={isVerifyingDamage}
+                onClick={() => handleVerifyOrRejectDamage('VERIFY')}
+                className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-xs transition cursor-pointer disabled:opacity-50"
+              >
+                {isVerifyingDamage ? 'Processing...' : '✓ Approve & Verify'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: STOCK ALERTS & REORDER MANAGEMENT (PHASE 5) */}
+      {activeTab === 'ALERTS' && (
+        <div className="glass-panel p-5 rounded-3xl bg-white border border-slate-200 space-y-5 shadow-sm">
+          
+          {/* Header & Status Indicator */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
+                <Bell className="w-5 h-5 text-amber-600" /> Real-time Warehouse Stock Alerts & Reorder Engine
+              </h3>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                Automated threshold monitoring against minimum stock levels to prevent stockouts and optimize replenishment.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={loadAlertsData}
+                disabled={loadingAlerts}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs flex items-center gap-1.5 transition"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingAlerts ? 'animate-spin' : ''}`} /> Refresh Alerts
+              </button>
+              <button
+                onClick={() => exportReportData('inventory', {}, 'csv')}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs flex items-center gap-1.5 transition shadow-xs"
+              >
+                <Download className="w-3.5 h-3.5" /> Export Inventory CSV
+              </button>
+            </div>
+          </div>
+
+          {/* Alert KPI Summary Grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight block">Total Monitored</span>
+              <div className="font-mono font-black text-xl text-slate-900 mt-1">
+                {alertsData?.summary?.total_products || products.length} <span className="text-xs font-bold text-slate-500">Products</span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200">
+              <span className="text-[10px] font-black text-emerald-700 uppercase tracking-tight block">Normal Stock</span>
+              <div className="font-mono font-black text-xl text-emerald-700 mt-1">
+                {alertsData?.summary?.normal_count ?? '-'} <span className="text-xs font-bold text-emerald-600">Variants</span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200">
+              <span className="text-[10px] font-black text-amber-700 uppercase tracking-tight block">Low Stock Alerts</span>
+              <div className="font-mono font-black text-xl text-amber-700 mt-1">
+                {alertsData?.summary?.low_stock_count ?? '-'} <span className="text-xs font-bold text-amber-600">Variants</span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200">
+              <span className="text-[10px] font-black text-rose-700 uppercase tracking-tight block">Out of Stock</span>
+              <div className="font-mono font-black text-xl text-rose-700 mt-1">
+                {alertsData?.summary?.out_of_stock_count ?? '-'} <span className="text-xs font-bold text-rose-600">Variants</span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-indigo-50 border border-indigo-200 col-span-2 lg:col-span-1">
+              <span className="text-[10px] font-black text-indigo-700 uppercase tracking-tight block">Reorders Required</span>
+              <div className="font-mono font-black text-xl text-indigo-700 mt-1">
+                {alertsData?.summary?.reorder_needed_count ?? '-'} <span className="text-xs font-bold text-indigo-600">Items ({alertsData?.summary?.total_reorder_qty || 0} Trays)</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2">
+            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-2xl text-xs font-bold">
+              {[
+                { id: 'ALL', label: 'All Items' },
+                { id: 'OUT_OF_STOCK', label: '🔴 Out of Stock' },
+                { id: 'LOW_STOCK', label: '🟡 Low Stock' },
+                { id: 'NORMAL', label: '🟢 Normal Stock' }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setAlertStatusFilter(tab.id)}
+                  className={`px-3 py-1.5 rounded-xl font-extrabold transition ${
+                    alertStatusFilter === tab.id
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Filter by product or SKU..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          {/* Alerts Table */}
+          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 font-extrabold">
+                  <th className="p-3">Product Variant</th>
+                  <th className="p-3">Category</th>
+                  <th className="p-3 text-right">Current Stock</th>
+                  <th className="p-3 text-right">Min Stock Threshold</th>
+                  <th className="p-3 text-center">Alert Status</th>
+                  <th className="p-3 text-center">Reorder Status</th>
+                  <th className="p-3 text-right">Suggested Replenishment</th>
+                  <th className="p-3 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(alertsData?.alerts || [])
+                  .filter(item => {
+                    if (alertStatusFilter !== 'ALL' && item.stock_status !== alertStatusFilter) return false;
+                    if (searchQuery) {
+                      const q = searchQuery.toLowerCase();
+                      const matchName = (item.display_name || '').toLowerCase().includes(q);
+                      const matchSku = (item.sku || '').toLowerCase().includes(q);
+                      return matchName || matchSku;
+                    }
+                    return true;
+                  })
+                  .map(item => {
+                    const isOutOfStock = item.stock_status === 'OUT_OF_STOCK';
+                    const isLowStock = item.stock_status === 'LOW_STOCK';
+                    return (
+                      <tr key={item.product_id} className={`hover:bg-slate-50/80 transition ${isOutOfStock ? 'bg-rose-50/30' : isLowStock ? 'bg-amber-50/30' : ''}`}>
+                        <td className="p-3">
+                          <div className="flex items-center gap-2.5">
+                            <ProductImage src={PRODUCT_IMAGES[item.product_id]?.image || ''} size={36} />
+                            <div>
+                              <span className="font-extrabold text-slate-900 block text-xs">{item.display_name}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">SKU: {item.sku} • 1 {item.selling_unit} = {item.pieces_per_unit} Pcs</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <span className="font-bold text-slate-600">{item.category_name || 'General'}</span>
+                        </td>
+                        <td className="p-3 text-right font-mono">
+                          <div className="font-black text-slate-900 text-xs">{item.warehouse_stock_units} {item.selling_unit}s</div>
+                          <div className="text-[10px] text-slate-500 font-medium">({item.warehouse_stock_pieces} Pcs)</div>
+                        </td>
+                        <td className="p-3 text-right font-mono">
+                          <div className="font-bold text-slate-700 text-xs">{item.min_stock_level} {item.selling_unit}s</div>
+                          <div className="text-[10px] text-slate-400 font-medium">({item.min_stock_pieces} Pcs)</div>
+                        </td>
+                        <td className="p-3 text-center">
+                          {isOutOfStock ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300 inline-flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3 text-rose-600" /> OUT OF STOCK
+                            </span>
+                          ) : isLowStock ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3 text-amber-600" /> LOW STOCK
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3 text-emerald-600" /> NORMAL
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center">
+                          {item.reorder_status === 'REORDER_REQUIRED' ? (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-indigo-100 text-indigo-800 border border-indigo-300">
+                              REORDER REQUIRED
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 font-medium">Sufficient</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right font-mono">
+                          {item.suggested_reorder_units > 0 ? (
+                            <span className="font-black text-indigo-700 text-xs">
+                              +{item.suggested_reorder_units} {item.selling_unit}s ({item.suggested_reorder_pieces} Pcs)
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-bold text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center">
+                          <button
+                            onClick={() => {
+                              setAdjustForm({
+                                product_id: String(item.product_id),
+                                quantity: item.suggested_reorder_units > 0 ? String(item.suggested_reorder_units) : '1',
+                                unit_type: 'Tray',
+                                adjustment_type: 'ADD',
+                                reason: 'Physical count correction',
+                                notes: ''
+                              });
+                              setShowAdjustModal(true);
+                            }}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 rounded-lg text-[11px] font-extrabold border border-slate-200 transition"
+                          >
+                            Adjust Stock
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
@@ -1278,6 +2259,145 @@ export const AdminInventoryView = () => {
         </div>
       )}
 
+      {/* STOCK ADJUSTMENT MODAL (PHASE 5) */}
+      {showAdjustModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <form onSubmit={handleStockAdjustSubmit} className="bg-white border border-slate-200 rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto my-auto p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-amber-600" /> Transaction-Safe Stock Adjustment
+              </h3>
+              <button type="button" onClick={() => setShowAdjustModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-extrabold text-slate-700 block mb-1">Select Product</label>
+                <select
+                  value={adjustForm.product_id}
+                  onChange={(e) => setAdjustForm({ ...adjustForm, product_id: e.target.value })}
+                  className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl"
+                  required
+                >
+                  <option value="">-- Choose Product Variant --</option>
+                  {products.map(p => (
+                    <option key={p.id} value={p.id}>{p.display_name} (Current: {p.warehouse_stock_units} Trays / {Math.round(p.warehouse_stock_units * p.pieces_per_unit)} Pcs)</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-extrabold text-slate-700 block mb-1">Adjustment Mode</label>
+                  <select
+                    value={adjustForm.adjustment_type}
+                    onChange={(e) => setAdjustForm({ ...adjustForm, adjustment_type: e.target.value })}
+                    className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="ADD">➕ Add Stock (Surplus)</option>
+                    <option value="SUBTRACT">➖ Subtract Stock (Shortage)</option>
+                    <option value="SET">🔄 Set Exact Stock (Count)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-extrabold text-slate-700 block mb-1">Unit Type</label>
+                  <select
+                    value={adjustForm.unit_type}
+                    onChange={(e) => setAdjustForm({ ...adjustForm, unit_type: e.target.value })}
+                    className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl"
+                  >
+                    <option value="Tray">Tray / Box</option>
+                    <option value="Piece">Piece / Pcs</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-extrabold text-slate-700 block mb-1">Adjustment Quantity</label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0.01"
+                  value={adjustForm.quantity}
+                  onChange={(e) => setAdjustForm({ ...adjustForm, quantity: e.target.value })}
+                  placeholder="e.g. 5"
+                  className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl font-mono"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="font-extrabold text-slate-700 block mb-1">Reason for Adjustment</label>
+                <select
+                  value={adjustForm.reason}
+                  onChange={(e) => setAdjustForm({ ...adjustForm, reason: e.target.value })}
+                  className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl"
+                >
+                  <option value="Physical count correction">Physical count correction (Stocktaking)</option>
+                  <option value="Breakage / Waste not in damage flow">Breakage / Waste not in damage flow</option>
+                  <option value="Dealer replacement directly to warehouse">Dealer replacement directly to warehouse</option>
+                  <option value="System reconciliation correction">System reconciliation correction</option>
+                  <option value="Sample / Promo stock release">Sample / Promo stock release</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-extrabold text-slate-700 block mb-1">Audit Notes / Reference</label>
+                <textarea
+                  value={adjustForm.notes}
+                  onChange={(e) => setAdjustForm({ ...adjustForm, notes: e.target.value })}
+                  placeholder="Optional explanatory notes for audit trail..."
+                  rows={2}
+                  className="w-full p-2 font-medium bg-slate-50 border border-slate-300 rounded-xl"
+                />
+              </div>
+
+              {/* Real-time Math Preview */}
+              {adjustForm.product_id && adjustForm.quantity && (() => {
+                const selectedProd = products.find(p => String(p.id) === String(adjustForm.product_id));
+                if (!selectedProd) return null;
+                const currentUnits = Number(selectedProd.warehouse_stock_units || 0);
+                const isPiece = (adjustForm.unit_type || 'Tray').toUpperCase() === 'PIECE' || (adjustForm.unit_type || '').toUpperCase() === 'PCS';
+                const convFactor = Number(selectedProd.pieces_per_unit || 1);
+                const deltaUnits = isPiece ? (Number(adjustForm.quantity) / convFactor) : Number(adjustForm.quantity);
+                
+                let targetUnits = currentUnits;
+                if (adjustForm.adjustment_type === 'ADD') targetUnits = currentUnits + deltaUnits;
+                else if (adjustForm.adjustment_type === 'SUBTRACT') targetUnits = currentUnits - deltaUnits;
+                else if (adjustForm.adjustment_type === 'SET') targetUnits = deltaUnits;
+
+                const isNegative = targetUnits < 0;
+
+                return (
+                  <div className={`p-3 rounded-2xl border font-mono text-[11px] space-y-1 ${isNegative ? 'bg-rose-50 border-rose-300 text-rose-800' : 'bg-slate-50 border-slate-200'}`}>
+                    <div className="flex justify-between font-sans font-bold">
+                      <span className="text-slate-500">Current Warehouse Stock:</span>
+                      <span>{currentUnits.toFixed(2)} Trays ({Math.round(currentUnits * convFactor)} Pcs)</span>
+                    </div>
+                    <div className="flex justify-between font-sans font-bold">
+                      <span className="text-slate-500">Calculated Stock After:</span>
+                      <span className={isNegative ? 'text-rose-600 font-black' : 'text-emerald-600 font-black'}>
+                        {targetUnits.toFixed(2)} Trays ({Math.round(targetUnits * convFactor)} Pcs)
+                      </span>
+                    </div>
+                    {isNegative && (
+                      <div className="text-rose-600 font-sans font-black text-[10px] pt-1">
+                        ⚠️ Error: Stock cannot be negative. Please adjust quantity.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setShowAdjustModal(false)} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs">Cancel</button>
+              <button type="submit" className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-xs shadow-md">Apply Adjustment</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* PRODUCT STOCK HISTORY TIMELINE DRAWER / MODAL */}
       {selectedProductTimeline && (
         <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-4">
@@ -1285,7 +2405,7 @@ export const AdminInventoryView = () => {
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-3">
-                <ProductImage src={PRODUCT_IMAGES[selectedProductTimeline.id]?.image || selectedProductTimeline.image} size={48} />
+                <ProductImage src={selectedProductTimeline.image_url || selectedProductTimeline.image || (PRODUCT_IMAGES[selectedProductTimeline.id]?.image) || ''} size={48} icon={selectedProductTimeline.icon} />
                 <div>
                   <h3 className="font-black text-base text-slate-900">{selectedProductTimeline.display_name}</h3>
                   <span className="text-[10px] text-slate-500 font-mono">Stock Audit Timeline • SKU: {selectedProductTimeline.sku}</span>

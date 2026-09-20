@@ -53,8 +53,26 @@ app.use(session({
 app.use('/api', routes);
 app.use('/', routes);
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString(), db: 'postgresql' });
+app.get(['/health', '/api/health'], async (req, res) => {
+  try {
+    const dbRes = await pool.query('SELECT 1 as alive');
+    if (dbRes && dbRes.rows) {
+      return res.status(200).json({
+        status: 'ok',
+        time: new Date().toISOString(),
+        database: 'connected',
+        driver: 'pg'
+      });
+    }
+    throw new Error('Database check returned unexpected result');
+  } catch (err) {
+    return res.status(503).json({
+      status: 'degraded',
+      time: new Date().toISOString(),
+      database: 'disconnected',
+      error: err.message
+    });
+  }
 });
 
 const host = '0.0.0.0';

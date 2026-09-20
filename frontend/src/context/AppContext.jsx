@@ -1,5 +1,17 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
+// Helper for authenticated requests
+export const apiFetch = async (url, options = {}) => {
+  return window.fetch(url, {
+    ...options,
+    credentials: 'include',
+  });
+};
+
+// Dynamic API URL for Local & Cloud Hosting (Netlify / Render / Vercel)
+const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').trim().replace(/\/+$/, '');
+export const API_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
+
 const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
@@ -7,21 +19,15 @@ export const AppProvider = ({ children }) => {
   const [activeRole, setActiveRole] = useState(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
 
-  // Helper for authenticated requests
-  const apiFetch = async (url, options = {}) => {
-    return window.fetch(url, {
-      ...options,
-      credentials: 'include',
-    });
-  };
   const [companyInfo, setCompanyInfo] = useState({
-    name: "AVS DISTRIBUTORS",
+    name: "AVS AGENCIES",
     subtitle: "Distribution Management System",
     address: "Main Road, Salem, Tamil Nadu",
     phone: "+91 98765 43210"
   });
 
   const [shops, setShops] = useState([]);
+  const [villages, setVillages] = useState([]);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [employeeStock, setEmployeeStock] = useState([]);
@@ -29,14 +35,12 @@ export const AppProvider = ({ children }) => {
   const [sales, setSales] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [users, setUsers] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [drivers, setDrivers] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeBill, setActiveBill] = useState(null);
-
-  // Dynamic API URL for Local & Cloud Hosting (Netlify / Render / Vercel)
-  const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').trim().replace(/\/+$/, '');
-  const API_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 
   const checkSession = async () => {
     try {
@@ -63,20 +67,25 @@ export const AppProvider = ({ children }) => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [shopsRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes] = await Promise.all([
+      const stockEmpId = currentUser?.employee_id || currentUser?.id;
+      const [shopsRes, villagesRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes, empRes, driversRes] = await Promise.all([
         apiFetch(`${API_URL}/shops`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API_URL}/villages`).then(r => r.json()).catch(() => []),
         apiFetch(`${API_URL}/products`).then(r => r.json()).catch(() => []),
         apiFetch(`${API_URL}/categories`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API_URL}/employee-stock/${currentUser?.id || 1}`).then(r => r.json()).catch(() => []),
+        apiFetch(stockEmpId ? `${API_URL}/employee-stock/${stockEmpId}` : `${API_URL}/employee-stock`).then(r => r.json()).catch(() => []),
         apiFetch(`${API_URL}/dashboard/summary`).then(r => r.json()).catch(() => null),
         apiFetch(`${API_URL}/sales`).then(r => r.json()).catch(() => []),
         apiFetch(`${API_URL}/expenses`).then(r => r.json()).catch(() => []),
         apiFetch(`${API_URL}/inventory/movements`).then(r => r.json()).catch(() => []),
         apiFetch(`${API_URL}/users`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API_URL}/routes`).then(r => r.json()).catch(() => [])
+        apiFetch(`${API_URL}/routes`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API_URL}/employees`).then(r => r.json()).catch(() => []),
+        apiFetch(`${API_URL}/drivers`).then(r => r.json()).catch(() => [])
       ]);
 
       setShops(Array.isArray(shopsRes) ? shopsRes : []);
+      setVillages(Array.isArray(villagesRes) ? villagesRes : []);
       setProducts(Array.isArray(prodRes) ? prodRes : []);
       setCategories(Array.isArray(catRes) ? catRes : []);
       setEmployeeStock(Array.isArray(empStockRes) ? empStockRes : []);
@@ -86,6 +95,8 @@ export const AppProvider = ({ children }) => {
       setStockMovements(Array.isArray(movRes) ? movRes : []);
       setUsers(Array.isArray(usersRes) ? usersRes : []);
       setRoutes(Array.isArray(routesRes) ? routesRes : []);
+      setEmployees(Array.isArray(empRes) ? empRes : []);
+      setDrivers(Array.isArray(driversRes) ? driversRes : []);
     } catch (err) {
       console.error("Failed to load initial data:", err);
     } finally {
@@ -125,7 +136,7 @@ export const AppProvider = ({ children }) => {
     } else if (newRole === 'STORE_KEEPER') {
       setCurrentUser({ id: 6, name: "Store Keeper", role: "STORE_KEEPER" });
     } else {
-      setCurrentUser({ id: 1, name: "Tharun", role: "EMPLOYEE", vehicle_no: "TN 32 XX 2222" });
+      setCurrentUser({ id: 4, employee_id: 2, name: "Tharun", role: "DRIVER", vehicle_no: "TN32S2002" });
     }
   };
 
@@ -135,17 +146,18 @@ export const AppProvider = ({ children }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          employee_id: currentUser?.id || 1,
-          employee_name: currentUser?.name || "Employee",
-          vehicle_no: currentUser?.vehicle_no || "N/A",
+          employee_id: currentUser?.employee_id || currentUser?.id || 1,
+          employee_name: currentUser?.name || "Delivery Executive",
+          vehicle_no: currentUser?.vehicle_number || currentUser?.vehicle_no || "Field Vehicle",
           ...saleData
         })
       });
       const data = await res.json();
       if (data.success) {
-        setActiveBill(data.sale);
+        const fullSale = { ...data.sale, items: data.sale?.items || data.items || [] };
+        setActiveBill(fullSale);
         await fetchData();
-        return { success: true, sale: data.sale };
+        return { success: true, sale: fullSale, items: fullSale.items };
       } else {
         return { success: false, message: data.message || "Failed to submit sale" };
       }
@@ -174,6 +186,80 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const addVillage = async (villageData) => {
+    try {
+      const res = await apiFetch(`${API_URL}/villages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(villageData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+        return { success: true, village: data.village };
+      } else {
+        return { success: false, message: data.message };
+      }
+    } catch (err) {
+      return { success: false, message: "Error adding village" };
+    }
+  };
+
+  const updateVillage = async (villageId, villageData) => {
+    try {
+      const res = await apiFetch(`${API_URL}/villages/${villageId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(villageData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+        return { success: true, village: data.village };
+      } else {
+        return { success: false, message: data.message };
+      }
+    } catch (err) {
+      return { success: false, message: "Error updating village" };
+    }
+  };
+
+  const deleteVillage = async (villageId) => {
+    try {
+      const res = await apiFetch(`${API_URL}/villages/${villageId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+        return { success: true, message: data.message };
+      } else {
+        return { success: false, message: data.message };
+      }
+    } catch (err) {
+      return { success: false, message: "Error deleting village" };
+    }
+  };
+
+  const updateShop = async (shopId, shopData) => {
+    try {
+      const res = await apiFetch(`${API_URL}/shops/${shopId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(shopData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+        return { success: true, shop: data.shop };
+      } else {
+        return { success: false, message: data.message };
+      }
+    } catch (err) {
+      return { success: false, message: "Error updating shop" };
+    }
+  };
+
   const assignFreezer = async (shopId, freezerData) => {
     try {
       const res = await apiFetch(`${API_URL}/shops/${shopId}/freezer`, {
@@ -198,21 +284,95 @@ export const AppProvider = ({ children }) => {
       const res = await apiFetch(`${API_URL}/damages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employee_id: currentUser.id,
-          employee_name: currentUser.name,
-          ...damageData
-        })
+        body: JSON.stringify(damageData)
       });
       const data = await res.json();
       if (data.success) {
         fetchData();
-        return { success: true };
-      } else {
-        return { success: false, message: data.message };
+        return { success: true, message: data.message, damage: data.damage };
       }
+      return { success: false, message: data.message || "Failed to record damage" };
     } catch (err) {
-      return { success: false, message: "Error saving damage entry" };
+      console.error("Error recording damage:", err);
+      return { success: false, message: "Network error recording damage" };
+    }
+  };
+
+  const fetchDamages = async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.employee_id) params.append('employee_id', filters.employee_id);
+      if (filters.driver_id) params.append('driver_id', filters.driver_id);
+      if (filters.product_id) params.append('product_id', filters.product_id);
+      if (filters.status) params.append('status', filters.status);
+      if (filters.reason) params.append('reason', filters.reason);
+      if (filters.date) params.append('date', filters.date);
+      if (filters.start_date) params.append('start_date', filters.start_date);
+      if (filters.end_date) params.append('end_date', filters.end_date);
+      if (filters.limit) params.append('limit', filters.limit);
+
+      const res = await apiFetch(`${API_URL}/damages?${params.toString()}`);
+      if (res.ok) {
+        return await res.json();
+      }
+      return [];
+    } catch (err) {
+      console.error("Error fetching damages:", err);
+      return [];
+    }
+  };
+
+  const fetchDamageSummary = async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.employee_id) params.append('employee_id', filters.employee_id);
+      if (filters.product_id) params.append('product_id', filters.product_id);
+      if (filters.date) params.append('date', filters.date);
+      if (filters.start_date) params.append('start_date', filters.start_date);
+      if (filters.end_date) params.append('end_date', filters.end_date);
+
+      const res = await apiFetch(`${API_URL}/damages/summary?${params.toString()}`);
+      if (res.ok) {
+        return await res.json();
+      }
+      return null;
+    } catch (err) {
+      console.error("Error fetching damage summary:", err);
+      return null;
+    }
+  };
+
+  const verifyDamageRecord = async (damageId, action, notes) => {
+    try {
+      const res = await apiFetch(`${API_URL}/damages/${damageId}/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, notes })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+        return { success: true, message: data.message, damage: data.damage };
+      }
+      return { success: false, message: data.message || "Failed to process damage verification" };
+    } catch (err) {
+      console.error("Error verifying damage:", err);
+      return { success: false, message: err.message || "Network error" };
+    }
+  };
+
+  const fetchDaySummary = async (date) => {
+    try {
+      const empId = currentUser?.employee_id || currentUser?.id;
+      const targetDate = date || new Date().toISOString().split('T')[0];
+      const res = await apiFetch(`${API_URL}/emp/day-summary?employee_id=${empId}&date=${targetDate}`);
+      if (res.ok) {
+        return await res.json();
+      }
+      return null;
+    } catch (err) {
+      console.error("Error fetching day summary:", err);
+      return null;
     }
   };
 
@@ -222,9 +382,65 @@ export const AppProvider = ({ children }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          employee_id: currentUser.id,
+          employee_id: expenseData?.employee_id || currentUser?.employee_id || currentUser?.id,
           ...expenseData
         })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+        return { success: true, expense: data.expense };
+      } else {
+        return { success: false, message: data.message };
+      }
+    } catch (err) {
+      return { success: false, message: "Error saving expense" };
+    }
+  };
+
+  const fetchExpenses = async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.employee_id && filters.employee_id !== 'ALL') params.append('employee_id', filters.employee_id);
+      if (filters.driver_id && filters.driver_id !== 'ALL') params.append('driver_id', filters.driver_id);
+      if (filters.category && filters.category !== 'ALL') params.append('category', filters.category);
+      if (filters.date && filters.date !== 'ALL') params.append('date', filters.date);
+      if (filters.start_date && filters.start_date !== 'ALL') params.append('start_date', filters.start_date);
+      if (filters.end_date && filters.end_date !== 'ALL') params.append('end_date', filters.end_date);
+      const res = await apiFetch(`${API_URL}/expenses?${params.toString()}`);
+      if (res.ok) {
+        return await res.json();
+      }
+      return [];
+    } catch (err) {
+      console.error("Error fetching expenses:", err);
+      return [];
+    }
+  };
+
+  const updateExpense = async (id, expenseData) => {
+    try {
+      const res = await apiFetch(`${API_URL}/expenses/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(expenseData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+        return { success: true, expense: data.expense };
+      } else {
+        return { success: false, message: data.message };
+      }
+    } catch (err) {
+      return { success: false, message: "Error updating expense" };
+    }
+  };
+
+  const deleteExpense = async (id) => {
+    try {
+      const res = await apiFetch(`${API_URL}/expenses/${id}`, {
+        method: 'DELETE'
       });
       const data = await res.json();
       if (data.success) {
@@ -234,7 +450,30 @@ export const AppProvider = ({ children }) => {
         return { success: false, message: data.message };
       }
     } catch (err) {
-      return { success: false, message: "Error saving expense" };
+      return { success: false, message: "Error deleting expense" };
+    }
+  };
+
+  const submitDriverEndDay = async (closingData) => {
+    try {
+      const empId = currentUser?.employee_id || currentUser?.id;
+      const res = await apiFetch(`${API_URL}/emp/day-closing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_id: empId,
+          ...closingData
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+        return { success: true, session: data.session, summary: data.summary };
+      } else {
+        return { success: false, message: data.message };
+      }
+    } catch (err) {
+      return { success: false, message: "Error submitting daily closing" };
     }
   };
 
@@ -266,8 +505,8 @@ export const AppProvider = ({ children }) => {
       });
       const data = await res.json();
       if (data.success) {
-        fetchData();
-        return { success: true };
+        await fetchData();
+        return { success: true, data };
       } else {
         return { success: false, message: data.message };
       }
@@ -316,15 +555,15 @@ export const AppProvider = ({ children }) => {
 
   const submitDriverReturn = async (returnData) => {
     try {
-      const res = await apiFetch(`${API_URL}/inventory/driver-return/submit`, {
+      const res = await apiFetch(`${API_URL}/driver/returns/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(returnData)
       });
       const data = await res.json();
       if (data.success) {
-        fetchData();
-        return { success: true, message: data.message, return_record: data.return_record };
+        await fetchData();
+        return { success: true, message: data.message, return: data.return };
       } else {
         return { success: false, message: data.message };
       }
@@ -333,31 +572,154 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const fetchPendingReturns = async () => {
+  const fetchPendingReturns = async (employeeId = null) => {
     try {
-      const res = await apiFetch(`${API_URL}/inventory/driver-return/pending`);
+      const url = employeeId ? `${API_URL}/sk/pending-returns?employee_id=${employeeId}` : `${API_URL}/sk/pending-returns`;
+      const res = await apiFetch(url);
       return await res.json();
     } catch (err) {
       return [];
     }
   };
 
-  const verifyDriverReturn = async (returnId, verificationData = {}) => {
+  const fetchEligibleDriversForReturn = async () => {
     try {
-      const res = await apiFetch(`${API_URL}/inventory/return/${returnId}/verify`, {
+      const res = await apiFetch(`${API_URL}/sk/driver-returns/eligible`);
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.error("Error fetching eligible return drivers:", err);
+      return [];
+    }
+  };
+
+  const fetchDriverExpectedReturn = async (driverId, sessionId = null) => {
+    try {
+      const url = sessionId 
+        ? `${API_URL}/sk/driver-returns/expected/${driverId}?session_id=${sessionId}`
+        : `${API_URL}/sk/driver-returns/expected/${driverId}`;
+      const res = await apiFetch(url);
+      return await res.json();
+    } catch (err) {
+      console.error("Error fetching expected return for driver:", err);
+      return null;
+    }
+  };
+
+  const verifyAndAcceptDriverReturnDirect = async (returnData) => {
+    try {
+      const res = await apiFetch(`${API_URL}/sk/driver-returns/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(verificationData)
+        body: JSON.stringify(returnData)
       });
       const data = await res.json();
       if (data.success) {
-        fetchData();
-        return { success: true, message: data.message };
+        await fetchData();
+        return { success: true, message: data.message, summary: data.summary, return: data.return };
       } else {
         return { success: false, message: data.message };
       }
     } catch (err) {
-      return { success: false, message: "Error verifying driver return" };
+      return { success: false, message: "Error verifying and accepting driver return into inventory" };
+    }
+  };
+
+  const fetchDriverReturnHistory = async (limit = 20) => {
+    try {
+      const res = await apiFetch(`${API_URL}/sk/driver-returns/history?limit=${limit}`);
+      const data = await res.json();
+      return data.success && Array.isArray(data.history) ? data.history : [];
+    } catch (err) {
+      console.error("Error fetching driver return history:", err);
+      return [];
+    }
+  };
+
+  const fetchMissingStockReport = async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.driver_id && filters.driver_id !== 'ALL') params.append('driver_id', filters.driver_id);
+      if (filters.date && filters.date !== 'ALL') params.append('date', filters.date);
+      if (filters.start_date && filters.start_date !== 'ALL') params.append('start_date', filters.start_date);
+      if (filters.end_date && filters.end_date !== 'ALL') params.append('end_date', filters.end_date);
+      if (filters.product_id && filters.product_id !== 'ALL') params.append('product_id', filters.product_id);
+      const queryString = params.toString() ? `?${params.toString()}` : '';
+      const res = await apiFetch(`${API_URL}/sk/driver-returns/missing${queryString}`);
+      const data = await res.json();
+      return data && data.success ? data : { records: [], summary: {} };
+    } catch (err) {
+      console.error("Error fetching missing stock report:", err);
+      return { records: [], summary: {} };
+    }
+  };
+
+  const acceptStorekeeperReturn = async (returnId, returnData = {}) => {
+    try {
+      const res = await apiFetch(`${API_URL}/sk/returns/${returnId}/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(returnData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchData();
+        return { success: true, message: data.message, processedItems: data.processedItems };
+      } else {
+        return { success: false, message: data.message };
+      }
+    } catch (err) {
+      return { success: false, message: "Error accepting driver return into inventory" };
+    }
+  };
+
+  const verifyDriverReturn = async (returnPayload) => {
+    if (typeof returnPayload === 'number' || typeof returnPayload === 'string') {
+      return await acceptStorekeeperReturn(returnPayload, arguments[1] || {});
+    }
+    return await verifyAndAcceptDriverReturnDirect(returnPayload);
+  };
+
+  const fetchDriverReconciliation = async (driverId = null) => {
+    try {
+      const url = driverId ? `${API_URL}/driver/session/reconciliation?employee_id=${driverId}` : `${API_URL}/driver/session/reconciliation`;
+      const res = await apiFetch(url);
+      return await res.json();
+    } catch (err) {
+      return null;
+    }
+  };
+
+  const fetchReconciliation = async (driverId = null) => {
+    return await fetchDriverReconciliation(driverId);
+  };
+
+  const closeDriverSession = async (closeData = {}) => {
+    try {
+      const res = await apiFetch(`${API_URL}/driver/session/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(closeData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchData();
+        return { success: true, message: data.message, session: data.session, settlement: data.settlement };
+      } else {
+        return { success: false, message: data.message };
+      }
+    } catch (err) {
+      return { success: false, message: "Error closing driver session" };
+    }
+  };
+
+  const fetchDriverSessionHistory = async (driverId = null) => {
+    try {
+      const url = driverId ? `${API_URL}/driver/sessions/history?employee_id=${driverId}` : `${API_URL}/driver/sessions/history`;
+      const res = await apiFetch(url);
+      return await res.json();
+    } catch (err) {
+      return [];
     }
   };
 
@@ -367,16 +729,6 @@ export const AppProvider = ({ children }) => {
       return await res.json();
     } catch (err) {
       return { product: null, movements: [] };
-    }
-  };
-
-  const fetchReconciliation = async (driverId = null) => {
-    try {
-      const url = driverId ? `${API_URL}/inventory/reconciliation?driver_id=${driverId}` : `${API_URL}/inventory/reconciliation`;
-      const res = await apiFetch(url);
-      return await res.json();
-    } catch (err) {
-      return [];
     }
   };
 
@@ -394,6 +746,171 @@ export const AppProvider = ({ children }) => {
       const res = await apiFetch(`${API_URL}/routes/driver/${driverId}/summary`);
       return await res.json();
     } catch (err) {
+      return null;
+    }
+  };
+
+  const fetchExecutiveDashboard = async (params = {}) => {
+    try {
+      const q = new URLSearchParams(params).toString();
+      const res = await apiFetch(`${API_URL}/analytics/dashboard${q ? `?${q}` : ''}`);
+      return await res.json();
+    } catch (err) {
+      console.error("Error fetching executive dashboard:", err);
+      return null;
+    }
+  };
+
+  const fetchAdvancedReconciliation = async (params = {}) => {
+    try {
+      const q = new URLSearchParams(params).toString();
+      const res = await apiFetch(`${API_URL}/analytics/reconciliation${q ? `?${q}` : ''}`);
+      return await res.json();
+    } catch (err) {
+      console.error("Error fetching advanced reconciliation:", err);
+      return null;
+    }
+  };
+
+  const fetchDriverPerformance = async (params = {}) => {
+    try {
+      const q = new URLSearchParams(params).toString();
+      const res = await apiFetch(`${API_URL}/analytics/driver-performance${q ? `?${q}` : ''}`);
+      return await res.json();
+    } catch (err) {
+      console.error("Error fetching driver performance:", err);
+      return [];
+    }
+  };
+
+  const fetchRoutePerformance = async (params = {}) => {
+    try {
+      const q = new URLSearchParams(params).toString();
+      const res = await apiFetch(`${API_URL}/analytics/route-performance${q ? `?${q}` : ''}`);
+      return await res.json();
+    } catch (err) {
+      console.error("Error fetching route performance:", err);
+      return [];
+    }
+  };
+
+  const fetchShopPerformance = async (params = {}) => {
+    try {
+      const q = new URLSearchParams(params).toString();
+      const res = await apiFetch(`${API_URL}/analytics/shop-performance${q ? `?${q}` : ''}`);
+      return await res.json();
+    } catch (err) {
+      console.error("Error fetching shop performance:", err);
+      return [];
+    }
+  };
+
+  const fetchProductPerformance = async (params = {}) => {
+    try {
+      const q = new URLSearchParams(params).toString();
+      const res = await apiFetch(`${API_URL}/analytics/product-performance${q ? `?${q}` : ''}`);
+      return await res.json();
+    } catch (err) {
+      console.error("Error fetching product performance:", err);
+      return [];
+    }
+  };
+
+  const fetchAuditLogs = async (params = {}) => {
+    try {
+      const q = new URLSearchParams(params).toString();
+      const res = await apiFetch(`${API_URL}/audit-logs${q ? `?${q}` : ''}`);
+      return await res.json();
+    } catch (err) {
+      console.error("Error fetching audit logs:", err);
+      return { logs: [], total: 0 };
+    }
+  };
+
+  const fetchInventoryAlerts = async () => {
+    try {
+      const res = await apiFetch(`${API_URL}/inventory/alerts`);
+      return await res.json();
+    } catch (err) {
+      console.error("Error fetching inventory alerts:", err);
+      return { summary: { total_products: 0, out_of_stock_count: 0, low_stock_count: 0, healthy_count: 0 }, products: [] };
+    }
+  };
+
+  const adjustStock = async (adjustmentData) => {
+    try {
+      const res = await apiFetch(`${API_URL}/inventory/adjust`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adjustmentData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchData();
+        return { success: true, message: data.message, ...data };
+      } else {
+        return { success: false, message: data.message };
+      }
+    } catch (err) {
+      return { success: false, message: "Error adjusting inventory stock" };
+    }
+  };
+
+  const fetchNotifications = async (params = {}) => {
+    try {
+      const q = new URLSearchParams(params).toString();
+      const res = await apiFetch(`${API_URL}/notifications${q ? `?${q}` : ''}`);
+      return await res.json();
+    } catch (err) {
+      console.error("Error fetching notifications:", err);
+      return { unread_count: 0, notifications: [] };
+    }
+  };
+
+  const markNotificationRead = async (id) => {
+    try {
+      const res = await apiFetch(`${API_URL}/notifications/${id}/read`, {
+        method: 'PATCH'
+      });
+      return await res.json();
+    } catch (err) {
+      return { success: false };
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      const res = await apiFetch(`${API_URL}/notifications/mark-all-read`, {
+        method: 'POST'
+      });
+      return await res.json();
+    } catch (err) {
+      return { success: false };
+    }
+  };
+
+  const exportReportData = async (reportType, filters = {}, format = 'json') => {
+    try {
+      const params = new URLSearchParams({ ...filters, format }).toString();
+      const url = `${API_URL}/export/${reportType}${params ? `?${params}` : ''}`;
+      if (format === 'csv') {
+        const res = await apiFetch(url);
+        const text = await res.text();
+        const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.setAttribute('download', `${reportType}_export_${Date.now()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return { success: true };
+      } else {
+        const res = await apiFetch(url);
+        return await res.json();
+      }
+    } catch (err) {
+      console.error("Error exporting report data:", err);
       return null;
     }
   };
@@ -659,6 +1176,64 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const addRoute = async (routeData) => {
+    try {
+      const res = await apiFetch(`${API_URL}/routes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(routeData)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRoutes(prev => [...prev, data.route]);
+        fetchData();
+        return { success: true, route: data.route, message: data.message };
+      } else {
+        return { success: false, message: data.message || "Failed to add route" };
+      }
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
+  const updateRoute = async (routeId, routeData) => {
+    try {
+      const res = await apiFetch(`${API_URL}/routes/${routeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(routeData)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRoutes(prev => prev.map(r => Number(r.id) === Number(routeId) ? { ...r, ...data.route } : r));
+        fetchData();
+        return { success: true, route: data.route, message: data.message };
+      } else {
+        return { success: false, message: data.message || "Failed to update route" };
+      }
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
+  const deleteRoute = async (routeId) => {
+    try {
+      const res = await apiFetch(`${API_URL}/routes/${routeId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRoutes(prev => prev.filter(r => Number(r.id) !== Number(routeId)));
+        fetchData();
+        return { success: true, message: data.message };
+      } else {
+        return { success: false, message: data.message || "Failed to delete route" };
+      }
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
   const reassignDriverRoute = async (routeId, newDriverId) => {
     try {
       const res = await apiFetch(`${API_URL}/routes/${routeId}/reassign`, {
@@ -701,6 +1276,17 @@ export const AppProvider = ({ children }) => {
       switchRole,
       createSale,
       addShop,
+      updateShop,
+      villages,
+      setVillages,
+      addVillage,
+      updateVillage,
+      deleteVillage,
+      routes,
+      setRoutes,
+      addRoute,
+      updateRoute,
+      deleteRoute,
       assignFreezer,
       collectShopDue,
       addCategory,
@@ -710,29 +1296,62 @@ export const AppProvider = ({ children }) => {
       addProduct,
       updateProduct,
       toggleProductStatus,
-      updateProductPrice,
       addDamage,
+      fetchDamages,
+      fetchDamageSummary,
+      verifyDamageRecord,
       addExpense,
+      fetchExpenses,
+      updateExpense,
+      deleteExpense,
+      submitDriverEndDay,
+      fetchDaySummary,
       saveSettlement,
       receiveDealerStock,
       allocateStock,
       processDriverReturn,
       submitDriverReturn,
       fetchPendingReturns,
+      fetchEligibleDriversForReturn,
+      fetchDriverExpectedReturn,
+      verifyAndAcceptDriverReturnDirect,
+      fetchDriverReturnHistory,
+      fetchMissingStockReport,
+      acceptStorekeeperReturn,
       verifyDriverReturn,
+      fetchDriverReconciliation,
+      closeDriverSession,
+      fetchDriverSessionHistory,
       fetchStockHistory,
       fetchReconciliation,
       fetchFleetRouteSummary,
       fetchDriverDetailSummary,
+      fetchExecutiveDashboard,
+      fetchAdvancedReconciliation,
+      fetchDriverPerformance,
+      fetchRoutePerformance,
+      fetchShopPerformance,
+      fetchProductPerformance,
+      fetchAuditLogs,
+      fetchInventoryAlerts,
+      adjustStock,
+      fetchNotifications,
+      markNotificationRead,
+      markAllNotificationsRead,
+      exportReportData,
       addEmployee,
       updateEmployee,
       toggleEmployeeStatus,
       reassignDriverRoute,
       users,
       setUsers,
-      routes,
-      setRoutes,
+      employees,
+      setEmployees,
+      drivers,
+      setDrivers,
       stockMovements,
+      apiFetch,
+      API_URL,
       refreshData: fetchData
     }}>
       {children}

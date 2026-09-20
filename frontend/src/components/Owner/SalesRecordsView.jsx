@@ -1,12 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   ShoppingBag, Search, Filter, Eye, Printer, DollarSign, 
   Smartphone, CreditCard, ArrowRightLeft, UserCheck, Truck, 
   Store, Calendar, Clock, X, ChevronRight, CheckCircle2, 
-  Layers, RotateCcw, AlertTriangle, ChevronDown, SlidersHorizontal 
+  Layers, RotateCcw, AlertTriangle, ChevronDown, SlidersHorizontal, Download 
 } from 'lucide-react';
 import { ThermalBillModal } from '../Employee/ThermalBillModal';
+import { generateSalesRecordsPDFReport } from '../../utils/pdfReportGenerator';
 
 const PRODUCT_IMAGES = {
   1: { image: '/images/amirthaa_milk_200ml.png', sizeBadge: '200 ml' },
@@ -28,31 +29,48 @@ const PRODUCT_IMAGES = {
 
 // Helper function to format JS Date object into YYYY-MM-DD string
 const formatYMD = (dateObj) => {
+  if (!dateObj || isNaN(dateObj.getTime())) return '';
   const y = dateObj.getFullYear();
   const m = String(dateObj.getMonth() + 1).padStart(2, '0');
   const d = String(dateObj.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 };
 
-// Helper function to normalize any Date representation (DD-MM-YYYY or ISO) to YYYY-MM-DD
-const normalizeDateYMD = (dStr) => {
-  if (!dStr) return '';
-  if (dStr.includes('T')) return dStr.split('T')[0];
-  if (/^\d{2}-\d{2}-\d{4}$/.test(dStr)) {
-    const [d, m, y] = dStr.split('-');
-    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+// Helper function to extract exact YYYY-MM-DD from any sale object (respecting IST business dates)
+const extractSaleDateYMD = (sale) => {
+  if (!sale) return '';
+  // 1. Direct sale_date string from PostgreSQL
+  if (typeof sale.sale_date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(sale.sale_date)) {
+    return sale.sale_date.substring(0, 10);
   }
-  return dStr;
+  // 2. Direct date string
+  if (typeof sale.date === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}/.test(sale.date)) {
+      return sale.date.substring(0, 10);
+    }
+    if (/^\d{2}-\d{2}-\d{4}/.test(sale.date)) {
+      const [d, m, y] = sale.date.split('-');
+      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+  }
+  // 3. From created_at timestamp
+  if (sale.created_at) {
+    const d = new Date(sale.created_at);
+    if (!isNaN(d.getTime())) {
+      return formatYMD(d);
+    }
+  }
+  return '';
 };
 
 export const SalesRecordsView = () => {
-  const { sales = [], shops = [] } = useApp();
+  const { sales = [], shops = [], API_URL, apiFetch, exportReportData } = useApp();
 
   // ------------------------------------------------------------------
   // ADVANCED FILTER STATE MANAGEMENT
   // ------------------------------------------------------------------
   const [searchQuery, setSearchQuery] = useState('');
-  const [quickDate, setQuickDate] = useState('ALL'); // ALL, TODAY, YESTERDAY, THIS_WEEK, LAST_WEEK, THIS_MONTH, LAST_MONTH, THIS_YEAR, CUSTOM
+  const [quickDate, setQuickDate] = useState('ALL'); // ALL, TODAY, YESTERDAY, THIS_WEEK, THIS_MONTH, CUSTOM
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [sellerFilter, setSellerFilter] = useState('ALL'); // ALL, STORE, or employee_id string
@@ -66,6 +84,22 @@ export const SalesRecordsView = () => {
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [selectedSaleDetails, setSelectedSaleDetails] = useState(null);
   const [printThermalBill, setPrintThermalBill] = useState(null);
+
+  useEffect(() => {
+    if (selectedSaleDetails && (!selectedSaleDetails.items || selectedSaleDetails.items.length === 0)) {
+      const saleId = selectedSaleDetails.id || selectedSaleDetails.bill_no;
+      if (saleId && apiFetch && API_URL) {
+        apiFetch(`${API_URL}/sales/${saleId}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.id) {
+              setSelectedSaleDetails(data);
+            }
+          })
+          .catch(err => console.error("Error loading sale items:", err));
+      }
+    }
+  }, [selectedSaleDetails, API_URL, apiFetch]);
 
   // Extract unique sellers dynamically from actual sales & employees
   const availableSellers = useMemo(() => {
@@ -107,41 +141,23 @@ export const SalesRecordsView = () => {
       setFromDate(todayYmd);
       setToDate(todayYmd);
     } else if (mode === 'YESTERDAY') {
-      const yest = new Date(now);
-      yest.setDate(yest.getDate() - 1);
+      const yest = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
       const yestYmd = formatYMD(yest);
       setFromDate(yestYmd);
       setToDate(yestYmd);
     } else if (mode === 'THIS_WEEK') {
       const day = now.getDay();
-      const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday start
-      const monday = new Date(now.setDate(diff));
+      const diffToMon = day === 0 ? -6 : 1 - day;
+      const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon);
+      const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
       setFromDate(formatYMD(monday));
-      setToDate(todayYmd);
-    } else if (mode === 'LAST_WEEK') {
-      const now2 = new Date();
-      const day = now2.getDay();
-      const diff = now2.getDate() - day - 6;
-      const lastMonday = new Date(now2.setDate(diff));
-      const lastSunday = new Date(lastMonday);
-      lastSunday.setDate(lastSunday.getDate() + 6);
-      setFromDate(formatYMD(lastMonday));
-      setToDate(formatYMD(lastSunday));
+      setToDate(formatYMD(sunday));
     } else if (mode === 'THIS_MONTH') {
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      setFromDate(formatYMD(firstDay));
-      setToDate(todayYmd);
-    } else if (mode === 'LAST_MONTH') {
-      const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       setFromDate(formatYMD(firstDay));
       setToDate(formatYMD(lastDay));
-    } else if (mode === 'THIS_YEAR') {
-      const firstDay = new Date(now.getFullYear(), 0, 1);
-      setFromDate(formatYMD(firstDay));
-      setToDate(todayYmd);
     } else if (mode === 'CUSTOM') {
-      // Keep existing dates or set to today
       if (!fromDate) setFromDate(todayYmd);
       if (!toDate) setToDate(todayYmd);
     }
@@ -173,12 +189,13 @@ export const SalesRecordsView = () => {
     if (dateError) return []; // Block execution if invalid date range
 
     return (sales || []).filter(sale => {
-      const saleYmd = normalizeDateYMD(sale.date);
+      const saleYmd = extractSaleDateYMD(sale);
       const isStoreCounter = sale.is_store_direct_sale || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'));
 
-      // 1. DATE RANGE FILTER (00:00:00 -> 23:59:59 inclusive)
+      // 1. DATE RANGE FILTER (From Date <= saleYmd <= To Date, inclusive)
       if (fromDate && saleYmd && saleYmd < fromDate) return false;
       if (toDate && saleYmd && saleYmd > toDate) return false;
+      if ((fromDate || toDate) && !saleYmd) return false;
 
       // 2. SELLER FILTER
       if (sellerFilter !== 'ALL') {
@@ -374,10 +391,20 @@ export const SalesRecordsView = () => {
           </div>
         </div>
 
-        <div className="relative z-10 flex items-center gap-2">
+        <div className="relative z-10 flex flex-wrap items-center gap-2">
           <span className="font-mono font-black text-sm text-emerald-400 bg-emerald-500/10 px-3.5 py-2 rounded-2xl border border-emerald-400/30">
             Filtered Revenue: ₹{metrics.totalRevenue.toLocaleString()}
           </span>
+          <button
+            onClick={() => generateSalesRecordsPDFReport({ 
+              sales: filteredBills,
+              dateRangeText: activeDatePreset !== 'CUSTOM' ? activeDatePreset : `${fromDate || ''} - ${toDate || ''}`,
+              companyInfo: companySettings
+            })}
+            className="px-3.5 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs flex items-center gap-1.5 border border-white/20 transition cursor-pointer"
+          >
+            <Download className="w-4 h-4" /> Download PDF Report
+          </button>
         </div>
       </div>
 

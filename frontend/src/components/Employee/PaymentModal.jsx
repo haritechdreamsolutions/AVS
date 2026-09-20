@@ -1,87 +1,114 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Banknote, Smartphone, CreditCard, Split, CheckCircle2, DollarSign } from 'lucide-react';
+import { ArrowLeft, Banknote, Smartphone, CreditCard, Split, CheckCircle2, DollarSign, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
   const [mode, setMode] = useState('SPLIT');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const totalAmount = billData?.total_amount || 45;
+  const totalAmount = Number(Number(billData?.total_amount || 0).toFixed(2));
 
-  // DYNAMIC DEDICATED SPLIT INITIALIZATION (Fixed hardcoded 700/950 demo bug)
-  const [cashReceived, setCashReceived] = useState(totalAmount);
-  const [gpayReceived, setGpayReceived] = useState(0);
+  // Dynamic SPLIT state
+  const [cashReceived, setCashReceived] = useState(totalAmount.toString());
   const [creditAmount, setCreditAmount] = useState(0);
 
   // Sync state whenever totalAmount changes
   useEffect(() => {
-    setCashReceived(totalAmount);
-    setGpayReceived(0);
+    setCashReceived(totalAmount.toString());
     setCreditAmount(0);
   }, [totalAmount]);
 
-  const numCash = Number(cashReceived) || 0;
-  const numGpay = Number(gpayReceived) || 0;
+  // Compute clean numeric values
+  const numCash = Math.min(totalAmount, Math.max(0, Number(cashReceived) || 0));
+  
+  // GPay is automatically calculated in SPLIT mode: Total - Cash
+  const numGpay = mode === 'SPLIT' 
+    ? Number(Math.max(0, totalAmount - numCash).toFixed(2))
+    : (mode === 'GPAY' ? totalAmount : 0);
+
   const numCredit = Number(creditAmount) || 0;
 
-  const totalReceived = (mode === 'CASH' ? totalAmount : 
-                        (mode === 'GPAY' ? totalAmount : 
-                        (mode === 'CREDIT' ? 0 : numCash + numGpay + numCredit)));
+  const totalReceived = mode === 'CASH' ? totalAmount :
+                        mode === 'GPAY' ? totalAmount :
+                        mode === 'CREDIT' ? 0 :
+                        Number((numCash + numGpay + numCredit).toFixed(2));
   
-  const balance = totalAmount - totalReceived;
+  const balance = Number(Math.max(0, totalAmount - totalReceived).toFixed(2));
 
   // Smart Auto-Fill Helper when Cash is typed in Split Mode
   const handleCashChange = (val) => {
-    const cashVal = Number(val) || 0;
-    setCashReceived(val);
-    if (cashVal <= totalAmount) {
-      setGpayReceived(totalAmount - cashVal);
-      setCreditAmount(0);
+    if (val === '' || val === null || val === undefined) {
+      setCashReceived('');
+      return;
     }
+    const numericVal = parseFloat(val);
+    if (isNaN(numericVal) || numericVal < 0) {
+      setCashReceived('');
+      return;
+    }
+    if (numericVal > totalAmount) {
+      toast.error(`ரொக்கத் தொகை மொத்த பில் தொகையை (₹${totalAmount.toFixed(2)}) விட அதிகமாக இருக்க முடியாது!`);
+      setCashReceived(totalAmount.toString());
+      return;
+    }
+    setCashReceived(val);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
+    if (isSubmitting) return;
     if (balance !== 0 && mode !== 'CREDIT') {
-      toast.error(`பணம் தவறாக உள்ளது! பாக்கி: ₹${balance}`);
+      toast.error(`பணம் தவறாக உள்ளது! பாக்கி: ₹${balance.toFixed(2)}`);
       return;
     }
 
-    onConfirmBill({
-      ...billData,
-      payment_mode: mode,
-      cash_paid: mode === 'CASH' ? totalAmount : (mode === 'SPLIT' ? numCash : 0),
-      gpay_paid: mode === 'GPAY' ? totalAmount : (mode === 'SPLIT' ? numGpay : 0),
-      credit_paid: mode === 'CREDIT' ? totalAmount : (mode === 'SPLIT' ? numCredit : 0),
-      balance: balance
-    });
+    try {
+      setIsSubmitting(true);
+      await onConfirmBill({
+        ...billData,
+        shop_id: billData?.shop_id,
+        shop_name: billData?.shop_name,
+        shop_code: billData?.shop_code,
+        payment_mode: mode,
+        cash_paid: mode === 'CASH' ? totalAmount : (mode === 'SPLIT' ? numCash : 0),
+        gpay_paid: mode === 'GPAY' ? totalAmount : (mode === 'SPLIT' ? numGpay : 0),
+        credit_paid: mode === 'CREDIT' ? totalAmount : (mode === 'SPLIT' ? numCredit : 0),
+        balance: balance
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="max-w-md mx-auto p-4 space-y-4 pb-28">
+    <div className="max-w-md mx-auto p-3 sm:p-4 space-y-4 pb-32 sm:pb-36">
       
       {/* Top Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
         <button
           onClick={onBack}
-          className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 shadow-sm"
+          className="p-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition font-black text-xs flex items-center gap-1.5 cursor-pointer"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <ArrowLeft className="w-4 h-4" />
+          <span>BACK</span>
         </button>
-        <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-emerald-600" />
-          PAYMENT SCREEN (பணம் செலுத்துதல்)
+        <h2 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5">
+          <DollarSign className="w-4 h-4 text-emerald-600" />
+          PAYMENT SCREEN
         </h2>
-        <div className="w-9"></div>
-      </div>
-
-      {/* Total Amount Display Card */}
-      <div className="glass-panel p-5 rounded-2xl text-center bg-white border border-emerald-300 shadow-sm glow-green">
-        <span className="text-xs text-slate-500 uppercase font-extrabold tracking-wider">Total Bill Amount</span>
-        <div className="font-mono font-black text-3xl text-emerald-600 mt-1">
-          ₹{totalAmount.toLocaleString()}
+        <div className="text-[11px] font-bold text-slate-500 font-mono">
+          {billData?.shop_code || 'POS'}
         </div>
       </div>
 
-      {/* Payment Mode Selector Grid with Prominent Icons & Names */}
+      {/* Total Amount Display Card */}
+      <div className="glass-panel p-4 sm:p-5 rounded-2xl text-center bg-white border border-emerald-300 shadow-sm glow-green">
+        <span className="text-xs text-slate-500 uppercase font-extrabold tracking-wider">Total Bill Amount</span>
+        <div className="font-mono font-black text-3xl sm:text-4xl text-emerald-600 mt-1">
+          ₹{totalAmount.toFixed(2)}
+        </div>
+      </div>
+
+      {/* Payment Mode Selector Grid */}
       <div className="space-y-2">
         <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider block">
           SELECT PAYMENT MODE (பணம் செலுத்தும் முறை)
@@ -91,13 +118,13 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
           {/* CASH BUTTON */}
           <button
             onClick={() => setMode('CASH')}
-            className={`p-3 rounded-2xl border font-black text-xs flex flex-col items-center gap-2 transition active:scale-95 ${
+            className={`p-3 rounded-2xl border font-black text-xs flex flex-col items-center gap-2 transition active:scale-95 cursor-pointer ${
               mode === 'CASH'
                 ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg glow-green'
                 : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
             }`}
           >
-            <Banknote className="w-6 h-6 text-emerald-300" />
+            <Banknote className={`w-6 h-6 ${mode === 'CASH' ? 'text-white' : 'text-emerald-600'}`} />
             <div className="text-center">
               <span className="block font-black text-xs">CASH</span>
               <span className="text-[10px] font-bold opacity-80">ரொக்கம்</span>
@@ -107,13 +134,13 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
           {/* GPAY / UPI BUTTON */}
           <button
             onClick={() => setMode('GPAY')}
-            className={`p-3 rounded-2xl border font-black text-xs flex flex-col items-center gap-2 transition active:scale-95 ${
+            className={`p-3 rounded-2xl border font-black text-xs flex flex-col items-center gap-2 transition active:scale-95 cursor-pointer ${
               mode === 'GPAY'
                 ? 'bg-blue-600 border-blue-600 text-white shadow-lg glow-blue'
                 : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
             }`}
           >
-            <Smartphone className="w-6 h-6 text-blue-300" />
+            <Smartphone className={`w-6 h-6 ${mode === 'GPAY' ? 'text-white' : 'text-blue-600'}`} />
             <div className="text-center">
               <span className="block font-black text-xs">GPAY / UPI</span>
               <span className="text-[10px] font-bold opacity-80">ஜிபே</span>
@@ -123,13 +150,13 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
           {/* CREDIT BUTTON */}
           <button
             onClick={() => setMode('CREDIT')}
-            className={`p-3 rounded-2xl border font-black text-xs flex flex-col items-center gap-2 transition active:scale-95 ${
+            className={`p-3 rounded-2xl border font-black text-xs flex flex-col items-center gap-2 transition active:scale-95 cursor-pointer ${
               mode === 'CREDIT'
                 ? 'bg-amber-600 border-amber-600 text-white shadow-lg'
                 : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
             }`}
           >
-            <CreditCard className="w-6 h-6 text-amber-300" />
+            <CreditCard className={`w-6 h-6 ${mode === 'CREDIT' ? 'text-white' : 'text-amber-600'}`} />
             <div className="text-center">
               <span className="block font-black text-xs">CREDIT</span>
               <span className="text-[10px] font-bold opacity-80">கடமை / DUES</span>
@@ -139,13 +166,13 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
           {/* SPLIT PAYMENT BUTTON */}
           <button
             onClick={() => setMode('SPLIT')}
-            className={`p-3 rounded-2xl border font-black text-xs flex flex-col items-center gap-2 transition active:scale-95 ${
+            className={`p-3 rounded-2xl border font-black text-xs flex flex-col items-center gap-2 transition active:scale-95 cursor-pointer ${
               mode === 'SPLIT'
                 ? 'bg-purple-600 border-purple-600 text-white shadow-lg'
                 : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
             }`}
           >
-            <Split className="w-6 h-6 text-purple-300" />
+            <Split className={`w-6 h-6 ${mode === 'SPLIT' ? 'text-white' : 'text-purple-600'}`} />
             <div className="text-center">
               <span className="block font-black text-xs">SPLIT</span>
               <span className="text-[10px] font-bold opacity-80">பிரித்து செலுத்து</span>
@@ -160,89 +187,110 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
           <h3 className="font-extrabold text-xs text-slate-700 uppercase tracking-wider border-b border-slate-100 pb-2 flex items-center justify-between">
             <span className="flex items-center gap-1.5">
               <Split className="w-4 h-4 text-purple-600" />
-              Split Payment Breakdown Entry
+              Split Payment Breakdown
             </span>
             <span className="text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-              Bill: ₹{totalAmount}
+              Bill: ₹{totalAmount.toFixed(2)}
             </span>
           </h3>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-              <span className="text-xs font-black text-emerald-700 flex items-center gap-1.5">
-                <Banknote className="w-4 h-4" />
-                Cash Received (ரொக்கம்)
-              </span>
-              <input
-                type="number"
-                value={cashReceived}
-                onChange={(e) => handleCashChange(e.target.value)}
-                className="w-28 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-right font-mono font-black text-slate-900 text-base focus:outline-none focus:border-emerald-500"
-              />
+          <div className="space-y-2.5">
+            {/* Cash Received Input */}
+            <div className="flex items-center justify-between bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-200">
+              <div className="min-w-0">
+                <span className="text-xs font-black text-emerald-700 flex items-center gap-1.5 truncate">
+                  <Banknote className="w-4 h-4 shrink-0" />
+                  Cash Received (ரொக்கம்)
+                </span>
+                <span className="text-[10px] font-bold text-slate-400 block pl-5.5">
+                  Type cash collected
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-slate-400 font-mono font-black text-sm">₹</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  max={totalAmount}
+                  value={cashReceived}
+                  placeholder="0.00"
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => handleCashChange(e.target.value)}
+                  className="w-24 sm:w-28 bg-white border border-slate-300 rounded-lg px-2 py-1 text-right font-mono font-black text-slate-900 text-sm sm:text-base focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 shadow-xs"
+                />
+              </div>
             </div>
 
-            <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-              <span className="text-xs font-black text-blue-700 flex items-center gap-1.5">
-                <Smartphone className="w-4 h-4" />
-                GPay Received (ஜிபே)
-              </span>
-              <input
-                type="number"
-                value={gpayReceived}
-                onChange={(e) => setGpayReceived(e.target.value)}
-                className="w-28 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-right font-mono font-black text-slate-900 text-base focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-              <span className="text-xs font-black text-amber-700 flex items-center gap-1.5">
-                <CreditCard className="w-4 h-4" />
-                Credit Balance (கடமை)
-              </span>
-              <input
-                type="number"
-                value={creditAmount}
-                onChange={(e) => setCreditAmount(e.target.value)}
-                className="w-28 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-right font-mono font-black text-slate-900 text-base focus:outline-none focus:border-amber-500"
-              />
+            {/* GPay Received Automatically Calculated (Read-only) */}
+            <div className="flex items-center justify-between bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-200">
+              <div className="min-w-0">
+                <span className="text-xs font-black text-blue-700 flex items-center gap-1.5 truncate">
+                  <Smartphone className="w-4 h-4 shrink-0" />
+                  GPay Received (ஜிபே)
+                </span>
+                <span className="text-[10px] font-bold text-blue-600 block pl-5.5">
+                  Auto-calculated remaining
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono">
+                  AUTO
+                </span>
+                <div className="w-24 sm:w-28 bg-slate-100 border border-slate-300 rounded-lg px-2 py-1 text-right font-mono font-black text-slate-900 text-sm sm:text-base select-none">
+                  ₹{numGpay.toFixed(2)}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="pt-2 border-t border-slate-100 text-xs space-y-1 font-mono">
+          {/* Breakdown Summary */}
+          <div className="pt-2 border-t border-slate-100 text-xs space-y-1.5 font-mono">
             <div className="flex justify-between text-slate-600 font-bold">
-              <span>Cash Paid:</span>
-              <span className="text-slate-900">₹{numCash}</span>
+              <span>Total Bill:</span>
+              <span className="text-slate-900 font-black">₹{totalAmount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-slate-600 font-bold">
-              <span>GPay Paid:</span>
-              <span className="text-slate-900">₹{numGpay}</span>
+              <span>Cash:</span>
+              <span className="text-emerald-700 font-bold">₹{numCash.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-slate-600 font-bold">
-              <span>Credit Due:</span>
-              <span className="text-amber-700">₹{numCredit}</span>
+              <span>GPay:</span>
+              <span className="text-blue-700 font-bold">₹{numGpay.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-slate-900 pt-1 font-black text-sm border-t border-slate-100">
-              <span>Total Received</span>
-              <span className="text-emerald-600">₹{totalReceived}</span>
+            <div className="flex justify-between text-slate-900 pt-1 font-black text-sm border-t border-slate-200">
+              <span>Total Paid:</span>
+              <span className="text-emerald-600">₹{totalReceived.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-slate-600 font-bold">
-              <span>Balance Mismatch</span>
+              <span>Remaining:</span>
               <span className={balance === 0 ? 'text-emerald-600 font-black' : 'text-rose-600 font-black'}>
-                ₹{balance}
+                ₹{balance.toFixed(2)}
               </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Confirmation Sticky Button */}
-      <div className="fixed bottom-16 left-0 right-0 p-4 max-w-md mx-auto z-30">
+      {/* Confirmation Button in Natural Flow with generous bottom clearance */}
+      <div className="pt-2">
         <button
           onClick={handleConfirm}
-          className="touch-btn touch-btn-success w-full text-lg shadow-2xl glow-green flex items-center justify-center gap-2 uppercase tracking-wider font-black"
+          disabled={isSubmitting || (balance !== 0 && mode !== 'CREDIT')}
+          className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-base uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-xl glow-green transition active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none min-h-[52px] cursor-pointer"
         >
-          <CheckCircle2 className="w-6 h-6" />
-          CONFIRM & PRINT BILL (பில் அச்சிடு)
+          {isSubmitting ? (
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              <span>SAVING BILL & PRINTING...</span>
+            </div>
+          ) : (
+            <>
+              <CheckCircle2 className="w-5 h-5" />
+              <span>CONFIRM & PRINT BILL (பில் அச்சிடு)</span>
+            </>
+          )}
         </button>
       </div>
 

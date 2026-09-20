@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { getOperationalUnit } from '../../utils/unitHelper';
 import { 
   X, ShoppingBag, Plus, Minus, CheckCircle2, 
   CreditCard, DollarSign, Smartphone, Trash2, ArrowRightLeft, Sparkles 
@@ -58,8 +59,12 @@ const PRODUCT_IMAGES = {
 };
 
 export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
-  const { products, createSale } = useApp();
+  const { products = [], createSale } = useApp();
   
+  const activeProducts = useMemo(() => {
+    return (products || []).filter(p => p.is_active !== false && p.is_active !== 0);
+  }, [products]);
+
   const [activeCategory, setActiveCategory] = useState('all');
   const [cart, setCart] = useState({}); // { [prodId]: { qty, unit_type: 'Piece' } }
   const [paymentMode, setPaymentMode] = useState('CASH'); // CASH, GPAY, CREDIT, SPLIT
@@ -69,22 +74,51 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
   const [submitting, setSubmitting] = useState(false);
 
   const filteredProducts = useMemo(() => {
-    if (activeCategory === 'all') return products;
+    if (activeCategory === 'all') return activeProducts;
     const group = PRODUCT_GROUPS.find(g => g.id === activeCategory);
-    if (!group) return products;
-    return products.filter(p => group.productIds.includes(p.id));
-  }, [products, activeCategory]);
+    if (!group) return activeProducts;
+    return activeProducts.filter(p => group.productIds.includes(p.id));
+  }, [activeProducts, activeCategory]);
+
+  const getProductStockInfo = (prod) => {
+    const opUnit = getOperationalUnit(prod);
+    const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
+    const whUnits = Number(prod.warehouse_stock_units || 0);
+    if (opUnit.isPieceBased) {
+      const maxAvailable = Math.floor(whUnits * ppu);
+      const rate = Number(prod.piece_selling_price || (Number(prod.unit_selling_price || 0) / ppu) || 0);
+      return {
+        opUnit,
+        maxAvailable,
+        rate,
+        unitType: 'Piece',
+        displayUnit: 'Piece',
+        pluralUnit: 'Pieces'
+      };
+    } else {
+      const maxAvailable = whUnits;
+      const rate = Number(prod.unit_selling_price || (Number(prod.piece_selling_price || 0) * ppu) || 0);
+      return {
+        opUnit,
+        maxAvailable,
+        rate,
+        unitType: opUnit.operationalUnit,
+        displayUnit: opUnit.operationalUnit,
+        pluralUnit: opUnit.pluralLabel
+      };
+    }
+  };
 
   const getAvailablePieces = (prod) => {
-    return Math.floor((prod.warehouse_stock_units || 0) * (prod.pieces_per_unit || 1));
+    return getProductStockInfo(prod).maxAvailable;
   };
 
   const handleQtyChange = (product, newQty) => {
     const qty = Math.max(0, parseInt(newQty || 0, 10));
-    const maxPieces = getAvailablePieces(product);
+    const info = getProductStockInfo(product);
 
-    if (qty > maxPieces) {
-      toast.error(`⚠️ Warehouse Stock Limit Exceeded! Available Stock for ${product.display_name}: ${maxPieces} Pcs`);
+    if (qty > info.maxAvailable) {
+      toast.error(`⚠️ Warehouse Stock Limit Exceeded! Available Stock for ${product.display_name}: ${info.maxAvailable} ${info.pluralUnit}`);
       return;
     }
 
@@ -99,9 +133,10 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
         [product.id]: {
           product,
           qty,
-          unit_type: 'Piece',
-          rate: product.piece_selling_price || product.unit_selling_price || 0,
-          amount: qty * (product.piece_selling_price || product.unit_selling_price || 0)
+          unit_type: info.unitType,
+          display_unit: info.displayUnit,
+          rate: info.rate,
+          amount: qty * info.rate
         }
       };
     });
@@ -169,8 +204,29 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
   }, [cashAmount, gpayAmount, creditAmount]);
 
   const handleSubmitBill = async () => {
+    if (submitting) return;
+
     if (cartList.length === 0) {
       toast.error("Please add at least 1 product to generate a bill!");
+      return;
+    }
+
+    // Step 2 & 3: Validate Quantity & Live Stock Availability before submission
+    for (const item of cartList) {
+      const available = getAvailablePieces(item.product);
+      const qty = parseInt(item.qty, 10);
+      if (isNaN(qty) || qty <= 0) {
+        toast.error(`Invalid quantity for ${item.product.display_name}. Must be at least 1 piece.`);
+        return;
+      }
+      if (qty > available) {
+        toast.error(`Insufficient warehouse stock for ${item.product.display_name}! Available: ${available} Pcs, Attempted: ${qty} Pcs`);
+        return;
+      }
+    }
+
+    if (totalAmount <= 0) {
+      toast.error("Bill total amount must be greater than zero!");
       return;
     }
 
@@ -178,6 +234,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
     let finalGpay = 0;
     let finalCredit = 0;
 
+    // Step 5 & 6: Payment mode & cash/split validation
     if (paymentMode === 'CASH') {
       finalCash = totalAmount;
     } else if (paymentMode === 'GPAY') {
@@ -189,17 +246,24 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
       finalGpay = Number(gpayAmount || 0);
       finalCredit = Number(creditAmount || 0);
       
-      const sum = finalCash + finalGpay + finalCredit;
-      if (sum < totalAmount) {
-        finalCredit += (totalAmount - sum);
+      const sum = parseFloat((finalCash + finalGpay + finalCredit).toFixed(2));
+      if (Math.abs(sum - totalAmount) > 0.05) {
+        toast.error(`Split payment total (₹${sum}) does not match bill total (₹${totalAmount})! Please balance split amounts.`);
+        return;
       }
+    } else {
+      toast.error(`Invalid payment mode selected: ${paymentMode}`);
+      return;
     }
+
+    const idempotencyKey = 'POS-SK-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
 
     const salePayload = {
       is_store_direct_sale: true,
-      shop_name: 'Walk-in Counter Customer',
-      customer_name: 'Walk-in Customer',
-      employee_id: 6,
+      sale_type: 'STOREKEEPER_DIRECT',
+      shop_name: 'AVS AGENCIES',
+      customer_name: 'Walk-in Counter Customer',
+      employee_id: null,
       employee_name: 'Store Keeper',
       vehicle_no: 'Warehouse Counter',
       payment_mode: paymentMode,
@@ -207,30 +271,43 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
       gpay_paid: finalGpay,
       credit_paid: finalCredit,
       total_amount: totalAmount,
+      idempotency_key: idempotencyKey,
+      client_reference: idempotencyKey,
       items: cartList.map(item => ({
         product_id: item.product.id,
         product_name: item.product.display_name,
         unit_type: 'Piece',
-        qty: item.qty,
+        qty: parseInt(item.qty, 10),
         rate: item.rate,
-        amount: item.amount
+        amount: parseFloat((parseInt(item.qty, 10) * item.rate).toFixed(2))
       }))
     };
 
     setSubmitting(true);
     try {
       const res = await createSale(salePayload);
-      if (res.success) {
-        toast.success(`🎉 Direct Store Bill #${res.sale.bill_no} generated successfully! Stock updated.`);
+      if (res && res.success) {
+        const fullSale = {
+          ...res.sale,
+          items: res.items || res.sale?.items || cartList.map(i => ({
+            product_id: i.product.id,
+            product_name: i.product.display_name,
+            qty: i.qty,
+            rate: i.rate,
+            amount: i.amount,
+            unit_type: 'Piece'
+          }))
+        };
+        toast.success(`🎉 Direct Store Bill #${fullSale.bill_no || fullSale.id} generated successfully! Warehouse stock updated.`);
         onClose();
         if (onBillGenerated) {
-          onBillGenerated(res.sale);
+          onBillGenerated(fullSale);
         }
       } else {
-        toast.error(`Failed to generate bill: ${res.message}`);
+        toast.error(`Failed to generate bill: ${res?.message || 'Transaction rejected by server.'}`);
       }
     } catch (err) {
-      toast.error(`Error: ${err.message || 'Server error'}`);
+      toast.error(`Transaction Error: ${err.message || 'Server connection failure'}`);
     } finally {
       setSubmitting(false);
     }
@@ -238,7 +315,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-3xl max-w-5xl w-full max-h-[94vh] flex flex-col shadow-2xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-3xl max-w-5xl w-full max-h-[94dvh] flex flex-col shadow-2xl overflow-y-auto lg:overflow-hidden my-auto">
         
         {/* Header Bar */}
         <div className="flex items-center justify-between p-4 px-6 border-b border-slate-100 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shrink-0">
@@ -247,13 +324,18 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
               <ShoppingBag className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-black text-lg text-white flex items-center gap-2">
-                STORE KEEPER DIRECT POS BILLING
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-black text-lg text-white">
+                  STORE KEEPER DIRECT POS BILLING
+                </h3>
                 <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-400/30">
                   Real-time Warehouse Stock
                 </span>
-              </h3>
-              <p className="text-xs text-slate-300">Select items, enter quantity, and generate counter bills instantly</p>
+                <span className="text-[10px] bg-blue-500/20 text-blue-300 font-extrabold px-2.5 py-0.5 rounded-full border border-blue-400/30">
+                  Billing Shop: AVS AGENCIES
+                </span>
+              </div>
+              <p className="text-xs text-slate-300">Select items, enter quantity, and generate counter bills instantly for AVS AGENCIES</p>
             </div>
           </div>
           <button 
@@ -265,7 +347,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
         </div>
 
         {/* Modal Body Layout (Left: Products Grid 7 Cols, Right: Cart & Split Payment 5 Cols) */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-y-auto lg:overflow-hidden">
           
           {/* LEFT: Product Selection Grid */}
           <div className="lg:col-span-7 p-4 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col gap-3 bg-slate-50/60 overflow-y-auto min-h-[300px]">
@@ -280,7 +362,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                     : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                All Products ({products.length})
+                All Products ({activeProducts.length})
               </button>
 
               {PRODUCT_GROUPS.map(group => (
@@ -301,9 +383,10 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
             {/* Product Cards List */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto pr-1">
               {filteredProducts.map(prod => {
-                const meta = PRODUCT_IMAGES[prod.id] || {
-                  image: prod.image || '/images/milk_200ml.svg',
-                  sizeBadge: prod.selling_unit || 'Item'
+                const actualImage = prod.image_url || prod.image || (PRODUCT_IMAGES[prod.id]?.image) || '';
+                const meta = {
+                  image: actualImage,
+                  sizeBadge: prod.selling_unit || (PRODUCT_IMAGES[prod.id]?.sizeBadge) || 'Item'
                 };
                 const availablePcs = getAvailablePieces(prod);
                 const currentQty = cart[prod.id]?.qty || '';

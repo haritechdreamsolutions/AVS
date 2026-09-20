@@ -9,9 +9,18 @@
     "dev:frontend": "npm --prefix frontend run dev",
     "dev": "concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
     "start": "concurrently \"npm --prefix backend start\" \"npm --prefix frontend run dev\"",
-    "test": "node backend/test/unit.test.js"
+    "test": "node backend/test/unit.test.js",
+    "test:api": "playwright test --project=api",
+    "test:e2e": "playwright test --project=e2e",
+    "test:smoke": "playwright test --project=smoke",
+    "test:all": "playwright test",
+    "test:report": "playwright show-report"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   }
 }

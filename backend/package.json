@@ -6,10 +6,20 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "node test_suite.js",
-    "bootstrap": "node database/bootstrap.js",
-    "migrate": "node database/migrate.js",
-    "test:part1": "node test/part1.test.js"
+    "test": "node test/full_integration.test.js",
+    "test:part1": "node test/part1.test.js",
+    "test:part2": "node test/part2.test.js",
+    "test:part3": "node test/part3.test.js",
+    "test:phase1": "node test/phase1_product_uom.test.js",
+    "test:category": "node test/category_master.test.js",
+    "test:shop": "node test/shop_route_creation.test.js",
+    "test:receive": "node test/stock_receive_inventory.test.js",
+    "test:lifecycle": "node test/driver_stock_lifecycle.test.js",
+    "test:duplicate": "node test/zero_duplicate_data.test.js",
+    "test:allocflow": "node test/driver_stock_allocation_flow.test.js",
+    "test:driverctrl": "node test/final_driver_billing_stock_control.test.js",
+    "test:integration": "node test/full_integration.test.js",
+    "test:all": "node test/part1.test.js && node test/part2.test.js && node test/part3.test.js && node test/phase1_product_uom.test.js && node test/category_master.test.js && node test/shop_route_creation.test.js && node test/stock_receive_inventory.test.js && node test/driver_stock_lifecycle.test.js && node test/zero_duplicate_data.test.js && node test/driver_stock_allocation_flow.test.js && node test/final_driver_billing_stock_control.test.js && node test/full_integration.test.js"
   },
   "dependencies": {
     "avs-distribution-management": "file:..",

@@ -7,12 +7,13 @@ export const ShopSelection = ({ onSelectShop, onBack }) => {
   const [search, setSearch] = useState('');
 
   const filteredShops = shops.filter(s =>
-    s.name.toLowerCase().includes(search.toLowerCase()) ||
-    s.code.toLowerCase().includes(search.toLowerCase())
+    (s.name && s.name.toLowerCase().includes(search.toLowerCase())) ||
+    (s.code && s.code.toLowerCase().includes(search.toLowerCase())) ||
+    (s.village_name && s.village_name.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
-    <div className="max-w-md mx-auto p-4 space-y-4 pb-20">
+    <div className="max-w-md mx-auto p-3 sm:p-4 space-y-4 pb-28 sm:pb-32">
       
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -30,62 +31,77 @@ export const ShopSelection = ({ onSelectShop, onBack }) => {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search Shop / கடை தேடுக..."
+          placeholder="Search Shop, Village, or ID (கடை தேடுக)..."
           className="w-full bg-white border border-slate-200 shadow-sm rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition"
         />
       </div>
 
       {/* Shop Cards */}
       <div className="space-y-2.5">
-        {filteredShops.map(shop => (
-          <div
-            key={shop.id}
-            onClick={() => onSelectShop(shop)}
-            className={`glass-panel p-4 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
-              shop.completed
-                ? 'border-emerald-200 bg-emerald-50/50 opacity-75'
-                : 'border-slate-200 hover:border-blue-400 bg-white shadow-sm hover:shadow-md'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-lg ${
-                shop.completed ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
-              }`}>
-                🏪
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-extrabold text-sm text-slate-900">{shop.name}</h3>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-slate-100 text-slate-600 font-bold border border-slate-200">
-                    {shop.code}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 font-medium">
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                    {shop.distance}
-                  </span>
-                  {shop.current_due > 0 && (
-                    <span className="text-amber-600 font-bold">
-                      Due: ₹{shop.current_due}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {shop.completed ? (
-              <div className="flex items-center gap-1 text-xs text-emerald-700 font-bold bg-emerald-100 px-2.5 py-1 rounded-full border border-emerald-200">
-                <CheckCircle2 className="w-4 h-4" />
-                Done
-              </div>
-            ) : (
-              <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-md glow-green hover:scale-105 transition">
-                <ArrowRight className="w-5 h-5" />
-              </div>
-            )}
+        {filteredShops.length === 0 ? (
+          <div className="text-center py-10 bg-white rounded-2xl border border-dashed border-slate-200 p-4">
+            <Store className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+            <p className="font-bold text-sm text-slate-700">No shops found</p>
+            <p className="text-xs text-slate-400 mt-0.5">Please check route assignment or add shops in this route.</p>
           </div>
-        ))}
+        ) : (
+          filteredShops.map(shop => (
+            <div
+              key={shop.id}
+              onClick={() => onSelectShop(shop)}
+              className={`glass-panel p-4 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
+                shop.completed
+                  ? 'border-emerald-200 bg-emerald-50/50 opacity-75'
+                  : 'border-slate-200 hover:border-blue-400 bg-white shadow-sm hover:shadow-md'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-lg ${
+                  shop.completed ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                }`}>
+                  🏪
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-extrabold text-sm text-slate-900">{shop.name}</h3>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-slate-100 text-slate-600 font-bold border border-slate-200">
+                      {shop.code}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5 text-xs text-slate-500 mt-1 font-medium flex-wrap">
+                    {shop.village_name && (
+                      <span className="flex items-center gap-1 text-indigo-700 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                        <MapPin className="w-3 h-3 text-indigo-600 shrink-0" />
+                        {shop.village_name}
+                      </span>
+                    )}
+                    {shop.distance && (
+                      <span className="flex items-center gap-1 text-slate-500">
+                        📍 {shop.distance}
+                      </span>
+                    )}
+                    {Number(shop.current_due || 0) > 0 && (
+                      <span className="text-amber-600 font-bold">
+                        Due: ₹{Number(shop.current_due)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {shop.completed ? (
+                <div className="flex items-center gap-1 text-xs text-emerald-700 font-bold bg-emerald-100 px-2.5 py-1 rounded-full border border-emerald-200">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Done
+                </div>
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-md glow-green hover:scale-105 transition">
+                  <ArrowRight className="w-5 h-5" />
+                </div>
+              )}
+            </div>
+          ))
+        )}
       </div>
 
     </div>
