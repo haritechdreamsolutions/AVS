@@ -42,7 +42,6 @@ export async function runAutoMigrations() {
         description VARCHAR(255)
       );
     `, [], 'create roles');
-
     await safeQuery(client, 'ALTER TABLE roles ADD COLUMN IF NOT EXISTS description VARCHAR(255);', [], 'roles.description');
     
     await safeQuery(client, `
@@ -71,8 +70,10 @@ export async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create employees');
+    await safeQuery(client, 'ALTER TABLE employees ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'employees.company_id');
     await safeQuery(client, 'ALTER TABLE employees ADD COLUMN IF NOT EXISTS route_id INTEGER;', [], 'employees.route_id');
     await safeQuery(client, 'ALTER TABLE employees ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'employees.is_active');
+    await safeQuery(client, 'ALTER TABLE employees ADD COLUMN IF NOT EXISTS vehicle_number VARCHAR(30);', [], 'employees.vehicle_number');
 
     // 4. User Accounts Table
     await safeQuery(client, `
@@ -93,6 +94,7 @@ export async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create user_accounts');
+    await safeQuery(client, 'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'user_accounts.company_id');
     await safeQuery(client, 'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS failed_attempts INTEGER NOT NULL DEFAULT 0;', [], 'user_accounts.failed_attempts');
     await safeQuery(client, 'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;', [], 'user_accounts.locked_until');
     await safeQuery(client, 'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;', [], 'user_accounts.last_login_at');
@@ -109,6 +111,8 @@ export async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create routes');
+    await safeQuery(client, 'ALTER TABLE routes ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'routes.company_id');
+    await safeQuery(client, 'ALTER TABLE routes ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'routes.is_active');
 
     // 6. Villages Table
     await safeQuery(client, `
@@ -122,11 +126,16 @@ export async function runAutoMigrations() {
         state VARCHAR(100) DEFAULT 'Tamil Nadu',
         pincode VARCHAR(10),
         route_id INTEGER,
+        status VARCHAR(30) DEFAULT 'ACTIVE',
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create villages');
+    await safeQuery(client, 'ALTER TABLE villages ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'villages.company_id');
+    await safeQuery(client, "ALTER TABLE villages ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'ACTIVE';", [], 'villages.status');
+    await safeQuery(client, 'ALTER TABLE villages ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'villages.is_active');
+    await safeQuery(client, 'ALTER TABLE villages ADD COLUMN IF NOT EXISTS route_id INTEGER;', [], 'villages.route_id');
 
     // 7. Route Assignments Table
     await safeQuery(client, `
@@ -157,7 +166,9 @@ export async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create categories');
+    await safeQuery(client, 'ALTER TABLE categories ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'categories.company_id');
     await safeQuery(client, "ALTER TABLE categories ADD COLUMN IF NOT EXISTS operational_unit VARCHAR(50) DEFAULT 'Piece';", [], 'categories.operational_unit');
+    await safeQuery(client, 'ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'categories.is_active');
 
     // Ensure default categories
     await safeQuery(client, `
@@ -195,6 +206,19 @@ export async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create products');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id INTEGER;', [], 'products.category_id');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'products.company_id');
+    await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS base_unit VARCHAR(20) DEFAULT 'Piece';", [], 'products.base_unit');
+    await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_unit VARCHAR(20) DEFAULT 'Tray';", [], 'products.selling_unit');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS pieces_per_unit INTEGER NOT NULL DEFAULT 1;', [], 'products.pieces_per_unit');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS purchase_price NUMERIC(10,2) NOT NULL DEFAULT 0.00;', [], 'products.purchase_price');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS unit_selling_price NUMERIC(10,2) NOT NULL DEFAULT 0.00;', [], 'products.unit_selling_price');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS piece_selling_price NUMERIC(10,2) NOT NULL DEFAULT 0.00;', [], 'products.piece_selling_price');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS warehouse_stock_units NUMERIC(12,4) NOT NULL DEFAULT 0;', [], 'products.warehouse_stock_units');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS min_stock_level INTEGER NOT NULL DEFAULT 0;', [], 'products.min_stock_level');
+    await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS icon VARCHAR(10) DEFAULT '🥛';", [], 'products.icon');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url TEXT;', [], 'products.image_url');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'products.is_active');
 
     // 10. Shops Table
     await safeQuery(client, `
@@ -221,8 +245,10 @@ export async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create shops');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'shops.company_id');
     await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS village_id INTEGER;', [], 'shops.village_id');
     await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS village VARCHAR(150);', [], 'shops.village');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'shops.is_active');
 
     // 11. Employee Stock Table
     await safeQuery(client, `
@@ -236,6 +262,7 @@ export async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create employee_stock');
+    await safeQuery(client, 'ALTER TABLE employee_stock ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'employee_stock.company_id');
 
     // 12. Driver Sessions Table
     await safeQuery(client, `
@@ -260,6 +287,7 @@ export async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create driver_sessions');
+    await safeQuery(client, 'ALTER TABLE driver_sessions ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'driver_sessions.company_id');
 
     // 13. Sales & Sale Items Table
     await safeQuery(client, `
@@ -283,6 +311,7 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create sales');
+    await safeQuery(client, 'ALTER TABLE sales ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'sales.company_id');
     await safeQuery(client, 'ALTER TABLE sales ADD COLUMN IF NOT EXISTS session_id INTEGER;', [], 'sales.session_id');
     await safeQuery(client, 'ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_date DATE NOT NULL DEFAULT CURRENT_DATE;', [], 'sales.sale_date');
     await safeQuery(client, 'ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_time VARCHAR(30);', [], 'sales.sale_time');
@@ -327,6 +356,7 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create damages');
+    await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'damages.company_id');
     await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS session_id INTEGER;', [], 'damages.session_id');
     await safeQuery(client, "ALTER TABLE damages ADD COLUMN IF NOT EXISTS unit VARCHAR(20) DEFAULT 'Piece';", [], 'damages.unit');
     await safeQuery(client, "ALTER TABLE damages ADD COLUMN IF NOT EXISTS damage_unit VARCHAR(20) DEFAULT 'Piece';", [], 'damages.damage_unit');
@@ -351,6 +381,7 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create expenses');
+    await safeQuery(client, 'ALTER TABLE expenses ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'expenses.company_id');
     await safeQuery(client, 'ALTER TABLE expenses ADD COLUMN IF NOT EXISTS session_id INTEGER;', [], 'expenses.session_id');
     await safeQuery(client, 'ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_date DATE NOT NULL DEFAULT CURRENT_DATE;', [], 'expenses.expense_date');
 
@@ -370,6 +401,7 @@ export async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create driver_returns');
+    await safeQuery(client, 'ALTER TABLE driver_returns ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'driver_returns.company_id');
 
     // 17. Stock Transactions Table
     await safeQuery(client, `
@@ -390,6 +422,7 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create stock_transactions');
+    await safeQuery(client, 'ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'stock_transactions.company_id');
 
     // 18. Inventory Movements Table
     await safeQuery(client, `
@@ -410,6 +443,7 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create inventory_movements');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'inventory_movements.company_id');
 
     // 19. Settlements & Audit Logs
     await safeQuery(client, `
@@ -428,6 +462,7 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create settlements');
+    await safeQuery(client, 'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'settlements.company_id');
 
     await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS audit_logs (
