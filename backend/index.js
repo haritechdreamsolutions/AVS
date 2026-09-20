@@ -3,6 +3,7 @@ import express from 'express';
 import session from 'express-session';
 import pgSession from 'connect-pg-simple';
 import { pool } from './database/pg_pool.js';
+import { runAutoMigrations } from './database/auto_migrate.js';
 import routes from './routes.js';
 
 const app = express();
@@ -21,14 +22,18 @@ app.set('trust proxy', 1);
 const allowedOrigins = [
   'https://avsdistributor.netlify.app',
   'http://localhost:5173',
+  'http://localhost:4000',
+  'http://localhost:3000',
 ];
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  // Only allow known frontend origins.
-  if (origin && allowedOrigins.includes(origin)) {
+  if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.netlify.app') || origin.includes('localhost'))) {
     res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else if (!origin) {
+    res.setHeader('Access-Control-Allow-Origin', 'https://avsdistributor.netlify.app');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
 
@@ -42,7 +47,6 @@ app.use((req, res, next) => {
     'Content-Type, Authorization, X-Requested-With, Accept, Origin'
   );
 
-  // Tell browsers/proxies that CORS response can vary by Origin.
   res.setHeader('Vary', 'Origin');
 
   // Handle browser CORS preflight requests.
@@ -60,7 +64,7 @@ app.use((req, res, next) => {
 app.use(express.json());
 
 // ============================================================
-// SESSION STORE
+// SESSION STORE & CONFIGURATION
 // ============================================================
 
 const PgStore = pgSession(session);
@@ -71,36 +75,19 @@ const sessionStore = new PgStore({
   createTableIfMissing: true,
 });
 
-// ============================================================
-// SESSION CONFIGURATION
-// ============================================================
+const isProd = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
 
 app.use(
   session({
     name: 'avs_session',
-
-    secret:
-      process.env.SESSION_SECRET ||
-      'avs_agencies_secret',
-
+    secret: process.env.SESSION_SECRET || 'avs_agencies_secret',
     store: sessionStore,
-
     resave: false,
-
     saveUninitialized: false,
-
     cookie: {
-      // Render production uses HTTPS.
-      secure: process.env.NODE_ENV === 'production',
-
-      // Required for cross-site Netlify → Render requests.
-      sameSite:
-        process.env.NODE_ENV === 'production'
-          ? 'none'
-          : 'lax',
-
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       httpOnly: true,
-
       maxAge: 1000 * 60 * 60 * 24,
     },
   })
@@ -133,9 +120,7 @@ app.get(['/health', '/api/health'], async (req, res) => {
       });
     }
 
-    throw new Error(
-      'Database check returned unexpected result'
-    );
+    throw new Error('Database check returned unexpected result');
   } catch (err) {
     return res.status(503).json({
       status: 'degraded',
@@ -147,18 +132,22 @@ app.get(['/health', '/api/health'], async (req, res) => {
 });
 
 // ============================================================
-// SERVER
+// SERVER START WITH AUTO-MIGRATIONS
 // ============================================================
 
 const host = '0.0.0.0';
 
-app.listen(PORT, host, () => {
-  console.log(
-    `[server] AVS AGENCIES backend running on port ${PORT}`
-  );
+async function startServer() {
+  try {
+    await runAutoMigrations();
+  } catch (err) {
+    console.error('[server] Auto-migration error on startup:', err);
+  }
 
-  console.log(
-    '[server] Allowed CORS origins:',
-    allowedOrigins
-  );
-});
+  app.listen(PORT, host, () => {
+    console.log(`[server] AVS AGENCIES backend running on port ${PORT}`);
+    console.log('[server] Allowed CORS origins:', allowedOrigins);
+  });
+}
+
+startServer();

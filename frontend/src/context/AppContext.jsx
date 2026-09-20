@@ -47,14 +47,21 @@ export const AppProvider = ({ children }) => {
       const res = await apiFetch(`${API_URL}/auth/me`);
       if (res.ok) {
         const data = await res.json();
-        setCurrentUser(data.user);
-        setActiveRole(data.user.role);
+        if (data.success && data.user) {
+          setCurrentUser(data.user);
+          setActiveRole(data.user.role);
+        } else {
+          setCurrentUser(null);
+          setActiveRole(null);
+        }
       } else {
         setCurrentUser(null);
         setActiveRole(null);
       }
     } catch (err) {
       console.error("Session check failed", err);
+      setCurrentUser(null);
+      setActiveRole(null);
     } finally {
       setIsAuthChecking(false);
     }
@@ -65,23 +72,28 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   const fetchData = async () => {
+    if (!currentUser) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const stockEmpId = currentUser?.employee_id || currentUser?.id;
       const [shopsRes, villagesRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes, empRes, driversRes] = await Promise.all([
-        apiFetch(`${API_URL}/shops`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API_URL}/villages`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API_URL}/products`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API_URL}/categories`).then(r => r.json()).catch(() => []),
-        apiFetch(stockEmpId ? `${API_URL}/employee-stock/${stockEmpId}` : `${API_URL}/employee-stock`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API_URL}/dashboard/summary`).then(r => r.json()).catch(() => null),
-        apiFetch(`${API_URL}/sales`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API_URL}/expenses`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API_URL}/inventory/movements`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API_URL}/users`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API_URL}/routes`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API_URL}/employees`).then(r => r.json()).catch(() => []),
-        apiFetch(`${API_URL}/drivers`).then(r => r.json()).catch(() => [])
+        apiFetch(`${API_URL}/shops`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/villages`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/products`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/categories`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(stockEmpId ? `${API_URL}/employee-stock/${stockEmpId}` : `${API_URL}/employee-stock`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/dashboard/summary`).then(r => r.ok ? r.json() : null).catch(() => null),
+        apiFetch(`${API_URL}/sales`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/expenses`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/inventory/movements`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/users`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/routes`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/employees`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/drivers`).then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
 
       setShops(Array.isArray(shopsRes) ? shopsRes : []);
@@ -105,7 +117,9 @@ export const AppProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    fetchData();
+    if (currentUser) {
+      fetchData();
+    }
   }, [currentUser, activeRole]);
 
   const loginUser = async (login_id, pin) => {
