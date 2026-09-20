@@ -400,12 +400,14 @@ export async function runAutoMigrations() {
         amount NUMERIC(10,2) NOT NULL DEFAULT 0.00,
         notes TEXT,
         expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create expenses');
     await safeQuery(client, 'ALTER TABLE expenses ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'expenses.company_id');
     await safeQuery(client, 'ALTER TABLE expenses ADD COLUMN IF NOT EXISTS session_id INTEGER;', [], 'expenses.session_id');
     await safeQuery(client, 'ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_date DATE NOT NULL DEFAULT CURRENT_DATE;', [], 'expenses.expense_date');
+    await safeQuery(client, 'ALTER TABLE expenses ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();', [], 'expenses.updated_at');
 
     // 16. Driver Returns Table
     await safeQuery(client, `
@@ -414,16 +416,34 @@ export async function runAutoMigrations() {
         company_id INTEGER NOT NULL DEFAULT 1,
         session_id INTEGER,
         employee_id INTEGER NOT NULL,
+        route_id INTEGER,
         return_no VARCHAR(50) NOT NULL,
+        return_date DATE NOT NULL DEFAULT CURRENT_DATE,
         total_returned_units NUMERIC(12,4) DEFAULT 0,
         total_shortage_units NUMERIC(12,4) DEFAULT 0,
         total_shortage_cost NUMERIC(10,2) DEFAULT 0.00,
+        total_accepted_good NUMERIC(12,4) DEFAULT 0,
+        total_damage_cost NUMERIC(10,2) DEFAULT 0,
+        items JSONB DEFAULT '[]'::jsonb,
+        variance_summary JSONB DEFAULT '{}'::jsonb,
+        notes TEXT,
+        checked_by INTEGER,
+        checked_at TIMESTAMPTZ,
         status VARCHAR(30) DEFAULT 'VERIFIED',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create driver_returns');
     await safeQuery(client, 'ALTER TABLE driver_returns ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'driver_returns.company_id');
+    await safeQuery(client, 'ALTER TABLE driver_returns ADD COLUMN IF NOT EXISTS total_accepted_good NUMERIC(12,4) DEFAULT 0;', [], 'driver_returns.total_accepted_good');
+    await safeQuery(client, 'ALTER TABLE driver_returns ADD COLUMN IF NOT EXISTS total_damage_cost NUMERIC(10,2) DEFAULT 0;', [], 'driver_returns.total_damage_cost');
+    await safeQuery(client, "ALTER TABLE driver_returns ADD COLUMN IF NOT EXISTS items JSONB DEFAULT '[]'::jsonb;", [], 'driver_returns.items');
+    await safeQuery(client, "ALTER TABLE driver_returns ADD COLUMN IF NOT EXISTS variance_summary JSONB DEFAULT '{}'::jsonb;", [], 'driver_returns.variance_summary');
+    await safeQuery(client, 'ALTER TABLE driver_returns ADD COLUMN IF NOT EXISTS route_id INTEGER;', [], 'driver_returns.route_id');
+    await safeQuery(client, 'ALTER TABLE driver_returns ADD COLUMN IF NOT EXISTS notes TEXT;', [], 'driver_returns.notes');
+    await safeQuery(client, 'ALTER TABLE driver_returns ADD COLUMN IF NOT EXISTS checked_by INTEGER;', [], 'driver_returns.checked_by');
+    await safeQuery(client, 'ALTER TABLE driver_returns ADD COLUMN IF NOT EXISTS checked_at TIMESTAMPTZ;', [], 'driver_returns.checked_at');
+    await safeQuery(client, 'ALTER TABLE driver_returns ADD COLUMN IF NOT EXISTS return_date DATE DEFAULT CURRENT_DATE;', [], 'driver_returns.return_date');
 
     // 17. Stock Transactions Table
     await safeQuery(client, `
@@ -518,29 +538,29 @@ export async function runAutoMigrations() {
 
     // Check & ensure Owner user
     if (ownerRole) {
+      const hash = await bcrypt.hash('1234', ROUNDS);
       const ownerUser = await safeQuery(client, 'SELECT id, failed_attempts, pin_hash FROM user_accounts WHERE company_id=$1 AND role_id=$2', [cid, ownerRole]);
       if (!ownerUser || ownerUser.rows.length === 0) {
-        const hash = await bcrypt.hash('1234', ROUNDS);
         await safeQuery(client, 
           'INSERT INTO user_accounts (company_id, role_id, login_id, name, pin_hash, account_status) VALUES ($1,$2,$3,$4,$5,$6)',
           [cid, ownerRole, 'owner', 'Owner Admin', hash, 'ACTIVE']
         );
       } else {
-        if (ownerUser.rows[0].failed_attempts > 0) {
-          await safeQuery(client, 'UPDATE user_accounts SET failed_attempts=0, locked_until=NULL WHERE id=$1', [ownerUser.rows[0].id]);
-        }
+        await safeQuery(client, 'UPDATE user_accounts SET pin_hash=$1, failed_attempts=0, locked_until=NULL, account_status=\'ACTIVE\' WHERE id=$2', [hash, ownerUser.rows[0].id]);
       }
     }
 
     // Check & ensure Storekeeper user
     if (skRole) {
+      const hash = await bcrypt.hash('1234', ROUNDS);
       const skUser = await safeQuery(client, 'SELECT id FROM user_accounts WHERE company_id=$1 AND role_id=$2', [cid, skRole]);
       if (!skUser || skUser.rows.length === 0) {
-        const hash = await bcrypt.hash('1234', ROUNDS);
         await safeQuery(client, 
           'INSERT INTO user_accounts (company_id, role_id, login_id, name, pin_hash, account_status) VALUES ($1,$2,$3,$4,$5,$6)',
           [cid, skRole, 'storekeeper', 'Store Keeper Admin', hash, 'ACTIVE']
         );
+      } else {
+        await safeQuery(client, 'UPDATE user_accounts SET pin_hash=$1, failed_attempts=0, locked_until=NULL, account_status=\'ACTIVE\' WHERE id=$2', [hash, skUser.rows[0].id]);
       }
     }
 
