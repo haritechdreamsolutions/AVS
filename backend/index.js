@@ -29,12 +29,11 @@ const allowedOrigins = [
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.netlify.app') || origin.includes('localhost'))) {
+  if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.netlify.app') || origin.endsWith('.vercel.app') || origin.includes('localhost'))) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   } else if (!origin) {
-    res.setHeader('Access-Control-Allow-Origin', 'https://avsdistributor.netlify.app');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Origin', '*');
   }
 
   res.setHeader(
