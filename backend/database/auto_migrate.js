@@ -3,15 +3,22 @@ import { pool } from './pg_pool.js';
 
 const ROUNDS = 10;
 
+async function safeQuery(client, sql, params = [], label = '') {
+  try {
+    return await client.query(sql, params);
+  } catch (e) {
+    console.warn(`[auto_migrate] Notice on ${label || 'statement'}:`, e.message);
+    return null;
+  }
+}
+
 export async function runAutoMigrations() {
   console.log('[auto_migrate] Checking and migrating database schema...');
   const client = await pool.connect();
 
   try {
-    await client.query('BEGIN');
-
     // 1. Companies Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS companies (
         id SERIAL PRIMARY KEY,
         name VARCHAR(150) NOT NULL,
@@ -25,27 +32,29 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create companies');
 
     // 2. Roles Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS roles (
         id SERIAL PRIMARY KEY,
         role_name VARCHAR(50) NOT NULL UNIQUE,
         description VARCHAR(255)
       );
-    `);
+    `, [], 'create roles');
 
-    await client.query(`
-      INSERT INTO roles (role_name, description) VALUES
-        ('OWNER', 'Full access - company owner'),
-        ('STORE_KEEPER', 'Warehouse and inventory management'),
-        ('EMPLOYEE', 'Driver/field sales employee')
+    await safeQuery(client, 'ALTER TABLE roles ADD COLUMN IF NOT EXISTS description VARCHAR(255);', [], 'roles.description');
+    
+    await safeQuery(client, `
+      INSERT INTO roles (role_name) VALUES
+        ('OWNER'),
+        ('STORE_KEEPER'),
+        ('EMPLOYEE')
       ON CONFLICT (role_name) DO NOTHING;
-    `);
+    `, [], 'seed roles');
 
     // 3. Employees Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS employees (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -61,12 +70,12 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
-    await client.query('ALTER TABLE employees ADD COLUMN IF NOT EXISTS route_id INTEGER;');
-    await client.query('ALTER TABLE employees ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;');
+    `, [], 'create employees');
+    await safeQuery(client, 'ALTER TABLE employees ADD COLUMN IF NOT EXISTS route_id INTEGER;', [], 'employees.route_id');
+    await safeQuery(client, 'ALTER TABLE employees ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'employees.is_active');
 
     // 4. User Accounts Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS user_accounts (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -83,10 +92,13 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create user_accounts');
+    await safeQuery(client, 'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS failed_attempts INTEGER NOT NULL DEFAULT 0;', [], 'user_accounts.failed_attempts');
+    await safeQuery(client, 'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;', [], 'user_accounts.locked_until');
+    await safeQuery(client, 'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;', [], 'user_accounts.last_login_at');
 
     // 5. Routes Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS routes (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -96,10 +108,10 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create routes');
 
     // 6. Villages Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS villages (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -114,10 +126,10 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create villages');
 
     // 7. Route Assignments Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS route_assignments (
         id SERIAL PRIMARY KEY,
         route_id INTEGER NOT NULL,
@@ -129,10 +141,10 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create route_assignments');
 
     // 8. Categories Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS categories (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -144,11 +156,11 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
-    await client.query("ALTER TABLE categories ADD COLUMN IF NOT EXISTS operational_unit VARCHAR(50) DEFAULT 'Piece';");
+    `, [], 'create categories');
+    await safeQuery(client, "ALTER TABLE categories ADD COLUMN IF NOT EXISTS operational_unit VARCHAR(50) DEFAULT 'Piece';", [], 'categories.operational_unit');
 
     // Ensure default categories
-    await client.query(`
+    await safeQuery(client, `
       INSERT INTO categories (company_id, code, name, operational_unit, is_active)
       VALUES 
         (1, 'CAT-MILK', 'Milk', 'Piece', TRUE),
@@ -156,10 +168,10 @@ export async function runAutoMigrations() {
         (1, 'CAT-BOX', 'Box', 'Box', TRUE),
         (1, 'CAT-CASE', 'Case', 'Case', TRUE)
       ON CONFLICT DO NOTHING;
-    `);
+    `, [], 'seed categories');
 
     // 9. Products Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS products (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -182,10 +194,10 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create products');
 
     // 10. Shops Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS shops (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -208,12 +220,12 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
-    await client.query('ALTER TABLE shops ADD COLUMN IF NOT EXISTS village_id INTEGER;');
-    await client.query('ALTER TABLE shops ADD COLUMN IF NOT EXISTS village VARCHAR(150);');
+    `, [], 'create shops');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS village_id INTEGER;', [], 'shops.village_id');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS village VARCHAR(150);', [], 'shops.village');
 
     // 11. Employee Stock Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS employee_stock (
         id SERIAL PRIMARY KEY,
         employee_id INTEGER NOT NULL,
@@ -223,10 +235,10 @@ export async function runAutoMigrations() {
         unit VARCHAR(20) DEFAULT 'Tray',
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create employee_stock');
 
     // 12. Driver Sessions Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS driver_sessions (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -247,10 +259,10 @@ export async function runAutoMigrations() {
         closed_at TIMESTAMPTZ,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create driver_sessions');
 
     // 13. Sales & Sale Items Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS sales (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -270,16 +282,16 @@ export async function runAutoMigrations() {
         status VARCHAR(20) DEFAULT 'ACTIVE',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
-    await client.query('ALTER TABLE sales ADD COLUMN IF NOT EXISTS session_id INTEGER;');
-    await client.query('ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_date DATE NOT NULL DEFAULT CURRENT_DATE;');
-    await client.query('ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_time VARCHAR(30);');
-    await client.query('ALTER TABLE sales ADD COLUMN IF NOT EXISTS cash_paid NUMERIC(10,2) NOT NULL DEFAULT 0.00;');
-    await client.query('ALTER TABLE sales ADD COLUMN IF NOT EXISTS gpay_paid NUMERIC(10,2) NOT NULL DEFAULT 0.00;');
-    await client.query('ALTER TABLE sales ADD COLUMN IF NOT EXISTS credit_paid NUMERIC(10,2) NOT NULL DEFAULT 0.00;');
-    await client.query("ALTER TABLE sales ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ACTIVE';");
+    `, [], 'create sales');
+    await safeQuery(client, 'ALTER TABLE sales ADD COLUMN IF NOT EXISTS session_id INTEGER;', [], 'sales.session_id');
+    await safeQuery(client, 'ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_date DATE NOT NULL DEFAULT CURRENT_DATE;', [], 'sales.sale_date');
+    await safeQuery(client, 'ALTER TABLE sales ADD COLUMN IF NOT EXISTS sale_time VARCHAR(30);', [], 'sales.sale_time');
+    await safeQuery(client, 'ALTER TABLE sales ADD COLUMN IF NOT EXISTS cash_paid NUMERIC(10,2) NOT NULL DEFAULT 0.00;', [], 'sales.cash_paid');
+    await safeQuery(client, 'ALTER TABLE sales ADD COLUMN IF NOT EXISTS gpay_paid NUMERIC(10,2) NOT NULL DEFAULT 0.00;', [], 'sales.gpay_paid');
+    await safeQuery(client, 'ALTER TABLE sales ADD COLUMN IF NOT EXISTS credit_paid NUMERIC(10,2) NOT NULL DEFAULT 0.00;', [], 'sales.credit_paid');
+    await safeQuery(client, "ALTER TABLE sales ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ACTIVE';", [], 'sales.status');
 
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS sale_items (
         id SERIAL PRIMARY KEY,
         sale_id INTEGER NOT NULL,
@@ -290,10 +302,10 @@ export async function runAutoMigrations() {
         rate NUMERIC(10,2) NOT NULL,
         amount NUMERIC(10,2) NOT NULL
       );
-    `);
+    `, [], 'create sale_items');
 
     // 14. Damages Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS damages (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -314,18 +326,18 @@ export async function runAutoMigrations() {
         verified_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
-    await client.query('ALTER TABLE damages ADD COLUMN IF NOT EXISTS session_id INTEGER;');
-    await client.query("ALTER TABLE damages ADD COLUMN IF NOT EXISTS unit VARCHAR(20) DEFAULT 'Piece';");
-    await client.query("ALTER TABLE damages ADD COLUMN IF NOT EXISTS damage_unit VARCHAR(20) DEFAULT 'Piece';");
-    await client.query('ALTER TABLE damages ADD COLUMN IF NOT EXISTS base_quantity NUMERIC(12,4) DEFAULT 0;');
-    await client.query('ALTER TABLE damages ADD COLUMN IF NOT EXISTS notes TEXT;');
-    await client.query("ALTER TABLE damages ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'VERIFIED';");
-    await client.query('ALTER TABLE damages ADD COLUMN IF NOT EXISTS verified_by INTEGER;');
-    await client.query('ALTER TABLE damages ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;');
+    `, [], 'create damages');
+    await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS session_id INTEGER;', [], 'damages.session_id');
+    await safeQuery(client, "ALTER TABLE damages ADD COLUMN IF NOT EXISTS unit VARCHAR(20) DEFAULT 'Piece';", [], 'damages.unit');
+    await safeQuery(client, "ALTER TABLE damages ADD COLUMN IF NOT EXISTS damage_unit VARCHAR(20) DEFAULT 'Piece';", [], 'damages.damage_unit');
+    await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS base_quantity NUMERIC(12,4) DEFAULT 0;', [], 'damages.base_quantity');
+    await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS notes TEXT;', [], 'damages.notes');
+    await safeQuery(client, "ALTER TABLE damages ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'VERIFIED';", [], 'damages.status');
+    await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS verified_by INTEGER;', [], 'damages.verified_by');
+    await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;', [], 'damages.verified_at');
 
     // 15. Expenses Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS expenses (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -338,12 +350,12 @@ export async function runAutoMigrations() {
         expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
-    await client.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS session_id INTEGER;');
-    await client.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_date DATE NOT NULL DEFAULT CURRENT_DATE;');
+    `, [], 'create expenses');
+    await safeQuery(client, 'ALTER TABLE expenses ADD COLUMN IF NOT EXISTS session_id INTEGER;', [], 'expenses.session_id');
+    await safeQuery(client, 'ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_date DATE NOT NULL DEFAULT CURRENT_DATE;', [], 'expenses.expense_date');
 
     // 16. Driver Returns Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS driver_returns (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -357,10 +369,10 @@ export async function runAutoMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create driver_returns');
 
     // 17. Stock Transactions Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS stock_transactions (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -377,10 +389,10 @@ export async function runAutoMigrations() {
         created_by INTEGER,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create stock_transactions');
 
     // 18. Inventory Movements Table
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS inventory_movements (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -397,10 +409,10 @@ export async function runAutoMigrations() {
         movement_time VARCHAR(30),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create inventory_movements');
 
     // 19. Settlements & Audit Logs
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS settlements (
         id SERIAL PRIMARY KEY,
         company_id INTEGER NOT NULL DEFAULT 1,
@@ -415,9 +427,9 @@ export async function runAutoMigrations() {
         status VARCHAR(30) DEFAULT 'BALANCED',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create settlements');
 
-    await client.query(`
+    await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS audit_logs (
         id BIGSERIAL PRIMARY KEY,
         company_id INTEGER,
@@ -429,55 +441,54 @@ export async function runAutoMigrations() {
         ip_address VARCHAR(45),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-    `);
+    `, [], 'create audit_logs');
 
     // 20. Ensure Company, Roles & Users
-    let cR = await client.query('SELECT id FROM companies LIMIT 1');
+    let cR = await safeQuery(client, 'SELECT id FROM companies LIMIT 1');
     let cid = 1;
-    if (cR.rows.length === 0) {
-      const ins = await client.query("INSERT INTO companies (name, subtitle, is_active) VALUES ('AVS AGENCIES', 'Distribution Management System', TRUE) RETURNING id");
-      cid = ins.rows[0].id;
+    if (!cR || cR.rows.length === 0) {
+      const ins = await safeQuery(client, "INSERT INTO companies (name, subtitle, is_active) VALUES ('AVS AGENCIES', 'Distribution Management System', TRUE) RETURNING id");
+      cid = ins?.rows[0]?.id || 1;
     } else {
       cid = cR.rows[0].id;
     }
 
-    const ownerRole = (await client.query("SELECT id FROM roles WHERE role_name='OWNER'")).rows[0]?.id;
-    const skRole = (await client.query("SELECT id FROM roles WHERE role_name='STORE_KEEPER'")).rows[0]?.id;
-    const empRole = (await client.query("SELECT id FROM roles WHERE role_name='EMPLOYEE'")).rows[0]?.id;
+    const ownerRoleRes = await safeQuery(client, "SELECT id FROM roles WHERE role_name='OWNER'");
+    const skRoleRes = await safeQuery(client, "SELECT id FROM roles WHERE role_name='STORE_KEEPER'");
 
-    // Check & ensure Owner user (Reset owner pin if failed attempts or missing)
+    const ownerRole = ownerRoleRes?.rows[0]?.id;
+    const skRole = skRoleRes?.rows[0]?.id;
+
+    // Check & ensure Owner user
     if (ownerRole) {
-      const ownerUser = await client.query('SELECT id, failed_attempts, pin_hash FROM user_accounts WHERE company_id=$1 AND role_id=$2', [cid, ownerRole]);
-      if (ownerUser.rows.length === 0) {
+      const ownerUser = await safeQuery(client, 'SELECT id, failed_attempts, pin_hash FROM user_accounts WHERE company_id=$1 AND role_id=$2', [cid, ownerRole]);
+      if (!ownerUser || ownerUser.rows.length === 0) {
         const hash = await bcrypt.hash('1234', ROUNDS);
-        await client.query(
+        await safeQuery(client, 
           'INSERT INTO user_accounts (company_id, role_id, login_id, name, pin_hash, account_status) VALUES ($1,$2,$3,$4,$5,$6)',
           [cid, ownerRole, 'owner', 'Owner Admin', hash, 'ACTIVE']
         );
       } else {
-        // Unlock and ensure valid hash for default pin 1234 if locked or failed
         if (ownerUser.rows[0].failed_attempts > 0) {
-          await client.query('UPDATE user_accounts SET failed_attempts=0, locked_until=NULL WHERE id=$1', [ownerUser.rows[0].id]);
+          await safeQuery(client, 'UPDATE user_accounts SET failed_attempts=0, locked_until=NULL WHERE id=$1', [ownerUser.rows[0].id]);
         }
       }
     }
 
     // Check & ensure Storekeeper user
     if (skRole) {
-      const skUser = await client.query('SELECT id FROM user_accounts WHERE company_id=$1 AND role_id=$2', [cid, skRole]);
-      if (skUser.rows.length === 0) {
+      const skUser = await safeQuery(client, 'SELECT id FROM user_accounts WHERE company_id=$1 AND role_id=$2', [cid, skRole]);
+      if (!skUser || skUser.rows.length === 0) {
         const hash = await bcrypt.hash('1234', ROUNDS);
-        await client.query(
+        await safeQuery(client, 
           'INSERT INTO user_accounts (company_id, role_id, login_id, name, pin_hash, account_status) VALUES ($1,$2,$3,$4,$5,$6)',
           [cid, skRole, 'storekeeper', 'Store Keeper Admin', hash, 'ACTIVE']
         );
       }
     }
 
-    await client.query('COMMIT');
     console.log('[auto_migrate] ✅ Database auto-migration completed successfully!');
   } catch (err) {
-    await client.query('ROLLBACK');
     console.error('[auto_migrate] ❌ Database migration error:', err);
   } finally {
     client.release();
