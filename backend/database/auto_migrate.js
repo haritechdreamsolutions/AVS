@@ -522,6 +522,40 @@ export async function runAutoMigrations() {
       );
     `, [], 'create audit_logs');
 
+    // 19.5 Notifications Table
+    await safeQuery(client, `
+      CREATE TABLE IF NOT EXISTS notifications (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER NOT NULL DEFAULT 1,
+        recipient_user_id INTEGER,
+        recipient_role VARCHAR(50) DEFAULT 'ALL',
+        notification_type VARCHAR(50) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        reference_type VARCHAR(50),
+        reference_id VARCHAR(100),
+        is_read BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `, [], 'create notifications');
+
+    // 19.6 Product Price History Table
+    await safeQuery(client, `
+      CREATE TABLE IF NOT EXISTS product_price_history (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER NOT NULL DEFAULT 1,
+        product_id INTEGER NOT NULL,
+        purchase_price NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+        buy_rate_uom VARCHAR(50) DEFAULT 'Tray',
+        unit_selling_price NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+        piece_selling_price NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+        selling_rate_uom VARCHAR(50) DEFAULT 'Tray',
+        changed_by_user_id INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `, [], 'create product_price_history');
+
     // 20. Ensure Company, Roles & Users
     let cR = await safeQuery(client, 'SELECT id FROM companies LIMIT 1');
     let cid = 1;

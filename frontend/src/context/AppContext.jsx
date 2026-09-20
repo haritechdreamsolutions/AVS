@@ -80,6 +80,7 @@ export const AppProvider = ({ children }) => {
     try {
       setLoading(true);
       const stockEmpId = currentUser?.employee_id || currentUser?.id;
+      const isOwner = (currentUser?.role || '').toUpperCase() === 'OWNER' || (activeRole || '').toUpperCase() === 'OWNER';
       const [shopsRes, villagesRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes, empRes, driversRes] = await Promise.all([
         apiFetch(`${API_URL}/shops`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/villages`).then(r => r.ok ? r.json() : []).catch(() => []),
@@ -90,7 +91,7 @@ export const AppProvider = ({ children }) => {
         apiFetch(`${API_URL}/sales`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/expenses`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/inventory/movements`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/users`).then(r => r.ok ? r.json() : []).catch(() => []),
+        isOwner ? apiFetch(`${API_URL}/users`).then(r => r.ok ? r.json() : []).catch(() => []) : Promise.resolve([]),
         apiFetch(`${API_URL}/routes`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/employees`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/drivers`).then(r => r.ok ? r.json() : []).catch(() => [])
