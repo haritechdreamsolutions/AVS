@@ -77,7 +77,7 @@ const sessionStore = new PgStore({
 
 app.use(
   session({
-    key: 'avs_session',
+    name: 'avs_session',
 
     secret:
       process.env.SESSION_SECRET ||
