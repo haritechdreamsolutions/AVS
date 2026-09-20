@@ -600,6 +600,14 @@ export async function runAutoMigrations() {
       }
     }
 
+    // Check & ensure Employee / Driver users PIN reset to 1234
+    const empRoleRes = await safeQuery(client, "SELECT id FROM roles WHERE role_name='EMPLOYEE'");
+    const empRole = empRoleRes?.rows[0]?.id;
+    if (empRole) {
+      const hash = await bcrypt.hash('1234', ROUNDS);
+      await safeQuery(client, 'UPDATE user_accounts SET pin_hash=$1, failed_attempts=0, locked_until=NULL, account_status=\'ACTIVE\' WHERE role_id=$2', [hash, empRole]);
+    }
+
     console.log('[auto_migrate] ✅ Database auto-migration completed successfully!');
   } catch (err) {
     console.error('[auto_migrate] ❌ Database migration error:', err);
