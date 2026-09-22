@@ -2261,7 +2261,7 @@ export async function updateShop(cid, shopId, d) {
       village_id = CASE WHEN $7::boolean THEN $8::integer ELSE village_id END,
       route_id = CASE WHEN $7::boolean THEN $9::integer ELSE COALESCE($9, route_id) END,
       credit_limit=COALESCE($10,credit_limit),
-      has_freezer=COALESCE($11,has_freezer), freezer_model=COALESCE($12,freezer_model), updated_at=NOW() 
+      has_freezer=COALESCE($11,has_freezer), freezer_model=COALESCE($12,freezer_model)
     WHERE id=$13 AND company_id=$14 RETURNING *`,
     [
       d.name ? String(d.name).trim() : null,
@@ -2297,7 +2297,7 @@ export async function updateShop(cid, shopId, d) {
 }
 
 export async function deactivateShop(cid, shopId) {
-  const row = await queryOne('UPDATE shops SET is_active=FALSE, updated_at=NOW() WHERE id=$1 AND company_id=$2 RETURNING *', [shopId, cid]);
+  const row = await queryOne('UPDATE shops SET is_active=FALSE WHERE id=$1 AND company_id=$2 RETURNING *', [shopId, cid]);
   if(!row) throw new Error('Shop not found.');
   return {success:true, message:'Shop deactivated successfully', shop:row};
 }
@@ -2309,7 +2309,7 @@ export async function deleteShop(cid, shopId) {
 
   const salesCount = await queryOne('SELECT COUNT(*)::int as count FROM sales WHERE shop_id=$1 AND company_id=$2', [sId, cid]);
   if (salesCount && parseInt(salesCount.count, 10) > 0) {
-    await query('UPDATE shops SET is_active=FALSE, updated_at=NOW() WHERE id=$1 AND company_id=$2', [sId, cid]);
+    await query('UPDATE shops SET is_active=FALSE WHERE id=$1 AND company_id=$2', [sId, cid]);
     return { success: true, message: `Shop "${shop.name}" has transaction history and has been deactivated.`, shop };
   }
 
@@ -2318,14 +2318,14 @@ export async function deleteShop(cid, shopId) {
 }
 
 export async function assignFreezer(cid,shopId,d) {
-  const row = await queryOne('UPDATE shops SET has_freezer=TRUE,freezer_model=$1,freezer_serial=$2,freezer_date=$3,freezer_status=$4,updated_at=NOW() WHERE id=$5 AND company_id=$6 RETURNING *',[d.freezer_model||null,d.freezer_serial||null,d.freezer_date||null,d.freezer_status||'Active',shopId,cid]);
+  const row = await queryOne('UPDATE shops SET has_freezer=TRUE,freezer_model=$1,freezer_serial=$2,freezer_date=$3,freezer_status=$4 WHERE id=$5 AND company_id=$6 RETURNING *',[d.freezer_model||null,d.freezer_serial||null,d.freezer_date||null,d.freezer_status||'Active',shopId,cid]);
   if(!row) throw new Error('Shop not found.');
   return {success:true,shop:row};
 }
 
 export async function collectShopDue(cid,shopId,d) {
   const amt=Number(d.amount)||0;
-  const row = await queryOne('UPDATE shops SET current_due=GREATEST(0,current_due-$1),updated_at=NOW() WHERE id=$2 AND company_id=$3 RETURNING current_due',[amt,shopId,cid]);
+  const row = await queryOne('UPDATE shops SET current_due=GREATEST(0,current_due-$1) WHERE id=$2 AND company_id=$3 RETURNING current_due',[amt,shopId,cid]);
   if(!row) throw new Error('Shop not found.');
   return {success:true,remainingDue:Number(row.current_due)};
 }
