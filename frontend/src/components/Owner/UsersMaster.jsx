@@ -231,7 +231,8 @@ export const UsersMaster = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
+      let data = {};
+      try { data = await res.json(); } catch (e) { data = { success: false, message: `Server response error (${res.status})` }; }
       if (!res.ok || !data.success) throw new Error(data.message || 'Error updating user');
       
       setShowEditModal(false);
@@ -264,7 +265,8 @@ export const UsersMaster = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin })
       });
-      const data = await res.json();
+      let data = {};
+      try { data = await res.json(); } catch (e) { data = { success: false, message: `Server response error (${res.status})` }; }
       if (!res.ok || !data.success) throw new Error(data.message || 'Error resetting PIN');
 
       setShowPinModal(false);
@@ -288,7 +290,8 @@ export const UsersMaster = () => {
       const res = await apiFetch(API_URL + '/users/' + u.id, {
         method: 'DELETE'
       });
-      const data = await res.json();
+      let data = {};
+      try { data = await res.json(); } catch (e) { data = { success: false, message: `Server error (${res.status}). Ensure backend is deployed.` }; }
       if (res.ok && data.success) {
         showToast(data.message || `User "${u.login_id}" deleted successfully.`);
         await loadData();
