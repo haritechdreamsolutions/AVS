@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { 
   UserPlus, UserCheck, ShieldCheck, Key, Lock, Phone, Mail, 
   Truck, Briefcase, Calendar, CheckCircle2, AlertCircle, RefreshCw, 
-  Search, Filter, Plus, ArrowLeft, ArrowRight, User
+  Search, Filter, Plus, ArrowLeft, ArrowRight, User, Trash2
 } from 'lucide-react';
 
 export const UsersMaster = () => {
@@ -278,6 +278,28 @@ export const UsersMaster = () => {
     }
   };
 
+  const handleDeleteUser = async (u) => {
+    if (u.id === currentUser?.id) {
+      return showToast('Cannot delete your own account', 'error');
+    }
+    if (!window.confirm(`Are you sure you want to permanently delete user "${u.login_id}" (${u.name || u.employee_name})?`)) return;
+    
+    try {
+      const res = await apiFetch(API_URL + '/users/' + u.id, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || `User "${u.login_id}" deleted successfully.`);
+        await loadData();
+      } else {
+        showToast(data.message || 'Error deleting user', 'error');
+      }
+    } catch(err) {
+      showToast(err.message || 'Network error deleting user', 'error');
+    }
+  };
+
   const toggleStatus = async (user) => {
     if (user.id === currentUser?.id) {
       return showToast('Cannot deactivate your own account', 'error');
@@ -477,25 +499,22 @@ export const UsersMaster = () => {
                       <div className="flex items-center justify-end gap-2">
                         <button 
                           onClick={() => openEditModal(u)} 
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition"
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer"
                         >
                           Edit
                         </button>
                         <button 
                           onClick={() => { setSelectedUser(u); setPinData({pin:'', confirm:''}); setFormError(null); setShowPinModal(true); }} 
-                          className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold transition"
+                          className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold transition cursor-pointer"
                         >
                           Reset PIN
                         </button>
                         <button 
-                          onClick={() => toggleStatus(u)} 
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition ${
-                            isAct 
-                              ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200' 
-                              : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
-                          }`}
+                          onClick={() => handleDeleteUser(u)} 
+                          className="px-2.5 py-1 rounded-lg text-xs font-bold border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 transition flex items-center gap-1 cursor-pointer"
+                          title="Delete User"
                         >
-                          {isAct ? 'Deactivate' : 'Activate'}
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" /> Delete
                         </button>
                       </div>
                     </td>

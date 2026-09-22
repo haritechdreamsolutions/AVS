@@ -472,6 +472,13 @@ router.put('/users/:id', requireAuth, requireRole('OWNER'), async (req, res) => 
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
+router.delete('/users/:id', requireAuth, requireRole('OWNER'), async (req, res) => {
+  try {
+    const result = await db.deleteUser(getCid(req), req.params.id, req.session.userId);
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
 router.post('/users/:id/reset-pin', requireAuth, requireRole('OWNER'), async (req, res) => {
   try {
     const result = await db.resetUserPin(getCid(req), req.params.id, req.body.pin, req.session.userId);

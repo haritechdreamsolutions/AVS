@@ -48,7 +48,8 @@ export async function runAutoMigrations() {
       INSERT INTO roles (role_name) VALUES
         ('OWNER'),
         ('STORE_KEEPER'),
-        ('EMPLOYEE')
+        ('EMPLOYEE'),
+        ('DRIVER')
       ON CONFLICT (role_name) DO NOTHING;
     `, [], 'seed roles');
 

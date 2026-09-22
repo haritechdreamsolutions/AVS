@@ -156,7 +156,11 @@ export async function addUser(cid, d, actorUserId) {
   if (existingUser) throw new Error('This employee already has an active user account.');
   const dupLogin = await queryOne('SELECT id FROM user_accounts WHERE LOWER(login_id)=$1', [loginId]);
   if (dupLogin) throw new Error('Login ID already taken. Please choose another.');
-  const roleRow = await queryOne('SELECT id FROM roles WHERE UPPER(role_name)=UPPER($1)', [d.role]);
+  const roleInput = String(d.role || 'EMPLOYEE').trim().toUpperCase();
+  let roleRow = await queryOne('SELECT id, role_name FROM roles WHERE UPPER(role_name)=UPPER($1)', [roleInput]);
+  if (!roleRow && (roleInput === 'DRIVER' || roleInput === 'EMPLOYEE' || roleInput === 'STORE_KEEPER' || roleInput === 'OWNER')) {
+    roleRow = await queryOne('INSERT INTO roles (role_name) VALUES ($1) ON CONFLICT (role_name) DO UPDATE SET role_name=EXCLUDED.role_name RETURNING id, role_name', [roleInput]);
+  }
   if (!roleRow) throw new Error('Invalid role specified.');
 
   let targetRouteId = undefined;
@@ -185,7 +189,7 @@ export async function addUser(cid, d, actorUserId) {
     [cid,d.employee_id,roleRow.id,loginId,d.name || emp.full_name,d.phone || emp.phone,hash,'ACTIVE']
   );
   await auditLog({companyId:cid,actorUserId,action:'USER_CREATED',entityType:'user_accounts',entityId:row.id});
-  return {success:true, user:{...row, route_id: targetRouteId !== undefined ? targetRouteId : emp.route_id}};
+  return {success:true, user:{...row, role: roleRow.role_name, route_id: targetRouteId !== undefined ? targetRouteId : emp.route_id}};
 }
 
 export async function updateUser(cid, uid, d, actorUserId) {
@@ -195,7 +199,11 @@ export async function updateUser(cid, uid, d, actorUserId) {
   let roleId = existingUser.role_id;
   let roleName = existingUser.role_name;
   if (d.role) {
-    const r = await queryOne('SELECT id, role_name FROM roles WHERE UPPER(role_name)=UPPER($1)', [d.role]);
+    const roleInput = String(d.role).trim().toUpperCase();
+    let r = await queryOne('SELECT id, role_name FROM roles WHERE UPPER(role_name)=UPPER($1)', [roleInput]);
+    if (!r && (roleInput === 'DRIVER' || roleInput === 'EMPLOYEE' || roleInput === 'STORE_KEEPER' || roleInput === 'OWNER')) {
+      r = await queryOne('INSERT INTO roles (role_name) VALUES ($1) ON CONFLICT (role_name) DO UPDATE SET role_name=EXCLUDED.role_name RETURNING id, role_name', [roleInput]);
+    }
     if (r) {
       roleId = r.id;
       roleName = r.role_name;
@@ -257,6 +265,39 @@ export async function updateUser(cid, uid, d, actorUserId) {
       route_id: updatedRouteId
     }
   };
+}
+
+export async function deleteUser(cid, uid, actorUserId) {
+  const user = await queryOne('SELECT ua.*, r.role_name FROM user_accounts ua JOIN roles r ON r.id = ua.role_id WHERE ua.id=$1 AND ua.company_id=$2', [uid, cid]);
+  if (!user) throw new Error('User not found.');
+
+  if (user.role_name === 'OWNER') {
+    const ownerCount = await queryOne(
+      'SELECT COUNT(*)::int as count FROM user_accounts ua JOIN roles r ON r.id = ua.role_id WHERE r.role_name = \'OWNER\' AND ua.company_id = $1 AND ua.account_status = \'ACTIVE\'',
+      [cid]
+    );
+    if (ownerCount && parseInt(ownerCount.count, 10) <= 1) {
+      throw new Error('Cannot delete the primary/only active OWNER account.');
+    }
+  }
+
+  // Check if user has sales or stock transaction records
+  const salesCount = await queryOne('SELECT COUNT(*)::int as count FROM sales WHERE employee_id=$1', [user.employee_id || 0]);
+  if (salesCount && parseInt(salesCount.count, 10) > 0) {
+    await query('UPDATE user_accounts SET account_status=\'INACTIVE\', updated_at=NOW() WHERE id=$1 AND company_id=$2', [uid, cid]);
+    if (user.employee_id) {
+      await query('UPDATE employees SET is_active=FALSE, updated_at=NOW() WHERE id=$1 AND company_id=$2', [user.employee_id, cid]);
+    }
+    return { success: true, message: `User "${user.login_id}" has sales records and has been deactivated.`, user };
+  }
+
+  await query('DELETE FROM user_accounts WHERE id=$1 AND company_id=$2', [uid, cid]);
+  if (user.employee_id) {
+    await query('UPDATE employees SET is_active=FALSE WHERE id=$1 AND company_id=$2', [user.employee_id, cid]);
+  }
+
+  await auditLog({ companyId: cid, actorUserId, action: 'USER_DELETED', entityType: 'user_accounts', entityId: uid });
+  return { success: true, message: `User "${user.login_id}" deleted successfully.`, user };
 }
 
 export async function resetPin(cid, uid, newPin, actorUserId) {
