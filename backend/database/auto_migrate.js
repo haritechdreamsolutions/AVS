@@ -297,6 +297,8 @@ export async function runAutoMigrations() {
     await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS freezer_date VARCHAR(30);', [], 'shops.freezer_date');
     await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS freezer_status VARCHAR(30);', [], 'shops.freezer_status');
     await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'shops.is_active');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();', [], 'shops.created_at');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();', [], 'shops.updated_at');
 
     // 11. Employee Stock Table
     await safeQuery(client, `

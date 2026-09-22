@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { 
   Store, Search, Snowflake, DollarSign, MapPin, Phone, 
   User, Plus, CheckCircle2, AlertTriangle, CreditCard, ChevronRight, X, 
-  FileText, Clock, Send, ShieldAlert, ArrowUpRight, Check, Sparkles, PhoneCall, Edit3, Save,
+  FileText, Clock, Send, ShieldAlert, ArrowUpRight, Check, Sparkles, PhoneCall, Edit3, Trash2, Save,
   Receipt, Eye, Printer
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,7 +11,7 @@ import { AddShopModal } from '../common/AddShopModal';
 import { ThermalBillModal } from '../Employee/ThermalBillModal';
 
 export const ShopsManagementView = ({ onNavigateVillages }) => {
-  const { shops, setShops, villages = [], routes = [], sales = [], collectShopDue, addShop, updateShop } = useApp();
+  const { shops, setShops, villages = [], routes = [], sales = [], collectShopDue, addShop, updateShop, deleteShop } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('ALL'); // ALL, DUES, OVERDUE, FREEZER
   const [selectedVillageFilter, setSelectedVillageFilter] = useState('ALL');
@@ -98,6 +98,23 @@ export const ShopsManagementView = ({ onNavigateVillages }) => {
       toast.error("Error updating shop");
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteShop = async (shop, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const confirmMsg = `Are you sure you want to delete shop "${shop.name}" (${shop.code})?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await deleteShop(shop.id);
+      if (res?.success) {
+        toast.success(res.message || `Shop "${shop.name}" removed successfully.`);
+      } else {
+        toast.error("Failed to delete shop: " + (res?.message || "Server error"));
+      }
+    } catch (err) {
+      toast.error("Error deleting shop");
     }
   };
 
@@ -520,6 +537,14 @@ export const ShopsManagementView = ({ onNavigateVillages }) => {
                   title="Edit Shop Details & Assign Village"
                 >
                   <Edit3 className="w-3.5 h-3.5 text-indigo-600" /> Edit
+                </button>
+
+                <button
+                  onClick={(e) => handleDeleteShop(shop, e)}
+                  className="py-2.5 px-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-black text-xs flex items-center justify-center gap-1 border border-rose-200 shadow-2xs transition cursor-pointer"
+                  title="Delete or Deactivate Shop"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                 </button>
 
                 <button

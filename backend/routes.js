@@ -644,7 +644,7 @@ router.put('/shops/:id', requireAuth, requireRole('OWNER', 'STORE_KEEPER'), asyn
 
 router.delete('/shops/:id', requireAuth, requireRole('OWNER', 'STORE_KEEPER'), async (req, res) => {
   try {
-    const result = await db.deactivateShop(getCid(req), req.params.id);
+    const result = await db.deleteShop(getCid(req), req.params.id);
     res.json(result);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });

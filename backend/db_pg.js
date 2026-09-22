@@ -2302,6 +2302,21 @@ export async function deactivateShop(cid, shopId) {
   return {success:true, message:'Shop deactivated successfully', shop:row};
 }
 
+export async function deleteShop(cid, shopId) {
+  const sId = parseInt(shopId, 10);
+  const shop = await queryOne('SELECT * FROM shops WHERE id=$1 AND company_id=$2', [sId, cid]);
+  if (!shop) throw new Error('Shop not found.');
+
+  const salesCount = await queryOne('SELECT COUNT(*)::int as count FROM sales WHERE shop_id=$1 AND company_id=$2', [sId, cid]);
+  if (salesCount && parseInt(salesCount.count, 10) > 0) {
+    await query('UPDATE shops SET is_active=FALSE, updated_at=NOW() WHERE id=$1 AND company_id=$2', [sId, cid]);
+    return { success: true, message: `Shop "${shop.name}" has transaction history and has been deactivated.`, shop };
+  }
+
+  await query('DELETE FROM shops WHERE id=$1 AND company_id=$2', [sId, cid]);
+  return { success: true, message: `Shop "${shop.name}" deleted successfully.`, shop };
+}
+
 export async function assignFreezer(cid,shopId,d) {
   const row = await queryOne('UPDATE shops SET has_freezer=TRUE,freezer_model=$1,freezer_serial=$2,freezer_date=$3,freezer_status=$4,updated_at=NOW() WHERE id=$5 AND company_id=$6 RETURNING *',[d.freezer_model||null,d.freezer_serial||null,d.freezer_date||null,d.freezer_status||'Active',shopId,cid]);
   if(!row) throw new Error('Shop not found.');

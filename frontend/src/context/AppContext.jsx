@@ -275,6 +275,24 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const deleteShop = async (shopId) => {
+    try {
+      const res = await apiFetch(`${API_URL}/shops/${shopId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShops(prev => prev.filter(s => Number(s.id) !== Number(shopId)));
+        fetchData();
+        return { success: true, message: data.message };
+      } else {
+        return { success: false, message: data.message };
+      }
+    } catch (err) {
+      return { success: false, message: "Error deleting shop" };
+    }
+  };
+
   const assignFreezer = async (shopId, freezerData) => {
     try {
       const res = await apiFetch(`${API_URL}/shops/${shopId}/freezer`, {
@@ -1292,6 +1310,7 @@ export const AppProvider = ({ children }) => {
       createSale,
       addShop,
       updateShop,
+      deleteShop,
       villages,
       setVillages,
       addVillage,
