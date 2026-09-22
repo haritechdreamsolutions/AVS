@@ -136,6 +136,11 @@ export async function runAutoMigrations() {
     await safeQuery(client, "ALTER TABLE villages ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'ACTIVE';", [], 'villages.status');
     await safeQuery(client, 'ALTER TABLE villages ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'villages.is_active');
     await safeQuery(client, 'ALTER TABLE villages ADD COLUMN IF NOT EXISTS route_id INTEGER;', [], 'villages.route_id');
+    await safeQuery(client, 'ALTER TABLE villages ADD COLUMN IF NOT EXISTS code VARCHAR(50);', [], 'villages.code');
+    await safeQuery(client, 'ALTER TABLE villages ADD COLUMN IF NOT EXISTS taluk VARCHAR(100);', [], 'villages.taluk');
+    await safeQuery(client, "ALTER TABLE villages ADD COLUMN IF NOT EXISTS district VARCHAR(100) DEFAULT 'Salem';", [], 'villages.district');
+    await safeQuery(client, "ALTER TABLE villages ADD COLUMN IF NOT EXISTS state VARCHAR(100) DEFAULT 'Tamil Nadu';", [], 'villages.state');
+    await safeQuery(client, 'ALTER TABLE villages ADD COLUMN IF NOT EXISTS pincode VARCHAR(10);', [], 'villages.pincode');
 
     // 7. Route Assignments Table
     await safeQuery(client, `
@@ -151,6 +156,7 @@ export async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create route_assignments');
+    await safeQuery(client, 'CREATE UNIQUE INDEX IF NOT EXISTS uq_route_assignments_date ON route_assignments (route_id, assigned_date);', [], 'uq_route_assignments_date');
 
     // 8. Categories Table
     await safeQuery(client, `
@@ -242,6 +248,7 @@ export async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create product_uoms');
+    await safeQuery(client, 'CREATE UNIQUE INDEX IF NOT EXISTS uq_prod_uom ON product_uoms (product_id, uom);', [], 'uq_prod_uom');
 
     // 10. Shops Table
     await safeQuery(client, `
@@ -257,7 +264,10 @@ export async function runAutoMigrations() {
         phone VARCHAR(20),
         address TEXT,
         distance VARCHAR(20),
+        distance_km NUMERIC(10,2) DEFAULT 0.00,
         current_due NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+        credit_limit NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+        opening_balance NUMERIC(10,2) NOT NULL DEFAULT 0.00,
         has_freezer BOOLEAN NOT NULL DEFAULT FALSE,
         freezer_model VARCHAR(150),
         freezer_serial VARCHAR(100),
@@ -269,8 +279,23 @@ export async function runAutoMigrations() {
       );
     `, [], 'create shops');
     await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'shops.company_id');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS route_id INTEGER;', [], 'shops.route_id');
     await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS village_id INTEGER;', [], 'shops.village_id');
     await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS village VARCHAR(150);', [], 'shops.village');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS code VARCHAR(20);', [], 'shops.code');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS owner_name VARCHAR(100);', [], 'shops.owner_name');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS phone VARCHAR(20);', [], 'shops.phone');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS address TEXT;', [], 'shops.address');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS distance VARCHAR(20);', [], 'shops.distance');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS distance_km NUMERIC(10,2) DEFAULT 0.00;', [], 'shops.distance_km');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS current_due NUMERIC(10,2) NOT NULL DEFAULT 0.00;', [], 'shops.current_due');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS credit_limit NUMERIC(10,2) NOT NULL DEFAULT 0.00;', [], 'shops.credit_limit');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS opening_balance NUMERIC(10,2) NOT NULL DEFAULT 0.00;', [], 'shops.opening_balance');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS has_freezer BOOLEAN NOT NULL DEFAULT FALSE;', [], 'shops.has_freezer');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS freezer_model VARCHAR(150);', [], 'shops.freezer_model');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS freezer_serial VARCHAR(100);', [], 'shops.freezer_serial');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS freezer_date VARCHAR(30);', [], 'shops.freezer_date');
+    await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS freezer_status VARCHAR(30);', [], 'shops.freezer_status');
     await safeQuery(client, 'ALTER TABLE shops ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'shops.is_active');
 
     // 11. Employee Stock Table
@@ -286,6 +311,7 @@ export async function runAutoMigrations() {
       );
     `, [], 'create employee_stock');
     await safeQuery(client, 'ALTER TABLE employee_stock ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'employee_stock.company_id');
+    await safeQuery(client, 'CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_stock_prod ON employee_stock (employee_id, product_id);', [], 'uq_employee_stock_prod');
 
     // 12. Driver Sessions Table
     await safeQuery(client, `
