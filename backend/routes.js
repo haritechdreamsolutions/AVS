@@ -687,21 +687,21 @@ router.delete('/shops/:id/freezer', requireAuth, async (req, res) => {
 });
 
 // ====== FREEZER MODELS MASTER ======
-router.get('/freezer-models', requireAuth, async (req, res) => {
+router.get('/freezer-models', async (req, res) => {
   try {
     const models = await db.getFreezerModels(getCid(req));
     res.json(models);
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-router.post('/freezer-models', requireAuth, async (req, res) => {
+router.post('/freezer-models', async (req, res) => {
   try {
     const result = await db.createFreezerModel(getCid(req), req.body);
     res.json(result);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
-router.delete('/freezer-models/:id', requireAuth, async (req, res) => {
+router.delete('/freezer-models/:id', async (req, res) => {
   try {
     const result = await db.deleteFreezerModel(getCid(req), req.params.id);
     res.json(result);
