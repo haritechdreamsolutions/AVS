@@ -384,6 +384,14 @@ router.patch('/products/:id/status', requireAuth, requireRole('OWNER'), async (r
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
+router.delete('/products/:id', requireAuth, requireRole('OWNER'), async (req, res) => {
+  try {
+    const result = await db.deleteProduct(getCid(req), req.params.id);
+    await db.auditLog({ companyId: getCid(req), actorUserId: req.session.userId, action: 'PRODUCT_DELETE', entityType: 'products', entityId: req.params.id });
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
 router.post('/products/:id/price', requireAuth, requireRole('OWNER'), async (req, res) => {
   try {
     const result = await db.updateProductPrice(getCid(req), req.params.id, req.body, req.session.userId);

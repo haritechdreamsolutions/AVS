@@ -1071,6 +1071,24 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const deleteProduct = async (productId) => {
+    try {
+      const res = await apiFetch(`${API_URL}/products/${productId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setProducts(prev => prev.filter(p => Number(p.id) !== Number(productId)));
+        fetchData();
+        return { success: true, message: data.message };
+      } else {
+        return { success: false, message: data.message || "Failed to delete product" };
+      }
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
   const addCategory = async (categoryData) => {
     try {
       const res = await apiFetch(`${API_URL}/categories`, {
@@ -1330,6 +1348,7 @@ export const AppProvider = ({ children }) => {
       addProduct,
       updateProduct,
       toggleProductStatus,
+      deleteProduct,
       addDamage,
       fetchDamages,
       fetchDamageSummary,
