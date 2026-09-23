@@ -429,7 +429,7 @@ export const AdminProductsMasterView = () => {
                   {metrics.total} Product Variants
                 </span>
               </h2>
-              <p className="text-xs text-slate-300 font-medium mt-0.5">Manage Products, Category Master, SKU/Barcodes, 512×512 Images, Rates, and Status</p>
+              <p className="text-xs text-slate-300 font-medium mt-0.5">Manage Products, Categories, Standard Rates, and Status</p>
             </div>
           </div>
         </div>
@@ -544,7 +544,7 @@ export const AdminProductsMasterView = () => {
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search Name, SKU, Barcode..."
+                placeholder="Search Product Name, Category..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-blue-500 focus:bg-white transition"
@@ -608,31 +608,29 @@ export const AdminProductsMasterView = () => {
           ) : (
             <>
               {/* DESKTOP & TABLET TABLE (hidden on small mobile screens) */}
-              <div className="hidden lg:block overflow-x-auto rounded-2xl border border-slate-200">
+              <div className="hidden lg:block overflow-x-auto rounded-2xl border border-slate-200 shadow-2xs">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900 text-slate-200 font-extrabold uppercase text-[10px] tracking-wider">
+                  <thead className="bg-slate-900 text-slate-200 font-black uppercase text-[10px] tracking-wider">
                     <tr>
-                      <th className="p-3.5">Product & Image (48x48)</th>
-                      <th className="p-3.5">SKU / Code</th>
-                      <th className="p-3.5">Barcode</th>
-                      <th className="p-3.5">Category</th>
-                      <th className="p-3.5">Packaging & Ratio</th>
-                      <th className="p-3.5 text-right">Purchase Rate</th>
-                      <th className="p-3.5 text-right">Selling Rate</th>
-                      <th className="p-3.5 text-center">Status</th>
-                      <th className="p-3.5 text-center">Actions</th>
+                      <th className="py-4 px-4">Product Name & Variant</th>
+                      <th className="py-4 px-4">Category</th>
+                      <th className="py-4 px-4">Packaging & Ratio</th>
+                      <th className="py-4 px-4 text-right">Purchase Rate (Buy)</th>
+                      <th className="py-4 px-4 text-right">Selling Rate</th>
+                      <th className="py-4 px-4 text-center">Status</th>
+                      <th className="py-4 px-4 text-center">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200/80 font-medium text-slate-700 bg-white">
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">
                     {filteredProducts.map(product => {
                       const isActive = product.is_active !== undefined ? Boolean(product.is_active) : true;
 
                       return (
-                        <tr key={product.id} className={`hover:bg-slate-50 transition ${!isActive ? 'opacity-60 bg-slate-50/50' : ''}`}>
+                        <tr key={product.id} className={`hover:bg-slate-50/80 transition ${!isActive ? 'opacity-60 bg-slate-50/40' : ''}`}>
                           
                           {/* Product Name & Standardized 48x48 ProductImage */}
-                          <td className="p-3.5">
-                            <div className="flex items-center gap-2.5">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-3">
                               <ProductImage
                                 src={product.image}
                                 alt={product.display_name}
@@ -640,10 +638,10 @@ export const AdminProductsMasterView = () => {
                                 icon={product.icon}
                               />
                               <div>
-                                <span className="font-black text-slate-900 block leading-tight">{product.display_name}</span>
+                                <span className="font-black text-sm text-slate-900 block leading-snug">{product.display_name}</span>
                                 <div className="flex items-center gap-1.5 mt-0.5">
                                   {product.pack_size && (
-                                    <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-1.5 py-0.5 rounded border border-blue-200">
+                                    <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-md border border-blue-200">
                                       {product.pack_size}
                                     </span>
                                   )}
@@ -653,64 +651,58 @@ export const AdminProductsMasterView = () => {
                             </div>
                           </td>
 
-                          {/* SKU */}
-                          <td className="p-3.5 font-mono font-black text-slate-900">
-                            <span className="px-2 py-0.5 bg-slate-100 rounded-md border border-slate-200">
-                              {product.sku || `PROD-${product.id}`}
-                            </span>
-                          </td>
-
-                          {/* Barcode */}
-                          <td className="p-3.5 font-mono text-[11px] text-slate-600">
-                            {product.barcode || '—'}
-                          </td>
-
                           {/* Category Badge */}
-                          <td className="p-3.5 font-extrabold text-slate-800">
-                            <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-800 rounded-full border border-indigo-200 font-bold">
+                          <td className="py-3.5 px-4 font-extrabold text-slate-800">
+                            <span className="px-3 py-1 bg-indigo-50 text-indigo-800 rounded-xl border border-indigo-200 font-black text-xs inline-block">
                               {product.category || product.category_name || 'General'}
                             </span>
                           </td>
 
                           {/* Packaging & Ratio */}
-                          <td className="p-3.5 font-mono text-[11px]">
-                            <span className="font-bold text-slate-900">1 {product.selling_unit || 'Tray'}</span>
-                            <span className="text-slate-400 block text-[10px]">= {product.pieces_per_unit || 1} {product.base_unit || 'Piece'}</span>
+                          <td className="py-3.5 px-4 font-mono text-xs">
+                            <div className="font-bold text-slate-900">1 {product.selling_unit || 'Tray'}</div>
+                            <div className="text-slate-500 font-bold text-[10px] mt-0.5">= {product.pieces_per_unit || 1} {product.base_unit || 'Piece'}</div>
                           </td>
 
                           {/* Purchase Rate (Buy Rate) with UOM */}
-                          <td className="p-3.5 text-right font-mono">
-                            <span className="font-black text-amber-800 block">₹{Number(product.purchase_price || 0).toLocaleString()} / {product.buy_rate_uom || product.selling_unit || 'Tray'}</span>
-                            <span className="text-[10px] text-slate-500 font-bold block">
+                          <td className="py-3.5 px-4 text-right font-mono">
+                            <span className="font-black text-sm text-amber-800 block">
+                              ₹{Number(product.purchase_price || 0).toLocaleString()} <span className="text-[11px] font-bold text-slate-600">/ {product.buy_rate_uom || product.selling_unit || 'Tray'}</span>
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-bold block mt-0.5">
                               ₹{Number(product.pieces_per_unit) > 0 ? (Number(product.purchase_price || 0) / Number(product.pieces_per_unit)).toFixed(2) : product.purchase_price} / {product.base_unit || 'Piece'}
                             </span>
                           </td>
 
                           {/* Selling Rate */}
-                          <td className="p-3.5 text-right font-mono">
-                            <span className="font-black text-emerald-700 block">₹{Number(product.unit_selling_price || 0).toLocaleString()} / {product.selling_rate_uom || product.selling_unit || 'Tray'}</span>
-                            <span className="text-[10px] text-slate-500 font-bold block">₹{Number(product.piece_selling_price || 0).toLocaleString()} / {product.base_unit || 'Piece'}</span>
+                          <td className="py-3.5 px-4 text-right font-mono">
+                            <span className="font-black text-sm text-emerald-700 block">
+                              ₹{Number(product.unit_selling_price || 0).toLocaleString()} <span className="text-[11px] font-bold text-slate-600">/ {product.selling_rate_uom || product.selling_unit || 'Tray'}</span>
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-bold block mt-0.5">
+                              ₹{Number(product.piece_selling_price || 0).toLocaleString()} / {product.base_unit || 'Piece'}
+                            </span>
                           </td>
 
                           {/* Status Badge */}
-                          <td className="p-3.5 text-center">
+                          <td className="py-3.5 px-4 text-center">
                             {isActive ? (
-                              <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 font-black text-[10px] rounded-full border border-emerald-300 flex items-center justify-center gap-1 w-max mx-auto">
+                              <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 font-black text-[10px] rounded-full border border-emerald-300 inline-flex items-center gap-1.5">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active
                               </span>
                             ) : (
-                              <span className="px-2.5 py-0.5 bg-rose-100 text-rose-800 font-black text-[10px] rounded-full border border-rose-300 flex items-center justify-center gap-1 w-max mx-auto">
+                              <span className="px-2.5 py-1 bg-rose-100 text-rose-800 font-black text-[10px] rounded-full border border-rose-300 inline-flex items-center gap-1.5">
                                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Inactive
                               </span>
                             )}
                           </td>
 
                           {/* Actions */}
-                          <td className="p-3.5 text-center">
+                          <td className="py-3.5 px-4 text-center">
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 onClick={() => { setSelectedProduct(product); setIsEditing(false); }}
-                                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
                                 title="View Details"
                               >
                                 <Eye className="w-3.5 h-3.5 text-blue-600" />
@@ -718,7 +710,7 @@ export const AdminProductsMasterView = () => {
                               
                               <button
                                 onClick={() => { setSelectedProduct(product); setIsEditing(true); }}
-                                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
                                 title="Edit Product"
                               >
                                 <Edit3 className="w-3.5 h-3.5 text-emerald-600" />
@@ -726,7 +718,7 @@ export const AdminProductsMasterView = () => {
 
                               <button
                                 onClick={() => handleToggleStatus(product)}
-                                className={`p-1.5 rounded-xl transition ${isActive ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
+                                className={`p-2 rounded-xl border transition ${isActive ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-200' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-200'}`}
                                 title={isActive ? 'Deactivate Product' : 'Activate Product'}
                               >
                                 <Power className="w-3.5 h-3.5" />
@@ -734,7 +726,7 @@ export const AdminProductsMasterView = () => {
 
                               <button
                                 onClick={() => handleDeleteProduct(product)}
-                                className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 transition"
+                                className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition"
                                 title="Delete Product"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -792,9 +784,6 @@ export const AdminProductsMasterView = () => {
                                 {product.pack_size}
                               </span>
                             )}
-                            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 font-mono font-bold text-[10px] rounded border border-slate-200">
-                              {product.sku || `PROD-${product.id}`}
-                            </span>
                           </div>
                         </div>
                       </div>
@@ -1305,7 +1294,7 @@ export const AdminProductsMasterView = () => {
                 />
                 <div>
                   <h3 className="font-black text-base text-slate-900">{selectedProduct.display_name}</h3>
-                  <span className="text-[10px] text-slate-500 font-mono">SKU: {selectedProduct.sku || `PROD-${selectedProduct.id}`}</span>
+                  <span className="text-[10px] text-indigo-700 font-extrabold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">{selectedProduct.category || selectedProduct.category_name || 'General'}</span>
                 </div>
               </div>
               <button onClick={() => setSelectedProduct(null)} className="p-1 text-slate-400 hover:text-slate-700">
@@ -1534,7 +1523,7 @@ export const AdminProductsMasterView = () => {
                   Delete Product '{deleteConfirmModal.product.display_name}'?
                 </h3>
                 <p className="text-xs text-slate-500 font-bold">
-                  SKU: <span className="font-mono text-slate-800">{deleteConfirmModal.product.sku || `PROD-${deleteConfirmModal.product.id}`}</span> • Category: <span className="text-indigo-700">{deleteConfirmModal.product.category || deleteConfirmModal.product.category_name || 'General'}</span>
+                  Category: <span className="text-indigo-700 font-black">{deleteConfirmModal.product.category || deleteConfirmModal.product.category_name || 'General'}</span> • ID: <span className="font-mono text-slate-700">#{deleteConfirmModal.product.id}</span>
                 </p>
               </div>
             </div>
