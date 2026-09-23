@@ -1073,9 +1073,20 @@ export const AppProvider = ({ children }) => {
 
   const deleteProduct = async (productId) => {
     try {
-      const res = await apiFetch(`${API_URL}/products/${productId}`, {
+      let res = await apiFetch(`${API_URL}/products/${productId}`, {
         method: 'DELETE'
       });
+
+      // Fallback to POST /products/:id/delete if DELETE method is not found on proxy/server
+      if (res.status === 404) {
+        const postRes = await apiFetch(`${API_URL}/products/${productId}/delete`, {
+          method: 'POST'
+        });
+        if (postRes.ok || postRes.status !== 404) {
+          res = postRes;
+        }
+      }
+
       let data = {};
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
@@ -1083,7 +1094,7 @@ export const AppProvider = ({ children }) => {
       } else {
         const text = await res.text();
         if (!res.ok) {
-          return { success: false, message: res.status === 404 ? 'Product not found or server is restarting. Please retry in a few seconds.' : (text || `Server error (${res.status})`) };
+          return { success: false, message: res.status === 404 ? 'Backend deployment in progress on Render. Please deploy latest commit on Render and retry.' : (text || `Server error (${res.status})`) };
         }
       }
       if (res.ok && (data.success || data.product)) {
