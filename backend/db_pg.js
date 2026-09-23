@@ -503,10 +503,10 @@ export async function addCategory(cid,d) {
     if (!code) code = 'CAT-' + Date.now().toString().slice(-6);
   }
 
-  const dupName = await queryOne('SELECT id FROM categories WHERE company_id=$1 AND LOWER(name)=LOWER($2)', [cid, name]);
+  const dupName = await queryOne('SELECT id FROM categories WHERE company_id=$1 AND LOWER(TRIM(name))=LOWER(TRIM($2))', [cid, name]);
   if (dupName) throw new Error(`Category name '${name}' already exists.`);
 
-  const dupCode = await queryOne('SELECT id FROM categories WHERE company_id=$1 AND UPPER(code)=$2', [cid, code]);
+  const dupCode = await queryOne('SELECT id FROM categories WHERE company_id=$1 AND UPPER(TRIM(code))=UPPER(TRIM($2))', [cid, code]);
   if (dupCode) throw new Error(`Category code '${code}' already exists.`);
 
   const desc = d && d.description ? String(d.description).trim() : null;
@@ -521,12 +521,12 @@ export async function updateCategory(cid,catId,d) {
   const operationalUnit = d && d.operational_unit !== undefined ? (d.operational_unit ? String(d.operational_unit).trim() : 'Piece') : undefined;
 
   if (name) {
-    const dupName = await queryOne('SELECT id FROM categories WHERE company_id=$1 AND LOWER(name)=LOWER($2) AND id != $3', [cid, name, catId]);
+    const dupName = await queryOne('SELECT id FROM categories WHERE company_id=$1 AND LOWER(TRIM(name))=LOWER(TRIM($2)) AND id != $3', [cid, name, catId]);
     if (dupName) throw new Error(`Category name '${name}' already exists.`);
   }
 
   if (code) {
-    const dupCode = await queryOne('SELECT id FROM categories WHERE company_id=$1 AND UPPER(code)=$2 AND id != $3', [cid, code, catId]);
+    const dupCode = await queryOne('SELECT id FROM categories WHERE company_id=$1 AND UPPER(TRIM(code))=UPPER(TRIM($2)) AND id != $3', [cid, code, catId]);
     if (dupCode) throw new Error(`Category code '${code}' already exists.`);
   }
 

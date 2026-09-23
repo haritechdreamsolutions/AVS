@@ -177,16 +177,68 @@ export async function runAutoMigrations() {
     await safeQuery(client, "ALTER TABLE categories ADD COLUMN IF NOT EXISTS operational_unit VARCHAR(50) DEFAULT 'Piece';", [], 'categories.operational_unit');
     await safeQuery(client, 'ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'categories.is_active');
 
-    // Ensure default categories
-    await safeQuery(client, `
-      INSERT INTO categories (company_id, code, name, operational_unit, is_active)
-      VALUES 
-        (1, 'CAT-MILK', 'Milk', 'Piece', TRUE),
-        (1, 'CAT-CURD', 'Curd', 'Piece', TRUE),
-        (1, 'CAT-BOX', 'Box', 'Box', TRUE),
-        (1, 'CAT-CASE', 'Case', 'Case', TRUE)
-      ON CONFLICT DO NOTHING;
-    `, [], 'seed categories');
+    // Clean up duplicate categories and safely remap products
+    try {
+      const allCats = await safeQuery(client, 'SELECT id, company_id, code, name FROM categories ORDER BY id ASC');
+      if (allCats && allCats.rows && allCats.rows.length > 0) {
+        const seenNames = new Map();
+        const seenCodes = new Map();
+        const idReplacements = new Map();
+
+        for (const cat of allCats.rows) {
+          const normName = (cat.name || '').trim().toLowerCase();
+          const normCode = (cat.code || '').trim().toUpperCase();
+          const nameKey = `${cat.company_id}_${normName}`;
+          const codeKey = normCode ? `${cat.company_id}_${normCode}` : null;
+
+          let canonicalId = null;
+          if (normName && seenNames.has(nameKey)) {
+            canonicalId = seenNames.get(nameKey);
+          } else if (codeKey && seenCodes.has(codeKey)) {
+            canonicalId = seenCodes.get(codeKey);
+          }
+
+          if (canonicalId && canonicalId !== cat.id) {
+            idReplacements.set(cat.id, canonicalId);
+          } else {
+            if (normName && !seenNames.has(nameKey)) seenNames.set(nameKey, cat.id);
+            if (codeKey && !seenCodes.has(codeKey)) seenCodes.set(codeKey, cat.id);
+          }
+        }
+
+        for (const [dupeId, canonicalId] of idReplacements.entries()) {
+          await safeQuery(client, 'UPDATE products SET category_id = $1 WHERE category_id = $2', [canonicalId, dupeId], `remap products from cat ${dupeId} to ${canonicalId}`);
+          await safeQuery(client, 'DELETE FROM categories WHERE id = $1', [dupeId], `delete dupe category ${dupeId}`);
+        }
+      }
+    } catch (e) {
+      console.warn('[auto_migrate] Category deduplication note:', e.message);
+    }
+
+    // Unique indexes to prevent duplicate category names or codes per company
+    await safeQuery(client, 'CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_company_name ON categories (company_id, LOWER(TRIM(name)));', [], 'uq_categories_company_name');
+    await safeQuery(client, 'CREATE UNIQUE INDEX IF NOT EXISTS uq_categories_company_code ON categories (company_id, UPPER(TRIM(code)));', [], 'uq_categories_company_code');
+
+    // Ensure default categories without inserting duplicates
+    const defaultCats = [
+      { code: 'CAT-MILK', name: 'Milk', unit: 'Piece' },
+      { code: 'CAT-CURD', name: 'Curd', unit: 'Piece' },
+      { code: 'CAT-BOX', name: 'Box', unit: 'Box' },
+      { code: 'CAT-CASE', name: 'Case', unit: 'Case' }
+    ];
+    for (const dCat of defaultCats) {
+      const exists = await safeQuery(client, 
+        'SELECT id FROM categories WHERE company_id = $1 AND (UPPER(TRIM(code)) = $2 OR LOWER(TRIM(name)) = LOWER($3))',
+        [1, dCat.code, dCat.name]
+      );
+      if (!exists || exists.rows.length === 0) {
+        await safeQuery(client,
+          'INSERT INTO categories (company_id, code, name, operational_unit, is_active) VALUES ($1, $2, $3, $4, TRUE)',
+          [1, dCat.code, dCat.name, dCat.unit],
+          `seed category ${dCat.name}`
+        );
+      }
+    }
 
     // 9. Products Table
     await safeQuery(client, `

@@ -238,19 +238,27 @@ export const AdminProductsMasterView = () => {
   // Inline Quick Add Category Handler
   const handleInlineQuickAddCategory = async (e) => {
     e.preventDefault();
-    if (!newCatName.trim()) {
-      toast.error("Category name is required");
-      return;
-    }
-
-    const codeToSend = (newCatCode.trim() || newCatName.trim().replace(/[^a-zA-Z0-9]/g, '')).toUpperCase();
+    const nameTrimmed = newCatName.trim();
+    const codeToSend = (newCatCode.trim() || nameTrimmed.replace(/[^a-zA-Z0-9]/g, '')).toUpperCase();
     if (!codeToSend) {
       toast.error("Category code is required");
       return;
     }
 
+    const dupName = categories.find(c => (c.name || '').trim().toLowerCase() === nameTrimmed.toLowerCase());
+    if (dupName) {
+      toast.error(`Category '${nameTrimmed}' already exists.`);
+      return;
+    }
+
+    const dupCode = categories.find(c => (c.code || '').trim().toUpperCase() === codeToSend);
+    if (dupCode) {
+      toast.error(`Category code '${codeToSend}' is already taken.`);
+      return;
+    }
+
     const res = await addCategory({ 
-      name: newCatName.trim(), 
+      name: nameTrimmed, 
       code: codeToSend, 
       description: newCatDesc.trim() 
     });
