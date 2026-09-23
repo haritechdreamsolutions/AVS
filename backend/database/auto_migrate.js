@@ -279,6 +279,7 @@ export async function runAutoMigrations() {
     await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url TEXT;', [], 'products.image_url');
     await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS pack_size VARCHAR(50);', [], 'products.pack_size');
     await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS sku VARCHAR(50);', [], 'products.sku');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS barcode VARCHAR(50);', [], 'products.barcode');
     await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS display_name VARCHAR(150);', [], 'products.display_name');
     await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS buy_rate_uom VARCHAR(50) DEFAULT 'Tray';", [], 'products.buy_rate_uom');
     await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_rate_uom VARCHAR(50) DEFAULT 'Tray';", [], 'products.selling_rate_uom');

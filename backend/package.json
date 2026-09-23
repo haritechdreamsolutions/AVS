@@ -22,7 +22,6 @@
     "test:all": "node test/part1.test.js && node test/part2.test.js && node test/part3.test.js && node test/phase1_product_uom.test.js && node test/category_master.test.js && node test/shop_route_creation.test.js && node test/stock_receive_inventory.test.js && node test/driver_stock_lifecycle.test.js && node test/zero_duplicate_data.test.js && node test/driver_stock_allocation_flow.test.js && node test/final_driver_billing_stock_control.test.js && node test/full_integration.test.js"
   },
   "dependencies": {
-    "avs-distribution-management": "file:..",
     "bcrypt": "^6.0.0",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.5",

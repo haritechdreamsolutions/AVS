@@ -33,6 +33,7 @@ export const AdminProductsMasterView = () => {
     isOpen: false,
     product: null
   });
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
 
   // Inline Quick Add Category Modal State
   const [isQuickAddCategoryOpen, setIsQuickAddCategoryOpen] = useState(false);
@@ -369,19 +370,26 @@ export const AdminProductsMasterView = () => {
   };
 
   const handleConfirmDeleteProduct = async () => {
-    if (!deleteConfirmModal.product) return;
+    if (!deleteConfirmModal.product || isDeletingProduct) return;
     const prod = deleteConfirmModal.product;
     if (deleteProduct) {
-      const res = await deleteProduct(prod.id);
-      if (res.success) {
-        toast.success(`Product '${prod.display_name || prod.name}' deleted successfully.`);
-        setDeleteConfirmModal({ isOpen: false, product: null });
-        if (selectedProduct && Number(selectedProduct.id) === Number(prod.id)) {
-          setSelectedProduct(null);
-          setIsEditing(false);
+      setIsDeletingProduct(true);
+      try {
+        const res = await deleteProduct(prod.id);
+        if (res.success) {
+          toast.success(`Product '${prod.display_name || prod.name}' deleted successfully.`);
+          setDeleteConfirmModal({ isOpen: false, product: null });
+          if (selectedProduct && Number(selectedProduct.id) === Number(prod.id)) {
+            setSelectedProduct(null);
+            setIsEditing(false);
+          }
+        } else {
+          toast.error(`Delete failed: ${res.message}`);
         }
-      } else {
-        toast.error(`Delete failed: ${res.message}`);
+      } catch (err) {
+        toast.error(`Delete failed: ${err.message || 'An unexpected error occurred'}`);
+      } finally {
+        setIsDeletingProduct(false);
       }
     }
   };
@@ -1548,17 +1556,27 @@ export const AdminProductsMasterView = () => {
             <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
               <button
                 type="button"
+                disabled={isDeletingProduct}
                 onClick={() => setDeleteConfirmModal({ isOpen: false, product: null })}
-                className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition"
+                className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-extrabold text-xs transition"
               >
                 Cancel
               </button>
               <button
                 type="button"
+                disabled={isDeletingProduct}
                 onClick={handleConfirmDeleteProduct}
-                className="py-2.5 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/20 transition"
+                className="py-2.5 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/20 transition"
               >
-                <Trash2 className="w-4 h-4" /> Yes, Delete Product
+                {isDeletingProduct ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" /> Yes, Delete Product
+                  </>
+                )}
               </button>
             </div>
 
