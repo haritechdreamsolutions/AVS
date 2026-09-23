@@ -53,6 +53,12 @@ export async function runAutoMigrations() {
       ON CONFLICT (role_name) DO NOTHING;
     `, [], 'seed roles');
 
+    // Ensure product_id is nullable across all dependent transaction tables
+    await safeQuery(client, 'ALTER TABLE sale_items ALTER COLUMN product_id DROP NOT NULL;', [], 'sale_items.product_id drop not null');
+    await safeQuery(client, 'ALTER TABLE damages ALTER COLUMN product_id DROP NOT NULL;', [], 'damages.product_id drop not null');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ALTER COLUMN product_id DROP NOT NULL;', [], 'inventory_movements.product_id drop not null');
+    await safeQuery(client, 'ALTER TABLE stock_transactions ALTER COLUMN product_id DROP NOT NULL;', [], 'stock_transactions.product_id drop not null');
+
     // 3. Employees Table
     await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS employees (
@@ -437,6 +443,7 @@ export async function runAutoMigrations() {
         amount NUMERIC(10,2) NOT NULL
       );
     `, [], 'create sale_items');
+    await safeQuery(client, 'ALTER TABLE sale_items ALTER COLUMN product_id DROP NOT NULL;', [], 'sale_items.product_id drop not null');
 
     // 14. Damages Table
     await safeQuery(client, `
@@ -471,6 +478,7 @@ export async function runAutoMigrations() {
     await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS verified_by INTEGER;', [], 'damages.verified_by');
     await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;', [], 'damages.verified_at');
     await safeQuery(client, 'ALTER TABLE damages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();', [], 'damages.updated_at');
+    await safeQuery(client, 'ALTER TABLE damages ALTER COLUMN product_id DROP NOT NULL;', [], 'damages.product_id drop not null');
 
     // 15. Expenses Table
     await safeQuery(client, `
@@ -549,6 +557,7 @@ export async function runAutoMigrations() {
       );
     `, [], 'create stock_transactions');
     await safeQuery(client, 'ALTER TABLE stock_transactions ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'stock_transactions.company_id');
+    await safeQuery(client, 'ALTER TABLE stock_transactions ALTER COLUMN product_id DROP NOT NULL;', [], 'stock_transactions.product_id drop not null');
 
     // 18. Inventory Movements Table
     await safeQuery(client, `
@@ -570,6 +579,7 @@ export async function runAutoMigrations() {
       );
     `, [], 'create inventory_movements');
     await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'inventory_movements.company_id');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ALTER COLUMN product_id DROP NOT NULL;', [], 'inventory_movements.product_id drop not null');
 
     // 19. Settlements & Audit Logs
     await safeQuery(client, `

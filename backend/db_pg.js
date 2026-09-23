@@ -887,21 +887,30 @@ export async function deleteProduct(cid, prodId) {
   const prod = await queryOne('SELECT * FROM products WHERE id=$1 AND company_id=$2', [prodId, cid]);
   if (!prod) throw new Error('Product not found.');
 
-  // Clean up child tables
-  await query('DELETE FROM product_uoms WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
-  await query('DELETE FROM product_price_history WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
-  await query('DELETE FROM employee_stock WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
-  await query('DELETE FROM stock_transactions WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
-  await query('UPDATE sale_items SET product_id=NULL WHERE product_id=$1', [prodId]);
-  await query('UPDATE damages SET product_id=NULL WHERE product_id=$1', [prodId]);
-  await query('UPDATE inventory_movements SET product_id=NULL WHERE product_id=$1', [prodId]);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM product_uoms WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
+    await client.query('DELETE FROM product_price_history WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
+    await client.query('DELETE FROM employee_stock WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
+    await client.query('DELETE FROM stock_transactions WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
+    await client.query('UPDATE sale_items SET product_id=NULL WHERE product_id=$1', [prodId]);
+    await client.query('UPDATE damages SET product_id=NULL WHERE product_id=$1', [prodId]);
+    await client.query('UPDATE inventory_movements SET product_id=NULL WHERE product_id=$1', [prodId]);
 
-  const row = await queryOne('DELETE FROM products WHERE id=$1 AND company_id=$2 RETURNING *', [prodId, cid]);
-  return { 
-    success: true, 
-    message: `Product '${prod.display_name || prod.name}' deleted successfully.`, 
-    product: row 
-  };
+    const res = await client.query('DELETE FROM products WHERE id=$1 AND company_id=$2 RETURNING *', [prodId, cid]);
+    await client.query('COMMIT');
+    return { 
+      success: true, 
+      message: `Product '${prod.display_name || prod.name}' deleted successfully.`, 
+      product: res.rows[0] 
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function getProductUoms(cid, prodId) {
