@@ -38,6 +38,7 @@ export const AppProvider = ({ children }) => {
   const [employees, setEmployees] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [routes, setRoutes] = useState([]);
+  const [freezerModels, setFreezerModels] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeBill, setActiveBill] = useState(null);
@@ -81,7 +82,7 @@ export const AppProvider = ({ children }) => {
       setLoading(true);
       const stockEmpId = currentUser?.employee_id || currentUser?.id;
       const isOwner = (currentUser?.role || '').toUpperCase() === 'OWNER' || (activeRole || '').toUpperCase() === 'OWNER';
-      const [shopsRes, villagesRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes, empRes, driversRes] = await Promise.all([
+      const [shopsRes, villagesRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes, empRes, driversRes, freezerModelsRes] = await Promise.all([
         apiFetch(`${API_URL}/shops`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/villages`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/products`).then(r => r.ok ? r.json() : []).catch(() => []),
@@ -94,7 +95,8 @@ export const AppProvider = ({ children }) => {
         isOwner ? apiFetch(`${API_URL}/users`).then(r => r.ok ? r.json() : []).catch(() => []) : Promise.resolve([]),
         apiFetch(`${API_URL}/routes`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/employees`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/drivers`).then(r => r.ok ? r.json() : []).catch(() => [])
+        apiFetch(`${API_URL}/drivers`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/freezer-models`).then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
 
       setShops(Array.isArray(shopsRes) ? shopsRes : []);
@@ -110,6 +112,7 @@ export const AppProvider = ({ children }) => {
       setRoutes(Array.isArray(routesRes) ? routesRes : []);
       setEmployees(Array.isArray(empRes) ? empRes : []);
       setDrivers(Array.isArray(driversRes) ? driversRes : []);
+      setFreezerModels(Array.isArray(freezerModelsRes) ? freezerModelsRes : []);
     } catch (err) {
       console.error("Failed to load initial data:", err);
     } finally {
@@ -309,6 +312,57 @@ export const AppProvider = ({ children }) => {
       }
     } catch (err) {
       return { success: false, message: "Error assigning freezer" };
+    }
+  };
+
+  const unassignFreezer = async (shopId) => {
+    try {
+      const res = await apiFetch(`${API_URL}/shops/${shopId}/freezer`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+        return { success: true };
+      } else {
+        return { success: false, message: data.message };
+      }
+    } catch (err) {
+      return { success: false, message: "Error removing freezer" };
+    }
+  };
+
+  const addFreezerModel = async (modelData) => {
+    try {
+      const res = await apiFetch(`${API_URL}/freezer-models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(modelData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFreezerModels(prev => [...prev, data.model]);
+        return { success: true, model: data.model };
+      }
+      return { success: false, message: data.message };
+    } catch (err) {
+      return { success: false, message: "Error adding freezer model" };
+    }
+  };
+
+  const deleteFreezerModel = async (id) => {
+    try {
+      const res = await apiFetch(`${API_URL}/freezer-models/${id}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFreezerModels(prev => prev.filter(m => Number(m.id) !== Number(id)));
+        return { success: true };
+      }
+      return { success: false, message: data.message };
+    } catch (err) {
+      return { success: false, message: "Error deleting freezer model" };
     }
   };
 
@@ -1360,6 +1414,11 @@ export const AppProvider = ({ children }) => {
       updateRoute,
       deleteRoute,
       assignFreezer,
+      unassignFreezer,
+      freezerModels,
+      setFreezerModels,
+      addFreezerModel,
+      deleteFreezerModel,
       collectShopDue,
       addCategory,
       updateCategory,

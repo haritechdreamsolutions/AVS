@@ -648,7 +648,53 @@ export async function runAutoMigrations() {
       );
     `, [], 'create product_price_history');
 
-    // 20. Ensure Company, Roles & Users
+    // 20. Freezer Models Table & Default Seeds
+    await safeQuery(client, `
+      CREATE TABLE IF NOT EXISTS freezer_models (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER NOT NULL DEFAULT 1,
+        brand VARCHAR(100) NOT NULL,
+        capacity VARCHAR(50) NOT NULL,
+        model_name VARCHAR(200) NOT NULL,
+        freezer_type VARCHAR(100) DEFAULT 'Deep Freezer',
+        description TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `, [], 'create freezer_models');
+
+    await safeQuery(client, `
+      INSERT INTO freezer_models (company_id, brand, capacity, model_name, freezer_type)
+      SELECT 1, brand, capacity, model_name, freezer_type FROM (VALUES
+        ('Blue Star', '100L', 'Blue Star 100L Deep Freezer', 'Deep Freezer'),
+        ('Blue Star', '200L', 'Blue Star 200L Deep Freezer', 'Deep Freezer'),
+        ('Blue Star', '300L', 'Blue Star 300L Deep Freezer', 'Deep Freezer'),
+        ('Blue Star', '400L', 'Blue Star 400L Deep Freezer', 'Deep Freezer'),
+        ('Blue Star', '500L', 'Blue Star 500L Deep Freezer', 'Deep Freezer'),
+        ('Voltas', '100L', 'Voltas 100L Deep Freezer', 'Deep Freezer'),
+        ('Voltas', '200L', 'Voltas 200L Deep Freezer', 'Deep Freezer'),
+        ('Voltas', '300L', 'Voltas 300L Deep Freezer', 'Deep Freezer'),
+        ('Voltas', '400L', 'Voltas 400L Double Door Cooler', 'Double Door Cooler'),
+        ('Voltas', '500L', 'Voltas 500L Deep Freezer', 'Deep Freezer'),
+        ('Western', '200L', 'Western 200L Visicooler', 'Visicooler'),
+        ('Western', '300L', 'Western 300L Visicooler', 'Visicooler'),
+        ('Western', '400L', 'Western 400L Deep Freezer', 'Deep Freezer'),
+        ('Godrej', '100L', 'Godrej 100L Deep Freezer', 'Deep Freezer'),
+        ('Godrej', '200L', 'Godrej 200L Deep Freezer', 'Deep Freezer'),
+        ('Godrej', '300L', 'Godrej 300L Deep Freezer', 'Deep Freezer'),
+        ('Godrej', '400L', 'Godrej 400L Deep Freezer', 'Deep Freezer'),
+        ('Haier', '200L', 'Haier 200L Visicooler', 'Visicooler'),
+        ('Haier', '300L', 'Haier 300L Chest Freezer', 'Chest Freezer'),
+        ('Haier', '320L', 'Haier 320L Visicooler', 'Visicooler'),
+        ('Haier', '400L', 'Haier 400L Visicooler', 'Visicooler')
+      ) AS v(brand, capacity, model_name, freezer_type)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM freezer_models WHERE LOWER(TRIM(freezer_models.model_name)) = LOWER(TRIM(v.model_name))
+      );
+    `, [], 'seed freezer_models');
+
+    // 21. Ensure Company, Roles & Users
     let cR = await safeQuery(client, 'SELECT id FROM companies LIMIT 1');
     let cid = 1;
     if (!cR || cR.rows.length === 0) {

@@ -837,14 +837,68 @@ async login(pin, role) {
     return { success: true, shop: newShop };
   }
 
+  getFreezerModels() {
+    if (!this.data.freezerModels) {
+      this.data.freezerModels = [
+        { id: 1, brand: 'Blue Star', capacity: '100L', model_name: 'Blue Star 100L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 2, brand: 'Blue Star', capacity: '200L', model_name: 'Blue Star 200L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 3, brand: 'Blue Star', capacity: '300L', model_name: 'Blue Star 300L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 4, brand: 'Blue Star', capacity: '400L', model_name: 'Blue Star 400L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 5, brand: 'Blue Star', capacity: '500L', model_name: 'Blue Star 500L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 6, brand: 'Voltas', capacity: '100L', model_name: 'Voltas 100L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 7, brand: 'Voltas', capacity: '200L', model_name: 'Voltas 200L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 8, brand: 'Voltas', capacity: '300L', model_name: 'Voltas 300L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 9, brand: 'Voltas', capacity: '400L', model_name: 'Voltas 400L Double Door Cooler', freezer_type: 'Double Door Cooler', is_active: true },
+        { id: 10, brand: 'Voltas', capacity: '500L', model_name: 'Voltas 500L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 11, brand: 'Western', capacity: '200L', model_name: 'Western 200L Visicooler', freezer_type: 'Visicooler', is_active: true },
+        { id: 12, brand: 'Western', capacity: '300L', model_name: 'Western 300L Visicooler', freezer_type: 'Visicooler', is_active: true },
+        { id: 13, brand: 'Western', capacity: '400L', model_name: 'Western 400L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 14, brand: 'Godrej', capacity: '100L', model_name: 'Godrej 100L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 15, brand: 'Godrej', capacity: '200L', model_name: 'Godrej 200L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 16, brand: 'Godrej', capacity: '300L', model_name: 'Godrej 300L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 17, brand: 'Godrej', capacity: '400L', model_name: 'Godrej 400L Deep Freezer', freezer_type: 'Deep Freezer', is_active: true },
+        { id: 18, brand: 'Haier', capacity: '200L', model_name: 'Haier 200L Visicooler', freezer_type: 'Visicooler', is_active: true },
+        { id: 19, brand: 'Haier', capacity: '300L', model_name: 'Haier 300L Chest Freezer', freezer_type: 'Chest Freezer', is_active: true },
+        { id: 20, brand: 'Haier', capacity: '320L', model_name: 'Haier 320L Visicooler', freezer_type: 'Visicooler', is_active: true },
+        { id: 21, brand: 'Haier', capacity: '400L', model_name: 'Haier 400L Visicooler', freezer_type: 'Visicooler', is_active: true }
+      ];
+    }
+    return this.data.freezerModels.filter(m => m.is_active !== false);
+  }
+
+  createFreezerModel(d) {
+    if (!this.data.freezerModels) this.getFreezerModels();
+    const newModel = {
+      id: this.data.freezerModels.length + 1,
+      brand: (d.brand || 'Other').trim(),
+      capacity: (d.capacity || '').trim(),
+      model_name: (d.model_name || d.name || `${d.brand} ${d.capacity}`).trim(),
+      freezer_type: (d.freezer_type || 'Deep Freezer').trim(),
+      description: (d.description || '').trim(),
+      is_active: true
+    };
+    this.data.freezerModels.push(newModel);
+    return { success: true, model: newModel };
+  }
+
+  deleteFreezerModel(id) {
+    if (!this.data.freezerModels) this.getFreezerModels();
+    const model = this.data.freezerModels.find(m => Number(m.id) === Number(id));
+    if (model) {
+      model.is_active = false;
+      return { success: true, message: 'Freezer model deleted successfully.' };
+    }
+    return { success: false, message: 'Freezer model not found.' };
+  }
+
   assignFreezer(shopId, freezerData) {
     const shop = this.data.shops.find(s => String(s.id) === String(shopId));
     if (shop) {
       shop.has_freezer = true;
-      shop.freezer_model = freezerData.model || "Blue Star 300L Visicooler";
-      shop.freezer_serial = freezerData.serial || `FRZ-${shop.code.replace('#','')}-904`;
-      shop.freezer_date = freezerData.date || new Date().toISOString().split('T')[0];
-      shop.freezer_status = "Active";
+      shop.freezer_model = freezerData.model || freezerData.freezer_model || "Blue Star 300L Visicooler";
+      shop.freezer_serial = freezerData.serial || freezerData.freezer_serial || `FRZ-${shop.code.replace('#','')}-904`;
+      shop.freezer_date = freezerData.date || freezerData.freezer_date || new Date().toISOString().split('T')[0];
+      shop.freezer_status = freezerData.status || freezerData.freezer_status || "Active";
 
       this.data.recentActivities.unshift({
         id: Date.now(),
@@ -854,6 +908,19 @@ async login(pin, role) {
       });
 
       return { success: true, shop };
+    }
+    return { success: false, message: `Shop #${shopId} not found` };
+  }
+
+  unassignFreezer(shopId) {
+    const shop = this.data.shops.find(s => String(s.id) === String(shopId));
+    if (shop) {
+      shop.has_freezer = false;
+      shop.freezer_model = null;
+      shop.freezer_serial = null;
+      shop.freezer_date = null;
+      shop.freezer_status = null;
+      return { success: true, message: 'Freezer unassigned successfully.', shop };
     }
     return { success: false, message: `Shop #${shopId} not found` };
   }
