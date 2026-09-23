@@ -168,45 +168,45 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-5 pb-6">
+    <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-5 pb-6">
       
       {/* Header Banner */}
-      <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white border border-slate-800 shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative overflow-hidden">
+      <div className="p-4 sm:p-6 rounded-3xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white border border-slate-800 shadow-xl flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
         <div className="relative z-10">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300 shrink-0">
-              <TrendingUp className="w-6 h-6" />
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300 shrink-0">
+              <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-[clamp(1.35rem,2.2vw,1.85rem)] font-black text-white tracking-tight leading-tight">
+                <h2 className="text-lg sm:text-xl md:text-2xl font-black text-white tracking-tight leading-tight">
                   ADMIN EXECUTIVE DASHBOARD
                 </h2>
-                <span className="text-[0.75rem] bg-emerald-500/20 text-emerald-300 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-400/30 flex items-center gap-1 animate-pulse">
+                <span className="text-[10px] sm:text-xs bg-emerald-500/20 text-emerald-300 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-400/30 flex items-center gap-1.5 animate-pulse">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                   Live Auto-Sync
                 </span>
               </div>
-              <p className="text-[clamp(0.85rem,1.1vw,0.95rem)] text-slate-300 font-medium mt-1 leading-relaxed">
+              <p className="text-xs sm:text-sm text-slate-300 font-medium mt-0.5 leading-snug">
                 Real-time Financial, Driver Delivery & Store Counter Billing Engine
               </p>
             </div>
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-wrap items-center gap-2.5 w-full lg:w-auto justify-start lg:justify-end">
+        <div className="relative z-10 flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-between sm:justify-end">
           {/* Period Selector Tabs */}
-          <div className="flex items-center bg-slate-800/80 p-1 rounded-2xl border border-slate-700">
+          <div className="flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-700/80 shadow-inner overflow-x-auto max-w-full">
             {['TODAY', 'YESTERDAY', 'THIS_WEEK', 'THIS_MONTH'].map(p => (
               <button
                 key={p}
                 onClick={() => setSelectedPeriod(p)}
-                className={`px-3.5 py-2 rounded-xl text-[0.88rem] font-black transition cursor-pointer ${
+                className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-xs font-extrabold tracking-wide transition cursor-pointer whitespace-nowrap ${
                   selectedPeriod === p 
-                    ? 'bg-blue-600 text-white shadow-xs' 
-                    : 'text-slate-300 hover:text-white'
+                    ? 'bg-blue-600 text-white shadow-sm' 
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                 }`}
               >
                 {p.replace('_', ' ')}
@@ -214,80 +214,82 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
             ))}
           </div>
 
-          <button
-            onClick={handleManualRefresh}
-            className={`p-2.5 rounded-2xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white transition shrink-0 cursor-pointer ${isRefreshing ? 'animate-spin' : ''}`}
-            title="Refresh Live Data"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleManualRefresh}
+              className={`p-2 sm:p-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white transition shrink-0 cursor-pointer ${isRefreshing ? 'animate-spin' : ''}`}
+              title="Refresh Live Data"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
 
-          <button
-            onClick={handleDownloadPDFReport}
-            disabled={isGeneratingPDF}
-            className="px-4 py-2.5 rounded-2xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-extrabold text-[0.92rem] flex items-center gap-2 transition shadow-xs cursor-pointer min-h-[42px] disabled:opacity-75"
-          >
-            <Download className={`w-4 h-4 ${isGeneratingPDF ? 'animate-bounce' : ''}`} />
-            {isGeneratingPDF ? 'Generating PDF...' : 'Download PDF Report'}
-          </button>
+            <button
+              onClick={handleDownloadPDFReport}
+              disabled={isGeneratingPDF}
+              className="px-3.5 py-2 sm:py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs sm:text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer whitespace-nowrap disabled:opacity-75"
+            >
+              <Download className={`w-3.5 h-3.5 ${isGeneratingPDF ? 'animate-bounce' : ''}`} />
+              {isGeneratingPDF ? 'Generating...' : 'Download PDF Report'}
+            </button>
+          </div>
         </div>
       </div>
 
       {/* KPI Stat Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass-card p-5 rounded-2xl bg-white border-l-4 border-l-emerald-500 border border-slate-200 shadow-xs hover:-translate-y-0.5 transition flex flex-col justify-center min-h-[100px]">
-          <span className="text-[0.85rem] text-slate-500 font-extrabold uppercase tracking-wider block">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <div className="glass-card p-4 sm:p-5 rounded-2xl bg-white border-l-4 border-l-emerald-500 border border-slate-200 shadow-sm hover:border-emerald-300 transition flex flex-col justify-between min-h-[95px]">
+          <span className="text-[11px] sm:text-xs text-slate-500 font-extrabold uppercase tracking-wider block">
             {selectedPeriod.replace('_', ' ')} Sales
           </span>
-          <div className="font-mono font-black text-[clamp(1.4rem,2vw,1.7rem)] text-slate-900 mt-1 leading-tight">
+          <div className="font-mono font-black text-2xl sm:text-3xl text-slate-900 mt-1 leading-tight">
             ₹{Number(kpis.gross_sales || 0).toLocaleString()}
           </div>
         </div>
 
-        <div className="glass-card p-5 rounded-2xl bg-white border-l-4 border-l-blue-500 border border-slate-200 shadow-xs hover:-translate-y-0.5 transition flex flex-col justify-center min-h-[100px]">
-          <span className="text-[0.85rem] text-slate-500 font-extrabold uppercase tracking-wider block">
+        <div className="glass-card p-4 sm:p-5 rounded-2xl bg-white border-l-4 border-l-blue-500 border border-slate-200 shadow-sm hover:border-blue-300 transition flex flex-col justify-between min-h-[95px]">
+          <span className="text-[11px] sm:text-xs text-slate-500 font-extrabold uppercase tracking-wider block">
             Cash Collection
           </span>
-          <div className="font-mono font-black text-[clamp(1.4rem,2vw,1.7rem)] text-blue-600 mt-1 leading-tight">
+          <div className="font-mono font-black text-2xl sm:text-3xl text-blue-600 mt-1 leading-tight">
             ₹{Number(kpis.cash_collected || 0).toLocaleString()}
           </div>
         </div>
 
-        <div className="glass-card p-5 rounded-2xl bg-white border-l-4 border-l-indigo-500 border border-slate-200 shadow-xs hover:-translate-y-0.5 transition flex flex-col justify-center min-h-[100px]">
-          <span className="text-[0.85rem] text-slate-500 font-extrabold uppercase tracking-wider block">
+        <div className="glass-card p-4 sm:p-5 rounded-2xl bg-white border-l-4 border-l-indigo-500 border border-slate-200 shadow-sm hover:border-indigo-300 transition flex flex-col justify-between min-h-[95px]">
+          <span className="text-[11px] sm:text-xs text-slate-500 font-extrabold uppercase tracking-wider block">
             GPay Collection
           </span>
-          <div className="font-mono font-black text-[clamp(1.4rem,2vw,1.7rem)] text-indigo-600 mt-1 leading-tight">
+          <div className="font-mono font-black text-2xl sm:text-3xl text-indigo-600 mt-1 leading-tight">
             ₹{Number(kpis.gpay_collected || 0).toLocaleString()}
           </div>
         </div>
 
-        <div className="glass-card p-5 rounded-2xl bg-white border-l-4 border-l-amber-500 border border-slate-200 shadow-xs hover:-translate-y-0.5 transition flex flex-col justify-center min-h-[100px]">
-          <span className="text-[0.85rem] text-slate-500 font-extrabold uppercase tracking-wider block">
+        <div className="glass-card p-4 sm:p-5 rounded-2xl bg-white border-l-4 border-l-amber-500 border border-slate-200 shadow-sm hover:border-amber-300 transition flex flex-col justify-between min-h-[95px]">
+          <span className="text-[11px] sm:text-xs text-slate-500 font-extrabold uppercase tracking-wider block">
             Credit / Dues
           </span>
-          <div className="font-mono font-black text-[clamp(1.4rem,2vw,1.7rem)] text-amber-600 mt-1 leading-tight">
+          <div className="font-mono font-black text-2xl sm:text-3xl text-amber-600 mt-1 leading-tight">
             ₹{Number(kpis.credit_issued || 0).toLocaleString()}
           </div>
         </div>
       </div>
 
       {/* Real Operating Profit & Loss Summary Card (Phase 4) */}
-      <div className="glass-panel p-5 rounded-3xl bg-white border border-slate-200 space-y-4 shadow-sm">
+      <div className="glass-panel p-4 sm:p-5 rounded-3xl bg-white border border-slate-200 space-y-3.5 shadow-sm">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-emerald-600" />
-            <h3 className="font-black text-[clamp(1.05rem,1.3vw,1.25rem)] text-slate-900 tracking-tight">
+            <h3 className="font-black text-sm sm:text-base text-slate-900 tracking-tight">
               Executive Profit & Loss Statement ({selectedPeriod.replace('_', ' ')})
             </h3>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {kpis.cost_data_incomplete && (
-              <span className="text-[0.78rem] text-amber-800 font-bold bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300 flex items-center gap-1">
+              <span className="text-[11px] text-amber-800 font-bold bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300 flex items-center gap-1">
                 ⚠️ Cost Data Incomplete on Historical Items
               </span>
             )}
-            <span className={`text-[0.85rem] font-extrabold px-3 py-1 rounded-full border ${
+            <span className={`text-xs font-extrabold px-3 py-1 rounded-full border ${
               kpis.net_profit >= 0 
                 ? 'text-emerald-800 bg-emerald-100 border-emerald-300' 
                 : 'text-rose-800 bg-rose-100 border-rose-300'
@@ -297,34 +299,34 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 font-mono">
-          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex flex-col justify-between h-full min-h-[90px]">
-            <span className="text-slate-500 block font-extrabold text-[0.82rem] uppercase font-sans tracking-wide">Gross Sales</span>
-            <span className="font-black text-[clamp(1.25rem,1.5vw,1.45rem)] text-slate-900 mt-1">₹{Number(kpis.gross_sales || 0).toLocaleString()}</span>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 font-mono">
+          <div className="bg-slate-50 p-3 sm:p-3.5 rounded-2xl border border-slate-200 flex flex-col justify-between h-full min-h-[85px]">
+            <span className="text-slate-500 block font-extrabold text-[11px] uppercase font-sans tracking-wide">Gross Sales</span>
+            <span className="font-black text-base sm:text-xl text-slate-900 mt-1">₹{Number(kpis.gross_sales || 0).toLocaleString()}</span>
           </div>
 
-          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex flex-col justify-between h-full min-h-[90px]">
-            <span className="text-slate-500 block font-extrabold text-[0.82rem] uppercase font-sans tracking-wide">COGS (Stock Cost)</span>
-            <span className="font-black text-[clamp(1.25rem,1.5vw,1.45rem)] text-slate-800 mt-1">-₹{Number(kpis.cogs || 0).toLocaleString()}</span>
+          <div className="bg-slate-50 p-3 sm:p-3.5 rounded-2xl border border-slate-200 flex flex-col justify-between h-full min-h-[85px]">
+            <span className="text-slate-500 block font-extrabold text-[11px] uppercase font-sans tracking-wide">COGS (Stock Cost)</span>
+            <span className="font-black text-base sm:text-xl text-slate-800 mt-1">-₹{Number(kpis.cogs || 0).toLocaleString()}</span>
           </div>
 
-          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex flex-col justify-between h-full min-h-[90px]">
-            <span className="text-slate-500 block font-extrabold text-[0.82rem] uppercase font-sans tracking-wide">Operating Expenses</span>
-            <span className="font-black text-[clamp(1.25rem,1.5vw,1.45rem)] text-amber-600 mt-1">-₹{Number(kpis.expenses || 0).toLocaleString()}</span>
+          <div className="bg-slate-50 p-3 sm:p-3.5 rounded-2xl border border-slate-200 flex flex-col justify-between h-full min-h-[85px]">
+            <span className="text-slate-500 block font-extrabold text-[11px] uppercase font-sans tracking-wide">Operating Expenses</span>
+            <span className="font-black text-base sm:text-xl text-amber-600 mt-1">-₹{Number(kpis.expenses || 0).toLocaleString()}</span>
           </div>
 
-          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex flex-col justify-between h-full min-h-[90px]">
-            <span className="text-slate-500 block font-extrabold text-[0.82rem] uppercase font-sans tracking-wide">Damage Loss</span>
-            <span className="font-black text-[clamp(1.25rem,1.5vw,1.45rem)] text-rose-600 mt-1">-₹{Number(kpis.damage_loss || 0).toLocaleString()}</span>
+          <div className="bg-slate-50 p-3 sm:p-3.5 rounded-2xl border border-slate-200 flex flex-col justify-between h-full min-h-[85px]">
+            <span className="text-slate-500 block font-extrabold text-[11px] uppercase font-sans tracking-wide">Damage Loss</span>
+            <span className="font-black text-base sm:text-xl text-rose-600 mt-1">-₹{Number(kpis.damage_loss || 0).toLocaleString()}</span>
           </div>
 
-          <div className={`p-3.5 rounded-2xl border flex flex-col justify-between h-full min-h-[90px] ${
+          <div className={`col-span-2 sm:col-span-1 p-3 sm:p-3.5 rounded-2xl border flex flex-col justify-between h-full min-h-[85px] ${
             kpis.net_profit >= 0 
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
               : 'bg-rose-50 border-rose-200 text-rose-800'
           }`}>
-            <span className="block font-extrabold text-[0.82rem] uppercase font-sans tracking-wide">Net Operating Profit</span>
-            <span className="font-black text-[clamp(1.3rem,1.6vw,1.55rem)] mt-1">₹{Number(kpis.net_profit || 0).toLocaleString()}</span>
+            <span className="block font-extrabold text-[11px] uppercase font-sans tracking-wide">Net Operating Profit</span>
+            <span className="font-black text-base sm:text-xl mt-1">₹{Number(kpis.net_profit || 0).toLocaleString()}</span>
           </div>
         </div>
       </div>

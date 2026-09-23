@@ -86,73 +86,71 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
 
       {/* Sidebar Component */}
       <aside className={`
-        fixed md:static inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 flex flex-col justify-between transition-transform duration-300 ease-in-out shadow-2xl md:shadow-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]
+        fixed md:static inset-y-0 left-0 z-40 w-64 h-screen md:h-full max-h-screen bg-slate-900 text-slate-300 flex flex-col flex-shrink-0 transition-transform duration-300 ease-in-out shadow-2xl md:shadow-none select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
-        {/* Brand Logo & Company Title */}
-        <div>
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center font-black text-white shadow-lg text-lg">
-                AVS
-              </div>
-              <div>
-                <h1 className="font-black text-[1rem] text-white tracking-wide leading-tight">AVS AGENCIES</h1>
-                <p className="text-[0.72rem] text-slate-400 font-extrabold uppercase tracking-wider">AVS MANAGEMENT SYSTEM</p>
-              </div>
+        {/* Top: Brand Logo & Company Title (Fixed) */}
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center font-black text-white shadow-lg text-lg">
+              AVS
             </div>
-            <button 
-              onClick={() => setSidebarOpen(false)}
-              className="md:hidden text-slate-400 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div>
+              <h1 className="font-black text-[0.95rem] text-white tracking-wide leading-tight">AVS AGENCIES</h1>
+              <p className="text-[0.68rem] text-slate-400 font-extrabold uppercase tracking-wider">AVS MANAGEMENT SYSTEM</p>
+            </div>
           </div>
-
-          {/* Navigation Items */}
-          <nav className="p-3 space-y-1 overflow-y-auto max-h-[calc(100vh-140px)]">
-            {menuItems.map((item) => {
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    setSidebarOpen(false);
-                  }}
-                  className={`
-                    w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[0.92rem] font-semibold transition duration-200 cursor-pointer
-                    ${isActive 
-                      ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg shadow-indigo-600/30 font-bold' 
-                      : 'hover:bg-slate-800/80 hover:text-white text-slate-300'}
-                  `}
-                >
-                  <div className="flex items-center gap-2.5">
-                    {item.icon}
-                    <span>{item.label}</span>
-                  </div>
-                  {isActive && <ChevronRight className="w-4 h-4 opacity-80" />}
-                </button>
-              );
-            })}
-          </nav>
+          <button 
+            onClick={() => setSidebarOpen(false)} 
+            className="md:hidden text-slate-400 hover:text-white p-1 rounded-lg"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Footer User Info & Logout */}
-        <div className="p-3 border-t border-slate-800 bg-slate-950/50">
-          <div className="flex items-center justify-between mb-2 px-2">
+        {/* Middle: Navigation Items (Smoothly Scrollable) */}
+        <nav className="p-3 space-y-1 flex-1 min-h-0 overflow-y-auto touch-scroll">
+          {menuItems.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  setSidebarOpen(false);
+                }}
+                className={`
+                  w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs sm:text-[0.85rem] font-bold transition duration-200 cursor-pointer
+                  ${isActive 
+                    ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md shadow-indigo-600/30' 
+                    : 'hover:bg-slate-800/80 hover:text-white text-slate-300'}
+                `}
+              >
+                <div className="flex items-center gap-2.5">
+                  {item.icon}
+                  <span className="truncate">{item.label}</span>
+                </div>
+                {isActive && <ChevronRight className="w-3.5 h-3.5 opacity-80 flex-shrink-0" />}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Bottom: Footer User Info & Logout (Always Pinned & Visible) */}
+        <div className="p-3 border-t border-slate-800 bg-slate-950/80 flex-shrink-0 space-y-2">
+          <div className="flex items-center justify-between px-1">
             <div className="truncate">
-              <p className="text-[0.88rem] font-black text-white truncate">OWNER PORTAL</p>
-              <p className="text-[0.78rem] text-slate-400 font-medium">Admin Control Panel</p>
+              <p className="text-xs font-black text-white truncate">OWNER PORTAL</p>
+              <p className="text-[10px] text-slate-400 font-medium">Admin Control Panel</p>
             </div>
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
           </div>
 
           <button
             onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-red-600/10 hover:bg-red-600/20 text-red-400 text-[0.85rem] font-bold border border-red-500/20 transition duration-200 cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-red-600/15 hover:bg-red-600/25 text-red-400 text-xs font-extrabold border border-red-500/25 transition duration-200 cursor-pointer shadow-sm"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-3.5 h-3.5" />
             Logout
           </button>
         </div>
