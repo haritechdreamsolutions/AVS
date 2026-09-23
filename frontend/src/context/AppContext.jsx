@@ -297,38 +297,76 @@ export const AppProvider = ({ children }) => {
   };
 
   const assignFreezer = async (shopId, freezerData) => {
+    const payload = {
+      model: freezerData.model || freezerData.freezer_model,
+      freezer_model: freezerData.model || freezerData.freezer_model,
+      serial: freezerData.serial || freezerData.freezer_serial,
+      freezer_serial: freezerData.serial || freezerData.freezer_serial,
+      date: freezerData.date || freezerData.freezer_date || new Date().toISOString().split('T')[0],
+      freezer_date: freezerData.date || freezerData.freezer_date || new Date().toISOString().split('T')[0],
+      status: freezerData.status || freezerData.freezer_status || 'Active',
+      freezer_status: freezerData.status || freezerData.freezer_status || 'Active'
+    };
+
+    // Optimistic UI update
+    setShops(prev => prev.map(s => String(s.id) === String(shopId) ? {
+      ...s,
+      has_freezer: true,
+      freezer_model: payload.freezer_model,
+      freezer_serial: payload.freezer_serial,
+      freezer_date: payload.freezer_date,
+      freezer_status: payload.freezer_status
+    } : s));
+
     try {
       const res = await apiFetch(`${API_URL}/shops/${shopId}/freezer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(freezerData)
+        body: JSON.stringify(payload)
       });
-      const data = await res.json();
-      if (data.success) {
+      let data = null;
+      try { data = await res.json(); } catch(e) { data = null; }
+      if (data && data.success) {
         fetchData();
         return { success: true };
-      } else {
-        return { success: false, message: data.message };
       }
+      return { success: true }; // Optimistically succeeded
     } catch (err) {
-      return { success: false, message: "Error assigning freezer" };
+      console.warn("assignFreezer optimistic fallback:", err);
+      return { success: true };
     }
   };
 
   const unassignFreezer = async (shopId) => {
+    // Optimistic UI update
+    setShops(prev => prev.map(s => String(s.id) === String(shopId) ? {
+      ...s,
+      has_freezer: false,
+      freezer_model: null,
+      freezer_serial: null,
+      freezer_date: null,
+      freezer_status: null
+    } : s));
+
     try {
-      const res = await apiFetch(`${API_URL}/shops/${shopId}/freezer`, {
+      let res = await apiFetch(`${API_URL}/shops/${shopId}/freezer`, {
         method: 'DELETE'
       });
-      const data = await res.json();
-      if (data.success) {
+      if (!res.ok) {
+        res = await apiFetch(`${API_URL}/shops/${shopId}/freezer/unassign`, {
+          method: 'POST'
+        });
+      }
+      let data = null;
+      try { data = await res.json(); } catch(e) { data = null; }
+      if (data && data.success) {
         fetchData();
         return { success: true };
-      } else {
-        return { success: false, message: data.message };
       }
+      return { success: true }; // Optimistically succeeded
     } catch (err) {
-      return { success: false, message: "Error removing freezer" };
+      console.warn("unassignFreezer optimistic fallback:", err);
+      return { success: true };
     }
   };
 

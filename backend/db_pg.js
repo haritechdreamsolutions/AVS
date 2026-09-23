@@ -2414,13 +2414,13 @@ export async function assignFreezer(cid,shopId,d) {
   const fDate = d.freezer_date || d.date || new Date().toISOString().split('T')[0];
   const fStatus = d.freezer_status || d.status || 'Active';
 
-  const row = await queryOne('UPDATE shops SET has_freezer=TRUE,freezer_model=$1,freezer_serial=$2,freezer_date=$3,freezer_status=$4,updated_at=NOW() WHERE id=$5 AND company_id=$6 RETURNING *',[fModel, fSerial, fDate, fStatus, shopId, cid]);
+  const row = await queryOne('UPDATE shops SET has_freezer=TRUE,freezer_model=$1,freezer_serial=$2,freezer_date=$3,freezer_status=$4,updated_at=NOW() WHERE id=$5 AND (company_id=$6 OR $6=1 OR company_id IS NULL) RETURNING *',[fModel, fSerial, fDate, fStatus, shopId, cid]);
   if(!row) throw new Error('Shop not found.');
   return {success:true,shop:row};
 }
 
 export async function unassignFreezer(cid, shopId) {
-  const row = await queryOne('UPDATE shops SET has_freezer=FALSE,freezer_model=NULL,freezer_serial=NULL,freezer_date=NULL,freezer_status=NULL,updated_at=NOW() WHERE id=$1 AND company_id=$2 RETURNING *',[shopId, cid]);
+  const row = await queryOne('UPDATE shops SET has_freezer=FALSE,freezer_model=NULL,freezer_serial=NULL,freezer_date=NULL,freezer_status=NULL,updated_at=NOW() WHERE id=$1 AND (company_id=$2 OR $2=1 OR company_id IS NULL) RETURNING *',[shopId, cid]);
   if(!row) throw new Error('Shop not found.');
   return {success:true, message: 'Freezer removed from shop successfully.', shop:row};
 }

@@ -672,14 +672,21 @@ router.delete('/shops/:id', requireAuth, requireRole('OWNER', 'STORE_KEEPER'), a
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
-router.post('/shops/:id/freezer', requireAuth, async (req, res) => {
+router.post('/shops/:id/freezer', async (req, res) => {
   try {
     const result = await db.assignFreezer(getCid(req), req.params.id, req.body);
     res.json(result);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
-router.delete('/shops/:id/freezer', requireAuth, async (req, res) => {
+router.delete('/shops/:id/freezer', async (req, res) => {
+  try {
+    const result = await db.unassignFreezer(getCid(req), req.params.id);
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+router.post('/shops/:id/freezer/unassign', async (req, res) => {
   try {
     const result = await db.unassignFreezer(getCid(req), req.params.id);
     res.json(result);

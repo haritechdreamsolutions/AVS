@@ -11,6 +11,33 @@ const POPULAR_BRANDS = ['Blue Star', 'Voltas', 'Western', 'Godrej', 'Haier', 'Ro
 const POPULAR_CAPACITIES = ['100L', '150L', '200L', '250L', '300L', '320L', '350L', '400L', '500L'];
 const FREEZER_TYPES = ['Deep Freezer', 'Visicooler', 'Chest Freezer', 'Double Door Cooler', 'Display Cooler'];
 
+const DEFAULT_FREEZER_MODELS = [
+  { id: 'df-1', brand: 'Blue Star', capacity: '100L', model_name: 'Blue Star 100L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-2', brand: 'Blue Star', capacity: '200L', model_name: 'Blue Star 200L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-3', brand: 'Blue Star', capacity: '300L', model_name: 'Blue Star 300L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-4', brand: 'Blue Star', capacity: '400L', model_name: 'Blue Star 400L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-5', brand: 'Blue Star', capacity: '500L', model_name: 'Blue Star 500L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-6', brand: 'Voltas', capacity: '100L', model_name: 'Voltas 100L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-7', brand: 'Voltas', capacity: '200L', model_name: 'Voltas 200L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-8', brand: 'Voltas', capacity: '300L', model_name: 'Voltas 300L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-9', brand: 'Voltas', capacity: '400L', model_name: 'Voltas 400L Double Door Cooler', freezer_type: 'Double Door Cooler' },
+  { id: 'df-10', brand: 'Voltas', capacity: '500L', model_name: 'Voltas 500L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-11', brand: 'Western', capacity: '200L', model_name: 'Western 200L Visicooler', freezer_type: 'Visicooler' },
+  { id: 'df-12', brand: 'Western', capacity: '300L', model_name: 'Western 300L Visicooler', freezer_type: 'Visicooler' },
+  { id: 'df-13', brand: 'Western', capacity: '400L', model_name: 'Western 400L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-14', brand: 'Godrej', capacity: '100L', model_name: 'Godrej 100L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-15', brand: 'Godrej', capacity: '200L', model_name: 'Godrej 200L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-16', brand: 'Godrej', capacity: '300L', model_name: 'Godrej 300L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-17', brand: 'Godrej', capacity: '400L', model_name: 'Godrej 400L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-18', brand: 'Haier', capacity: '200L', model_name: 'Haier 200L Visicooler', freezer_type: 'Visicooler' },
+  { id: 'df-19', brand: 'Haier', capacity: '300L', model_name: 'Haier 300L Chest Freezer', freezer_type: 'Chest Freezer' },
+  { id: 'df-20', brand: 'Haier', capacity: '320L', model_name: 'Haier 320L Visicooler', freezer_type: 'Visicooler' },
+  { id: 'df-21', brand: 'Haier', capacity: '400L', model_name: 'Haier 400L Visicooler', freezer_type: 'Visicooler' },
+  { id: 'df-22', brand: 'Rockwell', capacity: '250L', model_name: 'Rockwell 250L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-23', brand: 'Rockwell', capacity: '350L', model_name: 'Rockwell 350L Deep Freezer', freezer_type: 'Deep Freezer' },
+  { id: 'df-24', brand: 'Panasonic', capacity: '300L', model_name: 'Panasonic 300L Visicooler', freezer_type: 'Visicooler' }
+];
+
 export const FreezerManagement = () => {
   const { 
     shops = [], 
@@ -35,7 +62,7 @@ export const FreezerManagement = () => {
   const [selectedShopId, setSelectedShopId] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('Blue Star');
   const [selectedModelId, setSelectedModelId] = useState('');
-  const [customModelName, setCustomModelName] = useState('');
+  const [customModelName, setCustomModelName] = useState('Blue Star 300L Deep Freezer');
   const [serial, setSerial] = useState('');
   const [allocationDate, setAllocationDate] = useState(new Date().toISOString().split('T')[0]);
   const [freezerStatus, setFreezerStatus] = useState('Active');
@@ -51,24 +78,48 @@ export const FreezerManagement = () => {
   const [newModelDesc, setNewModelDesc] = useState('');
   const [creatingModel, setCreatingModel] = useState(false);
 
-  // Grouped and sorted models
+  // Combined master models list (defaults + user created)
+  const allAvailableModels = useMemo(() => {
+    const map = new Map();
+    DEFAULT_FREEZER_MODELS.forEach(m => map.set(m.model_name.toLowerCase().trim(), m));
+    if (Array.isArray(freezerModels)) {
+      freezerModels.forEach(m => {
+        if (m && m.model_name) {
+          map.set(m.model_name.toLowerCase().trim(), m);
+        }
+      });
+    }
+    return Array.from(map.values());
+  }, [freezerModels]);
+
+  // Grouped and sorted available brands
   const availableBrands = useMemo(() => {
     const brandsSet = new Set(POPULAR_BRANDS);
-    freezerModels.forEach(m => {
+    allAvailableModels.forEach(m => {
       if (m.brand) brandsSet.add(m.brand);
     });
     return Array.from(brandsSet);
-  }, [freezerModels]);
+  }, [allAvailableModels]);
 
-  // Models filtered by selected brand in the assign modal
+  // Models filtered by selected brand in the assign modal (guaranteed never empty!)
   const filteredBrandModels = useMemo(() => {
     if (!selectedBrand || selectedBrand === 'ALL') {
-      return freezerModels;
+      return allAvailableModels;
     }
-    return freezerModels.filter(m => 
+    const list = allAvailableModels.filter(m => 
       (m.brand || '').toLowerCase().trim() === selectedBrand.toLowerCase().trim()
     );
-  }, [freezerModels, selectedBrand]);
+    if (list.length === 0) {
+      return POPULAR_CAPACITIES.map((cap, idx) => ({
+        id: `auto-${selectedBrand}-${idx}`,
+        brand: selectedBrand,
+        capacity: cap,
+        model_name: `${selectedBrand} ${cap} Deep Freezer`,
+        freezer_type: 'Deep Freezer'
+      }));
+    }
+    return list;
+  }, [allAvailableModels, selectedBrand]);
 
   // Keep auto-generated display name updated when creating new model
   useEffect(() => {
@@ -124,37 +175,68 @@ export const FreezerManagement = () => {
     });
   }, [shops, searchQuery]);
 
-  // Handle open assign modal
+  // Handle open assign modal (with smart pre-fill if shop already has freezer)
   const handleOpenAssignModal = (shopId = '') => {
     const targetShopId = shopId || (noFreezerShops[0]?.id || (shops[0]?.id || ''));
     setSelectedShopId(targetShopId);
 
-    // Default to Blue Star or first available brand
-    const initialBrand = availableBrands[0] || 'Blue Star';
-    setSelectedBrand(initialBrand);
+    const targetShop = shops.find(s => String(s.id) === String(targetShopId));
 
-    const brandModels = freezerModels.filter(m => (m.brand || '').toLowerCase() === initialBrand.toLowerCase());
-    const initialModel = brandModels[0] || freezerModels[0];
-    
-    if (initialModel) {
-      setSelectedModelId(initialModel.id);
-      setCustomModelName(initialModel.model_name);
-      setSerial(generateSerial(targetShopId, initialModel.model_name));
+    if (targetShop && targetShop.has_freezer && targetShop.freezer_model) {
+      const existingModel = targetShop.freezer_model;
+      setCustomModelName(existingModel);
+      setSerial(targetShop.freezer_serial || generateSerial(targetShopId, existingModel));
+      setAllocationDate(targetShop.freezer_date || new Date().toISOString().split('T')[0]);
+      setFreezerStatus(targetShop.freezer_status || 'Active');
+
+      // Detect brand from existing model
+      const matchedBrand = availableBrands.find(b => existingModel.toLowerCase().includes(b.toLowerCase())) || 'Blue Star';
+      setSelectedBrand(matchedBrand);
+
+      const brandList = allAvailableModels.filter(m => (m.brand || '').toLowerCase() === matchedBrand.toLowerCase());
+      const matchedModelObj = brandList.find(m => m.model_name.toLowerCase() === existingModel.toLowerCase()) || brandList[0];
+      setSelectedModelId(matchedModelObj?.id || '');
     } else {
-      setSelectedModelId('');
-      setCustomModelName('Blue Star 300L Deep Freezer');
-      setSerial(generateSerial(targetShopId, 'Blue Star 300L'));
+      const initialBrand = availableBrands[0] || 'Blue Star';
+      setSelectedBrand(initialBrand);
+      const brandList = allAvailableModels.filter(m => (m.brand || '').toLowerCase() === initialBrand.toLowerCase());
+      const initialModel = brandList[0] || allAvailableModels[0];
+      const modelName = initialModel?.model_name || `${initialBrand} 300L Deep Freezer`;
+      setSelectedModelId(initialModel?.id || '');
+      setCustomModelName(modelName);
+      setSerial(generateSerial(targetShopId, modelName));
+      setAllocationDate(new Date().toISOString().split('T')[0]);
+      setFreezerStatus('Active');
     }
 
-    setAllocationDate(new Date().toISOString().split('T')[0]);
-    setFreezerStatus('Active');
     setShowAssignModal(true);
+  };
+
+  // Handle target shop selection change inside modal
+  const handleShopChangeInModal = (newShopId) => {
+    setSelectedShopId(newShopId);
+    const targetShop = shops.find(s => String(s.id) === String(newShopId));
+    if (targetShop && targetShop.has_freezer && targetShop.freezer_model) {
+      const existingModel = targetShop.freezer_model;
+      setCustomModelName(existingModel);
+      setSerial(targetShop.freezer_serial || generateSerial(newShopId, existingModel));
+      setAllocationDate(targetShop.freezer_date || new Date().toISOString().split('T')[0]);
+      setFreezerStatus(targetShop.freezer_status || 'Active');
+
+      const matchedBrand = availableBrands.find(b => existingModel.toLowerCase().includes(b.toLowerCase())) || 'Blue Star';
+      setSelectedBrand(matchedBrand);
+      const brandList = allAvailableModels.filter(m => (m.brand || '').toLowerCase() === matchedBrand.toLowerCase());
+      const matchedModelObj = brandList.find(m => m.model_name.toLowerCase() === existingModel.toLowerCase()) || brandList[0];
+      setSelectedModelId(matchedModelObj?.id || '');
+    } else {
+      setSerial(generateSerial(newShopId, customModelName));
+    }
   };
 
   // Handle brand change in assign modal
   const handleBrandChangeInAssign = (brand) => {
     setSelectedBrand(brand);
-    const modelsForBrand = freezerModels.filter(m => (m.brand || '').toLowerCase().trim() === brand.toLowerCase().trim());
+    const modelsForBrand = allAvailableModels.filter(m => (m.brand || '').toLowerCase().trim() === brand.toLowerCase().trim());
     if (modelsForBrand.length > 0) {
       const first = modelsForBrand[0];
       setSelectedModelId(first.id);
@@ -162,15 +244,16 @@ export const FreezerManagement = () => {
       setSerial(generateSerial(selectedShopId, first.model_name));
     } else {
       setSelectedModelId('');
-      setCustomModelName(`${brand} 300L Deep Freezer`);
-      setSerial(generateSerial(selectedShopId, `${brand} 300L`));
+      const fallbackName = `${brand} 300L Deep Freezer`;
+      setCustomModelName(fallbackName);
+      setSerial(generateSerial(selectedShopId, fallbackName));
     }
   };
 
   // Handle model selection in assign modal
   const handleModelChangeInAssign = (modelId) => {
     setSelectedModelId(modelId);
-    const found = freezerModels.find(m => String(m.id) === String(modelId));
+    const found = allAvailableModels.find(m => String(m.id) === String(modelId));
     if (found) {
       setCustomModelName(found.model_name);
       setSerial(generateSerial(selectedShopId, found.model_name));
@@ -184,20 +267,24 @@ export const FreezerManagement = () => {
       return;
     }
 
-    const finalModel = customModelName.trim() || 'Blue Star 300L Deep Freezer';
+    const finalModel = customModelName.trim() || `${selectedBrand} 300L Deep Freezer`;
     const finalSerial = serial.trim() || generateSerial(selectedShopId, finalModel);
 
     setSaving(true);
     const res = await assignFreezer(selectedShopId, {
       model: finalModel,
+      freezer_model: finalModel,
       serial: finalSerial,
+      freezer_serial: finalSerial,
       date: allocationDate || new Date().toISOString().split('T')[0],
-      status: freezerStatus || 'Active'
+      freezer_date: allocationDate || new Date().toISOString().split('T')[0],
+      status: freezerStatus || 'Active',
+      freezer_status: freezerStatus || 'Active'
     });
     setSaving(false);
 
     if (res.success) {
-      toast.success(`🎉 Freezer '${finalModel}' assigned to shop successfully!`);
+      toast.success(`🎉 Freezer '${finalModel}' assigned / updated successfully!`);
       setShowAssignModal(false);
     } else {
       toast.error("Error assigning freezer: " + (res.message || "Failed to assign"));
@@ -230,17 +317,15 @@ export const FreezerManagement = () => {
     });
     setCreatingModel(false);
 
-    if (res.success) {
+    if (res.success && res.model) {
       toast.success(`✨ New model '${res.model.model_name}' registered successfully!`);
       setShowCreateModelModal(false);
 
-      // If assign modal is open, auto-select this new model!
-      if (showAssignModal) {
-        setSelectedBrand(res.model.brand);
-        setSelectedModelId(res.model.id);
-        setCustomModelName(res.model.model_name);
-        setSerial(generateSerial(selectedShopId, res.model.model_name));
-      }
+      // Auto-select this newly created model in the assign modal
+      setSelectedBrand(res.model.brand);
+      setSelectedModelId(res.model.id);
+      setCustomModelName(res.model.model_name);
+      setSerial(generateSerial(selectedShopId, res.model.model_name));
     } else {
       toast.error(res.message || "Failed to create freezer model");
     }
@@ -523,10 +608,7 @@ export const FreezerManagement = () => {
               <label className="text-xs font-black text-slate-700 uppercase">Select Target Shop *</label>
               <select
                 value={selectedShopId}
-                onChange={(e) => {
-                  setSelectedShopId(e.target.value);
-                  setSerial(generateSerial(e.target.value, customModelName));
-                }}
+                onChange={(e) => handleShopChangeInModal(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-cyan-500"
               >
                 {shops.map(s => (
@@ -908,11 +990,11 @@ export const FreezerManagement = () => {
             <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs font-mono space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-500 font-sans">Model:</span>
-                <span className="font-black text-slate-900">{unassignModal.shop.freezer_model}</span>
+                <span className="font-black text-slate-900">{unassignModal.shop.freezer_model || 'Assigned Cold Storage Freezer'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500 font-sans">Serial No:</span>
-                <span className="font-black text-cyan-700">{unassignModal.shop.freezer_serial}</span>
+                <span className="font-black text-cyan-700">{unassignModal.shop.freezer_serial || `FRZ-${unassignModal.shop.code || 'ASSET'}`}</span>
               </div>
             </div>
 
