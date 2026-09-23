@@ -53,6 +53,24 @@ export const AdminCategoriesMasterView = () => {
     return { total, activeCount, totalProductsMapped };
   }, [categories, products]);
 
+  const generateCategoryCode = (name) => {
+    if (!name || !name.trim()) return '';
+    const clean = name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return `CAT-${clean}`;
+  };
+
+  const detectOperationalUnit = (name) => {
+    if (!name) return 'Piece';
+    const norm = name.trim().toLowerCase();
+    if (norm.includes('case')) return 'Case';
+    if (norm.includes('box')) return 'Box';
+    if (norm.includes('tray') || norm.includes('crate')) return 'Tray';
+    if (norm.includes('bottle') || norm.includes('can')) return 'Bottle';
+    if (norm.includes('packet') || norm.includes('pouch') || norm.includes('sachet')) return 'Packet';
+    if (norm.includes('bag') || norm.includes('sack')) return 'Bag';
+    return 'Piece';
+  };
+
   const handleOpenAddModal = () => {
     setEditingCategory(null);
     setFormData({
@@ -77,6 +95,17 @@ export const AdminCategoriesMasterView = () => {
     });
     setFormErrors({});
     setIsModalOpen(true);
+  };
+
+  const handleNameChange = (val) => {
+    setFormData(prev => {
+      const updated = { ...prev, name: val };
+      if (!editingCategory) {
+        updated.code = generateCategoryCode(val);
+        updated.operational_unit = detectOperationalUnit(val);
+      }
+      return updated;
+    });
   };
 
   const validateForm = () => {
@@ -396,23 +425,40 @@ export const AdminCategoriesMasterView = () => {
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Ice Cream, Flavoured Milk"
+                  placeholder="e.g. Case, Box, Juice, Curd, Milk"
                   value={formData.name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) => handleNameChange(e.target.value)}
                   className={`w-full p-2.5 font-bold bg-slate-50 border rounded-xl focus:outline-none ${formErrors.name ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'}`}
                 />
                 {formErrors.name && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.name}</span>}
               </div>
 
               <div>
-                <label className="font-extrabold text-slate-700 block mb-1">Category Code (Optional / Auto-Generated)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-extrabold text-slate-700 flex items-center gap-1.5">
+                    Category Code
+                    <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200 font-black">
+                      ⚡ Auto-Generated
+                    </span>
+                  </label>
+                  {formData.name && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, code: generateCategoryCode(prev.name) }))}
+                      className="text-[10px] text-indigo-600 font-bold hover:underline"
+                    >
+                      Reset to Default
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
-                  placeholder="e.g. CAT-ICE"
+                  placeholder="e.g. CAT-CASE, CAT-BOX"
                   value={formData.code}
-                  onChange={(e) => setFormData(prev => ({ ...prev, code: e.target.value }))}
-                  className="w-full p-2.5 font-mono font-bold uppercase bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500"
+                  onChange={(e) => setFormData(prev => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                  className="w-full p-2.5 font-mono font-black uppercase bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500 text-slate-900"
                 />
+                <p className="text-[10px] text-slate-400 mt-1 font-medium">Auto-generated from Category Name. (Editable if customized code is needed).</p>
               </div>
 
               <div>
@@ -420,17 +466,17 @@ export const AdminCategoriesMasterView = () => {
                 <select
                   value={formData.operational_unit || 'Piece'}
                   onChange={(e) => setFormData(prev => ({ ...prev, operational_unit: e.target.value }))}
-                  className="w-full p-2.5 font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500"
+                  className="w-full p-2.5 font-black bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500 text-slate-900 text-xs"
                 >
-                  <option value="Piece">Piece (Milk, Curd, Single Packets, Bottles)</option>
-                  <option value="Box">Box (Bulk Boxes, Cones, Tubs)</option>
-                  <option value="Case">Case (Cartons, Multi-pack Cases)</option>
-                  <option value="Tray">Tray (Crates, Trays)</option>
-                  <option value="Packet">Packet (Packets)</option>
-                  <option value="Bottle">Bottle (Bottles, Cans)</option>
-                  <option value="Bag">Bag (Sacks, Bags)</option>
+                  <option value="Piece">Piece (Individual Units / Packets / Pouches)</option>
+                  <option value="Case">Case (Cases / Bulk Cartons)</option>
+                  <option value="Box">Box (Bulk Boxes / Packs)</option>
+                  <option value="Tray">Tray (Crates / Trays)</option>
+                  <option value="Packet">Packet (Single Packets)</option>
+                  <option value="Bottle">Bottle (Bottles / Cans)</option>
+                  <option value="Bag">Bag (Bags / Sacks)</option>
                 </select>
-                <p className="text-[10px] text-slate-400 mt-1 font-medium">For Milk and Curd, the operational sales unit is always Piece (Trays are packaging conversion only).</p>
+                <p className="text-[10px] text-slate-400 mt-1 font-medium">Auto-detected from Category Name. Defines default sales unit for products.</p>
               </div>
 
               <div>

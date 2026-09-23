@@ -39,7 +39,26 @@ export const AdminProductsMasterView = () => {
   const [isQuickAddCategoryOpen, setIsQuickAddCategoryOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatCode, setNewCatCode] = useState('');
+  const [newCatUnit, setNewCatUnit] = useState('Piece');
   const [newCatDesc, setNewCatDesc] = useState('');
+
+  const generateCategoryCode = (name) => {
+    if (!name || !name.trim()) return '';
+    const clean = name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return `CAT-${clean}`;
+  };
+
+  const detectOperationalUnit = (name) => {
+    if (!name) return 'Piece';
+    const norm = name.trim().toLowerCase();
+    if (norm.includes('case')) return 'Case';
+    if (norm.includes('box')) return 'Box';
+    if (norm.includes('tray') || norm.includes('crate')) return 'Tray';
+    if (norm.includes('bottle') || norm.includes('can')) return 'Bottle';
+    if (norm.includes('packet') || norm.includes('pouch') || norm.includes('sachet')) return 'Packet';
+    if (norm.includes('bag') || norm.includes('sack')) return 'Bag';
+    return 'Piece';
+  };
 
   // Active Categories list for dropdown selection
   const activeCategories = useMemo(() => {
@@ -246,9 +265,9 @@ export const AdminProductsMasterView = () => {
   const handleInlineQuickAddCategory = async (e) => {
     e.preventDefault();
     const nameTrimmed = newCatName.trim();
-    const codeToSend = (newCatCode.trim() || nameTrimmed.replace(/[^a-zA-Z0-9]/g, '')).toUpperCase();
-    if (!codeToSend) {
-      toast.error("Category code is required");
+    const codeToSend = (newCatCode.trim() || generateCategoryCode(nameTrimmed)).toUpperCase();
+    if (!nameTrimmed) {
+      toast.error("Category name is required");
       return;
     }
 
@@ -267,6 +286,7 @@ export const AdminProductsMasterView = () => {
     const res = await addCategory({ 
       name: nameTrimmed, 
       code: codeToSend, 
+      operational_unit: newCatUnit || detectOperationalUnit(nameTrimmed),
       description: newCatDesc.trim() 
     });
 
@@ -279,6 +299,7 @@ export const AdminProductsMasterView = () => {
       }));
       setNewCatName('');
       setNewCatCode('');
+      setNewCatUnit('Piece');
       setNewCatDesc('');
       setIsQuickAddCategoryOpen(false);
     } else {
@@ -1223,14 +1244,13 @@ export const AdminProductsMasterView = () => {
                 <label className="font-extrabold text-slate-700 block mb-1">Category Name *</label>
                 <input
                   type="text"
-                  placeholder="e.g. Ice Cream, Rasna"
+                  placeholder="e.g. Ice Cream, Rasna, Milk"
                   value={newCatName}
                   onChange={(e) => {
                     const val = e.target.value;
                     setNewCatName(val);
-                    if (!newCatCode || newCatCode === newCatName.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')) {
-                      setNewCatCode(val.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''));
-                    }
+                    setNewCatCode(generateCategoryCode(val));
+                    setNewCatUnit(detectOperationalUnit(val));
                   }}
                   className="w-full p-2.5 font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500"
                   autoFocus
@@ -1238,14 +1258,47 @@ export const AdminProductsMasterView = () => {
               </div>
 
               <div>
-                <label className="font-extrabold text-slate-700 block mb-1">Category Code * (Unique)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-extrabold text-slate-700 flex items-center gap-1.5">
+                    Category Code
+                    <span className="text-[9px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-full border border-indigo-200 font-bold">
+                      ⚡ Auto
+                    </span>
+                  </label>
+                  {newCatName && (
+                    <button
+                      type="button"
+                      onClick={() => setNewCatCode(generateCategoryCode(newCatName))}
+                      className="text-[10px] text-indigo-600 font-bold hover:underline"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
-                  placeholder="e.g. RASNA, CAT-ICE"
+                  placeholder="e.g. CAT-ICECREAM, CAT-RASNA"
                   value={newCatCode}
                   onChange={(e) => setNewCatCode(e.target.value.toUpperCase())}
                   className="w-full p-2.5 font-mono font-bold uppercase bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500"
                 />
+              </div>
+
+              <div>
+                <label className="font-extrabold text-slate-700 block mb-1">Operational / Sales Unit</label>
+                <select
+                  value={newCatUnit}
+                  onChange={(e) => setNewCatUnit(e.target.value)}
+                  className="w-full p-2.5 font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500 text-slate-900 text-xs"
+                >
+                  <option value="Piece">Piece (Individual Units / Packets / Pouches)</option>
+                  <option value="Case">Case (Cases / Bulk Cartons)</option>
+                  <option value="Box">Box (Bulk Boxes / Packs)</option>
+                  <option value="Tray">Tray (Crates / Trays)</option>
+                  <option value="Packet">Packet (Single Packets)</option>
+                  <option value="Bottle">Bottle (Bottles / Cans)</option>
+                  <option value="Bag">Bag (Bags / Sacks)</option>
+                </select>
               </div>
 
               <div>
