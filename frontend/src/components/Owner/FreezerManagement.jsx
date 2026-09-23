@@ -56,7 +56,7 @@ export const FreezerManagement = () => {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showCreateModelModal, setShowCreateModelModal] = useState(false);
   const [showManageModelsModal, setShowManageModelsModal] = useState(false);
-  const [unassignModal, setUnassignModal] = useState({ isOpen: false, shop: null });
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, shop: null });
 
   // Assign Form State
   const [selectedShopId, setSelectedShopId] = useState('');
@@ -331,17 +331,24 @@ export const FreezerManagement = () => {
     }
   };
 
-  // Handle unassign freezer
-  const handleConfirmUnassign = async () => {
-    if (!unassignModal.shop) return;
-    const shopId = unassignModal.shop.id;
-    const shopName = unassignModal.shop.name;
+  // Check if current selected shop in assign modal is in edit mode
+  const currentModalShop = useMemo(() => {
+    return shops.find(s => String(s.id) === String(selectedShopId));
+  }, [shops, selectedShopId]);
+
+  const isEditMode = Boolean(currentModalShop && currentModalShop.has_freezer);
+
+  // Handle delete freezer allocation
+  const handleConfirmDelete = async () => {
+    if (!deleteModal.shop) return;
+    const shopId = deleteModal.shop.id;
+    const shopName = deleteModal.shop.name;
     const res = await unassignFreezer(shopId);
     if (res.success) {
-      toast.success(`Freezer unassigned and returned from '${shopName}'!`);
-      setUnassignModal({ isOpen: false, shop: null });
+      toast.success(`🗑️ Freezer allocation deleted successfully from '${shopName}'!`);
+      setDeleteModal({ isOpen: false, shop: null });
     } else {
-      toast.error(res.message || "Failed to unassign freezer");
+      toast.error(res.message || "Failed to delete freezer allocation");
     }
   };
 
@@ -535,12 +542,12 @@ export const FreezerManagement = () => {
                     Change / Edit
                   </button>
                   <button
-                    onClick={() => setUnassignModal({ isOpen: true, shop })}
+                    onClick={() => setDeleteModal({ isOpen: true, shop })}
                     className="py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-extrabold text-[11px] flex items-center justify-center gap-1 border border-rose-200 transition"
-                    title="Return / Unassign Freezer"
+                    title="Delete Freezer Allocation"
                   >
-                    <Undo2 className="w-3.5 h-3.5" />
-                    Unassign
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete
                   </button>
                 </div>
               </div>
@@ -590,12 +597,16 @@ export const FreezerManagement = () => {
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center font-bold border border-cyan-200">
-                  <Snowflake className="w-5 h-5" />
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold border ${isEditMode ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-cyan-100 text-cyan-700 border-cyan-200'}`}>
+                  {isEditMode ? <Edit3 className="w-5 h-5" /> : <Snowflake className="w-5 h-5" />}
                 </div>
                 <div>
-                  <h4 className="font-black text-base text-slate-900">Assign Freezer to Shop</h4>
-                  <span className="text-[10px] text-slate-500 font-bold">AVS Asset Deployment Workflow</span>
+                  <h4 className="font-black text-base text-slate-900">
+                    {isEditMode ? 'Edit Freezer Details' : 'Assign Freezer to Shop'}
+                  </h4>
+                  <span className="text-[10px] text-slate-500 font-bold">
+                    {isEditMode ? `Update or delete freezer allocated to ${currentModalShop?.name || 'Shop'}` : 'AVS Asset Deployment Workflow'}
+                  </span>
                 </div>
               </div>
               <button onClick={() => setShowAssignModal(false)} className="p-1 text-slate-400 hover:text-slate-700">
@@ -724,15 +735,44 @@ export const FreezerManagement = () => {
               </div>
             </div>
 
-            {/* Submit Button */}
-            <button
-              onClick={handleSaveFreezer}
-              disabled={saving}
-              className="touch-btn touch-btn-primary w-full py-3 text-sm font-black bg-cyan-600 hover:bg-cyan-700 text-white rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20 transition"
-            >
-              <Save className="w-5 h-5" />
-              {saving ? 'SAVING ALLOCATION...' : 'SAVE FREEZER ALLOCATION'}
-            </button>
+            {/* Action Buttons */}
+            {isEditMode ? (
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (currentModalShop) {
+                      setShowAssignModal(false);
+                      setDeleteModal({ isOpen: true, shop: currentModalShop });
+                    }
+                  }}
+                  className="py-3 px-4 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs flex items-center justify-center gap-1.5 border border-rose-200 shadow-sm transition"
+                  title="Delete freezer allocation from this shop"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete Freezer</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveFreezer}
+                  disabled={saving}
+                  className="flex-1 py-3 text-xs sm:text-sm font-black bg-cyan-600 hover:bg-cyan-700 text-white rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20 transition"
+                >
+                  <Save className="w-5 h-5" />
+                  {saving ? 'UPDATING ALLOCATION...' : 'UPDATE ALLOCATION'}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSaveFreezer}
+                disabled={saving}
+                className="touch-btn touch-btn-primary w-full py-3 text-sm font-black bg-cyan-600 hover:bg-cyan-700 text-white rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20 transition"
+              >
+                <Save className="w-5 h-5" />
+                {saving ? 'SAVING ALLOCATION...' : 'SAVE FREEZER ALLOCATION'}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -971,42 +1011,43 @@ export const FreezerManagement = () => {
       )}
 
       {/* ==================================================================== */}
-      {/* MODAL 4: UNASSIGN FREEZER CONFIRMATION */}
+      {/* MODAL 4: DELETE FREEZER ALLOCATION CONFIRMATION */}
       {/* ==================================================================== */}
-      {unassignModal.isOpen && unassignModal.shop && (
+      {deleteModal.isOpen && deleteModal.shop && (
         <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
             <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-              <ShieldAlert className="w-6 h-6" />
+              <Trash2 className="w-6 h-6" />
             </div>
             
             <div className="text-center space-y-1">
-              <h4 className="font-black text-base text-slate-900">Return / Unassign Freezer?</h4>
-              <p className="text-xs text-slate-500 font-medium">
-                Are you sure you want to remove the freezer allocation from <strong className="text-slate-900">{unassignModal.shop.name}</strong> ({unassignModal.shop.code})?
+              <h4 className="font-black text-base text-slate-900">Delete Freezer Allocation?</h4>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                Are you sure you want to delete and remove the freezer allocation from <strong className="text-slate-900">{deleteModal.shop.name}</strong> ({deleteModal.shop.code})?
               </p>
             </div>
 
             <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs font-mono space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-500 font-sans">Model:</span>
-                <span className="font-black text-slate-900">{unassignModal.shop.freezer_model || 'Assigned Cold Storage Freezer'}</span>
+                <span className="font-black text-slate-900">{deleteModal.shop.freezer_model || 'Assigned Cold Storage Freezer'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500 font-sans">Serial No:</span>
-                <span className="font-black text-cyan-700">{unassignModal.shop.freezer_serial || `FRZ-${unassignModal.shop.code || 'ASSET'}`}</span>
+                <span className="font-black text-cyan-700">{deleteModal.shop.freezer_serial || `FRZ-${deleteModal.shop.code || 'ASSET'}`}</span>
               </div>
             </div>
 
             <div className="flex items-center gap-2 pt-2">
               <button
-                onClick={handleConfirmUnassign}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md shadow-rose-600/20 transition"
+                onClick={handleConfirmDelete}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md shadow-rose-600/20 transition flex items-center justify-center gap-1.5"
               >
-                Yes, Unassign Freezer
+                <Trash2 className="w-4 h-4" />
+                Yes, Delete Freezer
               </button>
               <button
-                onClick={() => setUnassignModal({ isOpen: false, shop: null })}
+                onClick={() => setDeleteModal({ isOpen: false, shop: null })}
                 className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
               >
                 Cancel

@@ -693,6 +693,13 @@ router.post('/shops/:id/freezer/unassign', async (req, res) => {
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
+router.post('/shops/:id/freezer/delete', async (req, res) => {
+  try {
+    const result = await db.unassignFreezer(getCid(req), req.params.id);
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
 // ====== FREEZER MODELS MASTER ======
 router.get('/freezer-models', async (req, res) => {
   try {
