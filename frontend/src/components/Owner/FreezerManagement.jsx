@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { 
   Snowflake, Plus, Store, X, Save, Search, Filter, 
   Trash2, Edit3, CheckCircle2, AlertTriangle, Layers, 
-  Sparkles, RefreshCw, Boxes, ArrowRight, Tag, ShieldAlert, Undo2
+  Sparkles, RefreshCw, Boxes, ArrowRight, Tag, ShieldAlert, Undo2, MapPin
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -41,6 +41,7 @@ const DEFAULT_FREEZER_MODELS = [
 export const FreezerManagement = () => {
   const { 
     shops = [], 
+    villages = [],
     assignFreezer, 
     unassignFreezer, 
     freezerModels = [], 
@@ -60,6 +61,8 @@ export const FreezerManagement = () => {
 
   // Assign Form State
   const [selectedShopId, setSelectedShopId] = useState('');
+  const [modalVillageFilter, setModalVillageFilter] = useState('ALL');
+  const [modalShopSearch, setModalShopSearch] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('Blue Star');
   const [selectedModelId, setSelectedModelId] = useState('');
   const [customModelName, setCustomModelName] = useState('Blue Star 300L Deep Freezer');
@@ -175,12 +178,79 @@ export const FreezerManagement = () => {
     });
   }, [shops, searchQuery]);
 
+  // Active villages for village selector
+  const activeVillages = useMemo(() => {
+    return (villages || []).filter(v => v.status === 'ACTIVE' || v.is_active !== false);
+  }, [villages]);
+
+  const villageMap = useMemo(() => {
+    const map = new Map();
+    (villages || []).forEach(v => {
+      map.set(String(v.id), v.name);
+      if (v.name) map.set(v.name.toLowerCase().trim(), v.name);
+    });
+    return map;
+  }, [villages]);
+
+  const getShopVillageName = (shop) => {
+    if (!shop) return 'Salem Area';
+    if (shop.village_name) return shop.village_name;
+    if (shop.village_id && villageMap.has(String(shop.village_id))) {
+      return villageMap.get(String(shop.village_id));
+    }
+    return 'Salem Area';
+  };
+
+  // Shops filtered for Assign Modal by selected village and shop search query
+  const modalFilteredShops = useMemo(() => {
+    return shops.filter(s => {
+      if (modalVillageFilter !== 'ALL') {
+        const vMatch = String(s.village_id) === String(modalVillageFilter) ||
+          (s.village_name && s.village_name.toLowerCase().trim() === modalVillageFilter.toLowerCase().trim());
+        if (!vMatch) return false;
+      }
+      if (modalShopSearch.trim()) {
+        const q = modalShopSearch.toLowerCase().trim();
+        const matches = (s.name && s.name.toLowerCase().includes(q)) ||
+          (s.code && s.code.toLowerCase().includes(q)) ||
+          (s.owner_name && s.owner_name.toLowerCase().includes(q));
+        if (!matches) return false;
+      }
+      return true;
+    });
+  }, [shops, modalVillageFilter, modalShopSearch]);
+
+  const handleModalVillageChange = (newVillageId) => {
+    setModalVillageFilter(newVillageId);
+    
+    // Find shops in the newly selected village
+    const eligibleShops = shops.filter(s => {
+      if (newVillageId === 'ALL') return true;
+      return String(s.village_id) === String(newVillageId) ||
+        (s.village_name && s.village_name.toLowerCase().trim() === newVillageId.toLowerCase().trim());
+    });
+
+    if (eligibleShops.length > 0) {
+      const isCurrentInList = eligibleShops.some(s => String(s.id) === String(selectedShopId));
+      if (!isCurrentInList) {
+        handleShopChangeInModal(eligibleShops[0].id);
+      }
+    }
+  };
+
   // Handle open assign modal (with smart pre-fill if shop already has freezer)
   const handleOpenAssignModal = (shopId = '') => {
+    const targetShop = shops.find(s => String(s.id) === String(shopId));
+
+    if (targetShop && targetShop.village_id) {
+      setModalVillageFilter(String(targetShop.village_id));
+    } else {
+      setModalVillageFilter('ALL');
+    }
+    setModalShopSearch('');
+
     const targetShopId = shopId || (noFreezerShops[0]?.id || (shops[0]?.id || ''));
     setSelectedShopId(targetShopId);
-
-    const targetShop = shops.find(s => String(s.id) === String(targetShopId));
 
     if (targetShop && targetShop.has_freezer && targetShop.freezer_model) {
       const existingModel = targetShop.freezer_model;
@@ -614,20 +684,99 @@ export const FreezerManagement = () => {
               </button>
             </div>
 
-            {/* Shop Selector */}
-            <div className="space-y-1">
-              <label className="text-xs font-black text-slate-700 uppercase">Select Target Shop *</label>
+            {/* 1. VILLAGE SELECTOR & FILTER */}
+            <div className="space-y-1.5 bg-gradient-to-r from-cyan-50/70 to-blue-50/70 p-3 rounded-2xl border border-cyan-100">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-black text-cyan-950 uppercase flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-cyan-600" />
+                  Select Village (கிராமம்)
+                </label>
+                {modalVillageFilter !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => handleModalVillageChange('ALL')}
+                    className="text-[10px] font-bold text-cyan-700 hover:text-cyan-900 hover:underline flex items-center gap-1"
+                  >
+                    <X className="w-3 h-3" /> Show All Villages
+                  </button>
+                )}
+              </div>
+
+              <select
+                value={modalVillageFilter}
+                onChange={(e) => handleModalVillageChange(e.target.value)}
+                className="w-full bg-white border border-cyan-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-cyan-500 shadow-2xs transition"
+              >
+                <option value="ALL">🌐 All Villages (அனைத்து கிராமங்களும் - {shops.length} கடைகள்)</option>
+                {activeVillages.map(v => {
+                  const vShopsCount = shops.filter(s => String(s.village_id) === String(v.id) || (s.village_name && s.village_name.toLowerCase() === v.name.toLowerCase())).length;
+                  return (
+                    <option key={v.id} value={v.id}>
+                      📍 {v.name} ({v.code || 'VIL'}) • {vShopsCount} கடைகள்
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* 2. TARGET SHOP SELECTOR WITH QUICK SEARCH */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-black text-slate-700 uppercase flex items-center gap-1.5">
+                  <Store className="w-3.5 h-3.5 text-slate-600" />
+                  Select Target Shop (கடை) *
+                </label>
+                <span className="text-[10px] font-bold text-slate-500">
+                  {modalFilteredShops.length} Shop{modalFilteredShops.length === 1 ? '' : 's'} Available
+                </span>
+              </div>
+
+              {/* Quick Type-to-Search Shop Input */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="🔍 Type shop name / code to quick filter..."
+                  value={modalShopSearch}
+                  onChange={(e) => setModalShopSearch(e.target.value)}
+                  className="w-full pl-8 pr-7 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition"
+                />
+                {modalShopSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setModalShopSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Target Shop Dropdown */}
               <select
                 value={selectedShopId}
                 onChange={(e) => handleShopChangeInModal(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-cyan-500"
               >
-                {shops.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.code}) {s.has_freezer ? '🧊 [Currently: ' + (s.freezer_model || 'Assigned') + ']' : ''}
-                  </option>
-                ))}
+                {modalFilteredShops.length === 0 ? (
+                  <option value="" disabled>No shops found matching selected village or search</option>
+                ) : (
+                  modalFilteredShops.map(s => {
+                    const vName = getShopVillageName(s);
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.code}) • {vName} {s.has_freezer ? '🧊 [Assigned: ' + (s.freezer_model || 'Yes') + ']' : ''}
+                      </option>
+                    );
+                  })
+                )}
               </select>
+              {modalFilteredShops.length === 0 && (
+                <p className="text-[11px] text-amber-600 font-bold mt-1 flex items-center gap-1">
+                  ⚠️ No shops found under this village filter. Try selecting "All Villages".
+                </p>
+              )}
             </div>
 
             {/* Brand Cascade Selector */}
