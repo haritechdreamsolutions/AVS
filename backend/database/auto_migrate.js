@@ -582,6 +582,8 @@ export async function runAutoMigrations() {
         qty_units NUMERIC(12,4) NOT NULL DEFAULT 0,
         unit VARCHAR(20) DEFAULT 'Piece',
         notes TEXT,
+        reference VARCHAR(255),
+        received_by VARCHAR(255),
         movement_date DATE NOT NULL DEFAULT CURRENT_DATE,
         movement_time VARCHAR(30),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -589,6 +591,15 @@ export async function runAutoMigrations() {
     `, [], 'create inventory_movements');
     await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'inventory_movements.company_id');
     await safeQuery(client, 'ALTER TABLE inventory_movements ALTER COLUMN product_id DROP NOT NULL;', [], 'inventory_movements.product_id drop not null');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS reference VARCHAR(255);', [], 'inventory_movements.reference');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS received_by VARCHAR(255);', [], 'inventory_movements.received_by');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS employee_id INTEGER;', [], 'inventory_movements.employee_id');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS employee_name VARCHAR(150);', [], 'inventory_movements.employee_name');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS product_name VARCHAR(150);', [], 'inventory_movements.product_name');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS notes TEXT;', [], 'inventory_movements.notes');
+    await safeQuery(client, "ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS unit VARCHAR(20) DEFAULT 'Piece';", [], 'inventory_movements.unit');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS movement_date DATE DEFAULT CURRENT_DATE;', [], 'inventory_movements.movement_date');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS movement_time VARCHAR(30);', [], 'inventory_movements.movement_time');
 
     // 19. Settlements & Audit Logs
     await safeQuery(client, `
