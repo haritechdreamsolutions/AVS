@@ -1,5 +1,6 @@
 import express from 'express';
 import * as db from './db_pg.js';
+import { runAutoMigrations } from './database/auto_migrate.js';
 
 const router = express.Router();
 
@@ -1016,6 +1017,16 @@ router.get('/export/:reportType', requireAuth, requireRole('OWNER', 'ADMIN'), as
 
     res.json(data);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+// ====== SYSTEM MIGRATION TRIGGER ======
+router.all(['/system/migrate', '/system/run-migrations'], async (req, res) => {
+  try {
+    await runAutoMigrations();
+    res.json({ success: true, message: 'Auto-migrations executed successfully on database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 export default router;

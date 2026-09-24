@@ -336,9 +336,19 @@ export const AdminProductsMasterView = () => {
     }
 
     if (addProduct) {
-      const res = await addProduct(formData);
+      const selectedCat = categories.find(c => String(c.id) === String(formData.category_id)) || activeCategories.find(c => String(c.id) === String(formData.category_id));
+      const categoryName = selectedCat?.name || formData.category || 'General';
+      const categoryId = selectedCat?.id || formData.category_id || (activeCategories[0]?.id || 1);
+
+      const payload = {
+        ...formData,
+        category_id: categoryId,
+        category: categoryName
+      };
+
+      const res = await addProduct(payload);
       if (res.success) {
-        toast.success(`🎉 Product '${res.product.display_name}' created successfully under '${res.product.category}'!`);
+        toast.success(`🎉 Product '${res.product.display_name}' created successfully under '${res.product.category || categoryName}'!`);
         setActiveTab('list');
         // Reset form
         setFormData({
@@ -420,7 +430,17 @@ export const AdminProductsMasterView = () => {
     if (!selectedProduct) return;
 
     if (updateProduct) {
-      const res = await updateProduct(selectedProduct.id, selectedProduct);
+      const selectedCat = categories.find(c => String(c.id) === String(selectedProduct.category_id)) || activeCategories.find(c => String(c.id) === String(selectedProduct.category_id));
+      const categoryName = selectedCat?.name || selectedProduct.category || 'General';
+      const categoryId = selectedCat?.id || selectedProduct.category_id || (activeCategories[0]?.id || 1);
+
+      const payload = {
+        ...selectedProduct,
+        category_id: categoryId,
+        category: categoryName
+      };
+
+      const res = await updateProduct(selectedProduct.id, payload);
       if (res.success) {
         toast.success(`Product '${res.product.display_name}' updated successfully!`);
         setSelectedProduct(null);
