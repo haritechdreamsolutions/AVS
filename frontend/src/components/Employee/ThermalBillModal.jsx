@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Printer, X, Bluetooth, CheckCircle2 } from 'lucide-react';
-import { printBillViaBluetooth } from '../../utils/bluetoothPrinter';
+import { printBillViaBluetooth, printBillViaRawBT } from '../../utils/bluetoothPrinter';
 import { toast } from 'sonner';
 
 export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
@@ -45,6 +45,21 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
     window.print();
   };
 
+  const handleRawBTPrint = () => {
+    try {
+      toast.info("Sending bill to Bluetooth thermal printer...");
+      printBillViaRawBT({
+        ...bill,
+        company_name: companyName,
+        company_subtitle: companySubtitle,
+        items: items
+      });
+    } catch (err) {
+      console.error("RawBT print error:", err);
+      toast.error("Print error: " + err.message);
+    }
+  };
+
   const handleBluetoothPrint = async () => {
     try {
       setPrintingBluetooth(true);
@@ -58,7 +73,7 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
       toast.success("Bill printed successfully via Bluetooth!");
     } catch (err) {
       console.error("Bluetooth print error:", err);
-      toast.error("Bluetooth Print Notice: " + (err.message || "Failed to connect to Bluetooth printer"));
+      toast.error("Bluetooth Notice: " + (err.message || "Failed to connect to Bluetooth printer"));
     } finally {
       setPrintingBluetooth(false);
     }
@@ -245,13 +260,8 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
 
         </div>
 
-        {/* Dual Print Action Buttons */}
+        {/* Triple Print Action Options */}
         <div className="space-y-2 no-print">
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 text-[10px] text-blue-800 font-bold flex items-center gap-1.5">
-            <span>💡</span>
-            <span>ப்ளூடூத் பிரிண்ட் செய்ய போனில் <strong>Location (GPS) & Bluetooth</strong> ஆன் செய்து வைக்கவும்.</span>
-          </div>
-
           <button
             onClick={handleBluetoothPrint}
             disabled={printingBluetooth}
@@ -259,6 +269,13 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
           >
             <Bluetooth className="w-5 h-5 text-cyan-300 animate-pulse" />
             <span>{printingBluetooth ? 'PAIRING & PRINTING...' : '📲 PRINT VIA BLUETOOTH (ப்ளூடூத்)'}</span>
+          </button>
+
+          <button
+            onClick={handleRawBTPrint}
+            className="w-full text-xs font-black bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl py-3 flex items-center justify-center gap-2 shadow-md min-h-[44px] cursor-pointer transition active:scale-[0.98]"
+          >
+            <span>⚡ DIRECT ONE-CLICK THERMAL PRINT (RawBT)</span>
           </button>
 
           <button

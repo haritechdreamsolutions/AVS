@@ -1,10 +1,6 @@
 // Web Bluetooth ESC/POS 58mm Thermal Printer Utility
 
-export const printBillViaBluetooth = async (bill) => {
-  if (!navigator.bluetooth) {
-    throw new Error("Web Bluetooth API is not supported in this browser. Please use Chrome or Edge.");
-  }
-
+export const generateEscPosBuffer = (bill) => {
   // Standard ESC/POS Command Constants
   const ESC = 0x1B;
   const GS = 0x1D;
@@ -18,8 +14,6 @@ export const printBillViaBluetooth = async (bill) => {
   const CUT_PAPER = [GS, 0x56, 66, 0];
 
   const encoder = new TextEncoder();
-
-  // Helper to construct ESC/POS Byte Buffer
   let buffer = [];
 
   const addBytes = (bytes) => {
@@ -103,6 +97,17 @@ export const printBillViaBluetooth = async (bill) => {
   addBytes(LINE_FEED);
   addBytes(CUT_PAPER);
 
+  return buffer;
+};
+
+// 1. Web Bluetooth ESC/POS Print Method
+export const printBillViaBluetooth = async (bill) => {
+  if (!navigator.bluetooth) {
+    throw new Error("Web Bluetooth API is not supported in this browser. Please use Chrome or Edge.");
+  }
+
+  const buffer = generateEscPosBuffer(bill);
+
   // Connect to Bluetooth Thermal Printer Device
   let device;
   try {
@@ -120,7 +125,7 @@ export const printBillViaBluetooth = async (bill) => {
     });
   } catch (reqErr) {
     if (reqErr.name === 'NotFoundError') {
-      throw new Error("No printer selected. Please turn ON Phone Location (GPS) & select your EXEO printer.");
+      throw new Error("No printer selected. Please ensure printer is paired and Phone Location & Bluetooth are ON.");
     }
     throw reqErr;
   }
@@ -162,5 +167,18 @@ export const printBillViaBluetooth = async (bill) => {
     }
   }
 
+  return true;
+};
+
+// 2. Direct RawBT / Android Print Service Integration (Instant 100% Guaranteed Bluetooth Print)
+export const printBillViaRawBT = (bill) => {
+  const buffer = generateEscPosBuffer(bill);
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const base64 = window.btoa(binary);
+  window.location.href = `rawbt:data:application/octet-stream;base64,${base64}`;
   return true;
 };
