@@ -191,7 +191,7 @@ export const KeeperDashboard = () => {
                 <Package className="w-5 h-5 text-blue-600" />
                 Warehouse Inventory
               </h3>
-              <p className="text-xs text-slate-500 font-semibold mt-0.5">Real-time Stock Levels & Rates from PostgreSQL</p>
+              <p className="text-xs text-slate-500 font-semibold mt-0.5">Real-time Stock Levels from PostgreSQL</p>
             </div>
 
             {/* Live Search Input Box */}
@@ -244,11 +244,6 @@ export const KeeperDashboard = () => {
                           {prod.selling_unit || 'Tray'}
                         </span>
                       </div>
-                      <div className="absolute top-2 right-2 z-10">
-                        <span className="font-mono font-black text-[11px] text-slate-800 bg-white/95 px-2 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
-                          ₹{prod.unit_selling_price}
-                        </span>
-                      </div>
                       {prod.image_url ? (
                         <img
                           src={prod.image_url}
@@ -265,10 +260,6 @@ export const KeeperDashboard = () => {
                       <h4 className="font-black text-xs text-slate-900 leading-tight truncate">
                         {prod.display_name}
                       </h4>
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 font-bold">
-                        <span>Buy: ₹{prod.purchase_price}</span>
-                        <span>Sale: ₹{prod.unit_selling_price}</span>
-                      </div>
                       <div className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-200">
                         <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Available Stock</span>
                         <div className="flex flex-col items-end">
