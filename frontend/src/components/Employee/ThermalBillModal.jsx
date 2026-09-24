@@ -247,6 +247,11 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
 
         {/* Dual Print Action Buttons */}
         <div className="space-y-2 no-print">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-2 text-[10px] text-blue-800 font-bold flex items-center gap-1.5">
+            <span>💡</span>
+            <span>ப்ளூடூத் பிரிண்ட் செய்ய போனில் <strong>Location (GPS) & Bluetooth</strong> ஆன் செய்து வைக்கவும்.</span>
+          </div>
+
           <button
             onClick={handleBluetoothPrint}
             disabled={printingBluetooth}

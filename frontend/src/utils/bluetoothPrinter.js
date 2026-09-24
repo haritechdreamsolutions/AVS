@@ -104,14 +104,26 @@ export const printBillViaBluetooth = async (bill) => {
   addBytes(CUT_PAPER);
 
   // Connect to Bluetooth Thermal Printer Device
-  const device = await navigator.bluetooth.requestDevice({
-    acceptAllDevices: true,
-    optionalServices: [
-      '00001101-0000-1000-8000-00805f9b34fb', // Standard Serial Port Profile (SPP)
-      '000018f0-0000-1000-8000-00805f9b34fb', // Thermal Printer Service
-      '49535343-fe7d-4ae5-8fa9-9fafd205e455'
-    ]
-  });
+  let device;
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [
+        '000018f0-0000-1000-8000-00805f9b34fb', // ESC/POS Thermal Printer Service
+        '00001101-0000-1000-8000-00805f9b34fb', // Standard Serial Port Profile (SPP)
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC BLE Thermal Printer
+        'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // PosBank / Xprinter BLE
+        '0000ff00-0000-1000-8000-00805f9b34fb', // Custom ESC/POS BLE
+        '0000ae00-0000-1000-8000-00805f9b34fb', // Goojprt / MPT BLE
+        '0000fee7-0000-1000-8000-00805f9b34fb'  // Generic POS BLE
+      ]
+    });
+  } catch (reqErr) {
+    if (reqErr.name === 'NotFoundError') {
+      throw new Error("No printer selected. Please turn ON Phone Location (GPS) & select your EXEO printer.");
+    }
+    throw reqErr;
+  }
 
   const server = await device.gatt.connect();
 
@@ -120,12 +132,16 @@ export const printBillViaBluetooth = async (bill) => {
   const services = await server.getPrimaryServices();
 
   for (const service of services) {
-    const characteristics = await service.getCharacteristics();
-    for (const char of characteristics) {
-      if (char.properties.write || char.properties.writeWithoutResponse) {
-        targetCharacteristic = char;
-        break;
+    try {
+      const characteristics = await service.getCharacteristics();
+      for (const char of characteristics) {
+        if (char.properties.write || char.properties.writeWithoutResponse) {
+          targetCharacteristic = char;
+          break;
+        }
       }
+    } catch (e) {
+      // Ignore service read error and try next
     }
     if (targetCharacteristic) break;
   }
