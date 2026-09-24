@@ -235,6 +235,10 @@ export const KeeperDashboard = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
               {filteredProducts.map(prod => {
                 const totalPieces = (Number(prod.warehouse_stock_units) || 0) * (Number(prod.pieces_per_unit) || 1);
+                const isTray = (prod.selling_unit || '').toLowerCase() === 'tray' || 
+                               (prod.category || prod.category_name || '').toLowerCase().includes('milk') || 
+                               (prod.category || prod.category_name || '').toLowerCase().includes('curd') || 
+                               (prod.category || prod.category_name || '').toLowerCase().includes('tray');
                 return (
                   <div key={prod.id} className="relative group bg-white rounded-3xl p-3 border border-slate-200 hover:border-blue-400 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between overflow-hidden">
                     
@@ -269,9 +273,11 @@ export const KeeperDashboard = () => {
                             </span>
                             <span className="text-[10px] text-emerald-700 font-extrabold uppercase">{prod.selling_unit || 'Trays'}</span>
                           </div>
-                          <span className="font-mono font-extrabold text-[10px] text-indigo-600 mt-0.5">
-                            ({totalPieces} Pcs)
-                          </span>
+                          {isTray && (
+                            <span className="font-mono font-extrabold text-[10px] text-indigo-600 mt-0.5">
+                              ({totalPieces} Pcs)
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
