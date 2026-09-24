@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 export const StockReceiveModal = ({ onClose }) => {
   const { products = [], receiveDealerStock } = useApp();
   const [dealerName, setDealerName] = useState('');
-  const [referenceNo, setReferenceNo] = useState('');
   const [productQuantities, setProductQuantities] = useState({});
   const [saving, setSaving] = useState(false);
 
@@ -40,7 +39,6 @@ export const StockReceiveModal = ({ onClose }) => {
     setSaving(true);
     const res = await receiveDealerStock({
       dealer_name: dealerName || 'Direct Supplier',
-      reference: referenceNo || null,
       items
     });
     setSaving(false);
@@ -69,27 +67,15 @@ export const StockReceiveModal = ({ onClose }) => {
         </div>
 
         {/* Supplier Info */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1">
-            <label className="text-[11px] font-extrabold text-slate-500 uppercase">Supplier / Buyer</label>
-            <input
-              type="text"
-              placeholder="e.g. Dairy Plant"
-              value={dealerName}
-              onChange={(e) => setDealerName(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[11px] font-extrabold text-slate-500 uppercase">DC / Ref #</label>
-            <input
-              type="text"
-              placeholder="e.g. DC-1049"
-              value={referenceNo}
-              onChange={(e) => setReferenceNo(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-500"
-            />
-          </div>
+        <div className="space-y-1">
+          <label className="text-[11px] font-extrabold text-slate-500 uppercase">Supplier / Buyer</label>
+          <input
+            type="text"
+            placeholder="e.g. Dairy Plant"
+            value={dealerName}
+            onChange={(e) => setDealerName(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-500"
+          />
         </div>
 
         {/* Quantities Table */}
