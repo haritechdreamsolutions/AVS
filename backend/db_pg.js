@@ -632,12 +632,14 @@ export async function addProduct(cid, d) {
 
   // Validate Category ID & Existence
   let targetCategoryId = null;
+  let targetCategoryName = null;
   if (d.category_id !== undefined && d.category_id !== null && d.category_id !== '') {
     const rawCatId = parseInt(d.category_id, 10);
     if (!isNaN(rawCatId)) {
       const catCheck = await queryOne('SELECT id, name FROM categories WHERE id=$1 AND company_id=$2', [rawCatId, cid]);
       if (catCheck) {
         targetCategoryId = catCheck.id;
+        targetCategoryName = catCheck.name;
       }
     }
   }
@@ -646,17 +648,32 @@ export async function addProduct(cid, d) {
     const catByName = await queryOne('SELECT id, name FROM categories WHERE LOWER(TRIM(name))=LOWER(TRIM($1)) AND company_id=$2', [String(d.category).trim(), cid]);
     if (catByName) {
       targetCategoryId = catByName.id;
+      targetCategoryName = catByName.name;
     }
   }
 
   if (!targetCategoryId) {
-    const availableCats = await queryAll('SELECT id, name FROM categories WHERE company_id=$1 AND is_active=TRUE', [cid]);
-    if (availableCats.length === 0) {
-      throw new Error('Create a category first before registering a product.');
+    const availableCats = await queryAll('SELECT id, name FROM categories WHERE company_id=$1 AND is_active=TRUE ORDER BY id ASC', [cid]);
+    if (availableCats.length > 0) {
+      targetCategoryId = availableCats[0].id;
+      targetCategoryName = availableCats[0].name;
+    } else {
+      // Auto-create a default 'General' category if none exist
+      const newCat = await queryOne(
+        "INSERT INTO categories (company_id, code, name, operational_unit, is_active) VALUES ($1, 'CAT-GEN', 'General', 'Piece', TRUE) RETURNING id, name",
+        [cid]
+      );
+      targetCategoryId = newCat.id;
+      targetCategoryName = newCat.name;
     }
-    throw new Error('Please select a valid category.');
   }
 
+  if (!targetCategoryName && targetCategoryId) {
+    const catLookup = await queryOne('SELECT name FROM categories WHERE id=$1', [targetCategoryId]);
+    if (catLookup) targetCategoryName = catLookup.name;
+  }
+
+  const categoryNameToStore = targetCategoryName || (d.category && String(d.category).trim()) || 'General';
   const imageToStore = d.image_url !== undefined ? d.image_url : (d.image || null);
 
   const client = await pool.connect();
@@ -668,13 +685,13 @@ export async function addProduct(cid, d) {
     }
     const pRes = await client.query(
       `INSERT INTO products (
-        company_id, category_id, sku, barcode, name, display_name, pack_size,
+        company_id, category_id, category, sku, barcode, name, display_name, pack_size,
         selling_unit, base_unit, pieces_per_unit, purchase_price, buy_rate_uom,
         unit_selling_price, selling_rate_uom, piece_selling_price,
         min_stock_level, warehouse_stock_units, icon, image_url, is_active
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
       [
-        cid, targetCategoryId, sku, d.barcode || null, d.name.trim(), displayName, packSize,
+        cid, targetCategoryId, categoryNameToStore, sku, d.barcode || null, d.name.trim(), displayName, packSize,
         purchaseUnit, baseUnit, conversionFactor, buyRate, buyRateUom,
         unitSellingPrice, sellingRateUom, pieceSellingPrice,
         Number(d.min_stock_level) || 0, Number(d.warehouse_stock_units) || 0,
@@ -736,12 +753,14 @@ export async function updateProduct(cid, prodId, d) {
   const packSize = d.pack_size !== undefined ? d.pack_size : pOld.pack_size;
 
   let targetCategoryId = null;
+  let targetCategoryName = null;
   if (d.category_id !== undefined && d.category_id !== null && d.category_id !== '') {
     const rawCatId = parseInt(d.category_id, 10);
     if (!isNaN(rawCatId)) {
       const catCheck = await queryOne('SELECT id, name FROM categories WHERE id=$1 AND company_id=$2', [rawCatId, cid]);
       if (catCheck) {
         targetCategoryId = catCheck.id;
+        targetCategoryName = catCheck.name;
       }
     }
   }
@@ -749,6 +768,7 @@ export async function updateProduct(cid, prodId, d) {
     const catByName = await queryOne('SELECT id, name FROM categories WHERE LOWER(TRIM(name))=LOWER(TRIM($1)) AND company_id=$2', [String(d.category).trim(), cid]);
     if (catByName) {
       targetCategoryId = catByName.id;
+      targetCategoryName = catByName.name;
     }
   }
 
@@ -757,16 +777,17 @@ export async function updateProduct(cid, prodId, d) {
     await client.query('BEGIN');
     const pRes = await client.query(
       `UPDATE products SET
-        category_id=COALESCE($1, category_id), sku=COALESCE($2, sku), barcode=COALESCE($3, barcode),
-        name=COALESCE($4, name), display_name=COALESCE($5, display_name), pack_size=COALESCE($6, pack_size),
-        selling_unit=COALESCE($7, selling_unit), base_unit=COALESCE($8, base_unit), pieces_per_unit=COALESCE($9, pieces_per_unit),
-        purchase_price=COALESCE($10, purchase_price), buy_rate_uom=COALESCE($11, buy_rate_uom),
-        unit_selling_price=COALESCE($12, unit_selling_price), selling_rate_uom=COALESCE($13, selling_rate_uom),
-        piece_selling_price=COALESCE($14, piece_selling_price), min_stock_level=COALESCE($15, min_stock_level),
-        icon=COALESCE($16, icon), image_url=COALESCE($17, image_url), updated_at=NOW()
-      WHERE id=$18 AND company_id=$19 RETURNING *`,
+        category_id=COALESCE($1, category_id), category=COALESCE($2, category), sku=COALESCE($3, sku), barcode=COALESCE($4, barcode),
+        name=COALESCE($5, name), display_name=COALESCE($6, display_name), pack_size=COALESCE($7, pack_size),
+        selling_unit=COALESCE($8, selling_unit), base_unit=COALESCE($9, base_unit), pieces_per_unit=COALESCE($10, pieces_per_unit),
+        purchase_price=COALESCE($11, purchase_price), buy_rate_uom=COALESCE($12, buy_rate_uom),
+        unit_selling_price=COALESCE($13, unit_selling_price), selling_rate_uom=COALESCE($14, selling_rate_uom),
+        piece_selling_price=COALESCE($15, piece_selling_price), min_stock_level=COALESCE($16, min_stock_level),
+        icon=COALESCE($17, icon), image_url=COALESCE($18, image_url), updated_at=NOW()
+      WHERE id=$19 AND company_id=$20 RETURNING *`,
       [
         targetCategoryId !== null ? targetCategoryId : null,
+        targetCategoryName || (d.category && String(d.category).trim()) || null,
         d.sku || null, d.barcode || null,
         d.name ? d.name.trim() : null, d.display_name ? d.display_name.trim() : null, packSize,
         purchaseUnit, baseUnit, conversionFactor,

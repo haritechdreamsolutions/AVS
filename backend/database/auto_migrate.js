@@ -271,6 +271,15 @@ export async function runAutoMigrations() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `, [], 'create products');
+    await safeQuery(client, 'ALTER TABLE products ALTER COLUMN category DROP NOT NULL;', [], 'products.category drop not null');
+    await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS category VARCHAR(100);', [], 'products.category');
+    await safeQuery(client, `
+      UPDATE products p 
+      SET category = c.name 
+      FROM categories c 
+      WHERE p.category_id = c.id AND (p.category IS NULL OR p.category = '');
+    `, [], 'backfill products.category');
+    await safeQuery(client, "UPDATE products SET category = 'General' WHERE category IS NULL OR category = '';", [], 'fallback products.category');
     await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id INTEGER;', [], 'products.category_id');
     await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'products.company_id');
     await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS base_unit VARCHAR(20) DEFAULT 'Piece';", [], 'products.base_unit');
