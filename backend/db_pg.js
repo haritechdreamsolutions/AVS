@@ -984,11 +984,16 @@ export async function getWarehouseStock(cid) {
 export async function receiveStock(cid, data, actorUserId) {
   const client = await pool.connect();
   try {
+    await client.query(`
+      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS reference VARCHAR(255);
+      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS received_by VARCHAR(255);
+      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS notes TEXT;
+    `).catch(() => {});
     await client.query('BEGIN');
     const items = data.items || [{ product_id: data.product_id, quantity: data.quantity, unit: data.unit }];
     const reference = data.reference || data.dealer_name || null;
-    const received_by = data.received_by || 'Store Keeper';
-    const notes = data.notes || null;
+    const received_by = data.received_by || data.dealer_name || 'Store Keeper';
+    const notes = data.notes || (data.dealer_name ? `Supplier: ${data.dealer_name}` : null);
     const results = [];
     for (const item of items) {
       const qty = Number(item.quantity || item.qty_units);
@@ -1003,10 +1008,18 @@ export async function receiveStock(cid, data, actorUserId) {
       }
       const uRes = await client.query('UPDATE products SET warehouse_stock_units=warehouse_stock_units+$1, updated_at=NOW() WHERE id=$2 RETURNING *', [qty, pid]);
       const movNo = 'MOV-IN-' + Date.now() + '-' + Math.floor(Math.random()*1000);
-      const movRes = await client.query(
-        'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, qty_units, unit, reference, received_by, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-        [cid, movNo, 'INWARD', pid, prod.display_name, qty, item.unit || prod.selling_unit, reference, received_by, notes]
-      );
+      let movRes;
+      try {
+        movRes = await client.query(
+          'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, qty_units, unit, reference, received_by, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+          [cid, movNo, 'INWARD', pid, prod.display_name, qty, item.unit || prod.selling_unit, reference, received_by, notes]
+        );
+      } catch (colErr) {
+        movRes = await client.query(
+          'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, qty_units, unit, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+          [cid, movNo, 'INWARD', pid, prod.display_name, qty, item.unit || prod.selling_unit, notes || reference]
+        );
+      }
       results.push({ product: uRes.rows[0], movement: movRes.rows[0] });
     }
     await client.query('COMMIT');
@@ -1072,10 +1085,17 @@ export async function issueStockToEmployee(cid, data, actorUserId) {
         [employee_id, pid, cid, qty, item.unit || prod.selling_unit]
       );
       const movNo = 'MOV-ISSUE-' + Date.now() + '-' + Math.floor(Math.random()*1000);
-      await client.query(
-        'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes, reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-        [cid, movNo, 'OUTWARD', pid, prod.display_name, employee_id, emp.full_name, qty, item.unit || prod.selling_unit, notes || 'Dispatched to vehicle', clientRef]
-      );
+      try {
+        await client.query(
+          'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes, reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+          [cid, movNo, 'OUTWARD', pid, prod.display_name, employee_id, emp.full_name, qty, item.unit || prod.selling_unit, notes || 'Dispatched to vehicle', clientRef]
+        );
+      } catch (movErr) {
+        await client.query(
+          'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+          [cid, movNo, 'OUTWARD', pid, prod.display_name, employee_id, emp.full_name, qty, item.unit || prod.selling_unit, notes || 'Dispatched to vehicle']
+        );
+      }
 
       // Record immutable allocation transaction
       await client.query(
@@ -3028,7 +3048,12 @@ export async function getStockMovements(cid,f) {
 
 export async function addStockMovement(cid,d) {
   const mn='MOV-'+Date.now();
-  const row=await queryOne('INSERT INTO inventory_movements (company_id,movement_no,movement_type,product_id,product_name,employee_id,employee_name,qty_units,unit,notes,reference,received_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',[cid,mn,d.movement_type,d.product_id||null,d.product_name||null,d.employee_id||null,d.employee_name||null,d.qty_units||0,d.unit||'Tray',d.notes||null,d.reference||null,d.received_by||null]);
+  let row;
+  try {
+    row=await queryOne('INSERT INTO inventory_movements (company_id,movement_no,movement_type,product_id,product_name,employee_id,employee_name,qty_units,unit,notes,reference,received_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',[cid,mn,d.movement_type,d.product_id||null,d.product_name||null,d.employee_id||null,d.employee_name||null,d.qty_units||0,d.unit||'Tray',d.notes||null,d.reference||null,d.received_by||null]);
+  } catch (e) {
+    row=await queryOne('INSERT INTO inventory_movements (company_id,movement_no,movement_type,product_id,product_name,employee_id,employee_name,qty_units,unit,notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[cid,mn,d.movement_type,d.product_id||null,d.product_name||null,d.employee_id||null,d.employee_name||null,d.qty_units||0,d.unit||'Tray',d.notes||null]);
+  }
   return {success:true,movement:row};
 }
 
