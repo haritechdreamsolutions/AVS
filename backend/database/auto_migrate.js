@@ -439,6 +439,12 @@ export async function runAutoMigrations() {
     await safeQuery(client, 'ALTER TABLE sales ADD COLUMN IF NOT EXISTS gpay_paid NUMERIC(10,2) NOT NULL DEFAULT 0.00;', [], 'sales.gpay_paid');
     await safeQuery(client, 'ALTER TABLE sales ADD COLUMN IF NOT EXISTS credit_paid NUMERIC(10,2) NOT NULL DEFAULT 0.00;', [], 'sales.credit_paid');
     await safeQuery(client, "ALTER TABLE sales ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ACTIVE';", [], 'sales.status');
+    await safeQuery(client, 'ALTER TABLE sales ALTER COLUMN "date" DROP NOT NULL;', [], 'sales.date drop not null');
+    await safeQuery(client, 'ALTER TABLE sales ALTER COLUMN "time" DROP NOT NULL;', [], 'sales.time drop not null');
+    await safeQuery(client, 'ALTER TABLE sales ALTER COLUMN "date" SET DEFAULT CURRENT_DATE;', [], 'sales.date set default');
+    await safeQuery(client, 'ALTER TABLE expenses ALTER COLUMN "date" DROP NOT NULL;', [], 'expenses.date drop not null');
+    await safeQuery(client, 'ALTER TABLE damages ALTER COLUMN "date" DROP NOT NULL;', [], 'damages.date drop not null');
+    await safeQuery(client, 'ALTER TABLE settlements ALTER COLUMN "date" DROP NOT NULL;', [], 'settlements.date drop not null');
 
     await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS sale_items (

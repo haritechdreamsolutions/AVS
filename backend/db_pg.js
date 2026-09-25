@@ -1555,6 +1555,10 @@ export async function getOrCreateDefaultOrgShop(cid, client) {
 export async function createSale(cid, d, actorUserId) {
   const client = await pool.connect();
   try {
+    await client.query(`
+      ALTER TABLE sales ALTER COLUMN "date" DROP NOT NULL;
+      ALTER TABLE sales ALTER COLUMN "time" DROP NOT NULL;
+    `).catch(() => {});
     await client.query('BEGIN');
     const { employee_id, shop_id, payment_mode, items, cash_paid, gpay_paid, credit_paid } = d;
     if (!items || !Array.isArray(items) || items.length === 0) throw new Error('Sale items array is required');
@@ -1754,11 +1758,28 @@ export async function createSale(cid, d, actorUserId) {
     const today = new Date().toISOString().split('T')[0];
     const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-    const sR = await client.query(
-      'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, sale_date, sale_time, total_amount, cash_paid, gpay_paid, credit_paid, payment_mode) ' +
-      'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-      [cid, billNo, empId, empName, shop.id, shop.name, today, nowTime, computedTotal, cash, gpay, credit, mode]
-    );
+    let sR;
+    try {
+      sR = await client.query(
+        'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, sale_date, sale_time, total_amount, cash_paid, gpay_paid, credit_paid, payment_mode) ' +
+        'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+        [cid, billNo, empId, empName, shop.id, shop.name, today, nowTime, computedTotal, cash, gpay, credit, mode]
+      );
+    } catch (insertErr) {
+      try {
+        sR = await client.query(
+          'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, sale_date, sale_time, "date", "time", total_amount, cash_paid, gpay_paid, credit_paid, payment_mode) ' +
+          'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
+          [cid, billNo, empId, empName, shop.id, shop.name, today, nowTime, today, nowTime, computedTotal, cash, gpay, credit, mode]
+        );
+      } catch (insertErr2) {
+        sR = await client.query(
+          'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, "date", "time", total_amount, cash_paid, gpay_paid, credit_paid, payment_mode) ' +
+          'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+          [cid, billNo, empId, empName, shop.id, shop.name, today, nowTime, computedTotal, cash, gpay, credit, mode]
+        );
+      }
+    }
     const sale = sR.rows[0];
     sale.shop_code = shop.code || '';
 
