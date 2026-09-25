@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { 
   Snowflake, Plus, Store, X, Save, Search, Filter, 
   Trash2, Edit3, CheckCircle2, AlertTriangle, Layers, 
-  Sparkles, RefreshCw, Boxes, ArrowRight, Tag, ShieldAlert, Undo2, MapPin, ChevronDown, Check
+  Sparkles, RefreshCw, Boxes, ArrowRight, ArrowLeft, Tag, ShieldAlert, Undo2, MapPin, ChevronDown, Check
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -52,6 +52,7 @@ export const FreezerManagement = () => {
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('ALL');
+  const [selectedVillage, setSelectedVillage] = useState(null);
 
   // Modals State
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -205,6 +206,144 @@ export const FreezerManagement = () => {
     }
     return 'Salem Area';
   };
+
+  // Group all shops by Village
+  const villageFreezerGroups = useMemo(() => {
+    const groupMap = new Map();
+
+    // 1. Seed with known active villages
+    (villages || []).forEach(v => {
+      const key = String(v.id || v.name).toLowerCase().trim();
+      groupMap.set(key, {
+        id: v.id,
+        name: v.name,
+        code: v.code || '',
+        shops: [],
+        freezerShops: [],
+        noFreezerShops: [],
+        brands: new Set()
+      });
+    });
+
+    // 2. Put shops into respective villages
+    (shops || []).forEach(s => {
+      let matchedKey = null;
+      if (s.village_id && groupMap.has(String(s.village_id).toLowerCase().trim())) {
+        matchedKey = String(s.village_id).toLowerCase().trim();
+      } else if (s.village_name) {
+        const byNameKey = s.village_name.toLowerCase().trim();
+        for (const [k, g] of groupMap.entries()) {
+          if (g.name.toLowerCase().trim() === byNameKey) {
+            matchedKey = k;
+            break;
+          }
+        }
+      }
+
+      if (!matchedKey) {
+        const fallbackName = s.village_name || 'Salem Area';
+        matchedKey = fallbackName.toLowerCase().trim();
+        if (!groupMap.has(matchedKey)) {
+          groupMap.set(matchedKey, {
+            id: s.village_id || matchedKey,
+            name: fallbackName,
+            code: 'AREA',
+            shops: [],
+            freezerShops: [],
+            noFreezerShops: [],
+            brands: new Set()
+          });
+        }
+      }
+
+      const group = groupMap.get(matchedKey);
+      group.shops.push(s);
+      if (s.has_freezer) {
+        group.freezerShops.push(s);
+        if (s.freezer_model) {
+          const matchedBrand = availableBrands.find(b => s.freezer_model.toLowerCase().includes(b.toLowerCase()));
+          if (matchedBrand) group.brands.add(matchedBrand);
+        }
+      } else {
+        group.noFreezerShops.push(s);
+      }
+    });
+
+    return Array.from(groupMap.values()).filter(g => g.shops.length > 0 || g.freezerShops.length > 0);
+  }, [villages, shops, availableBrands]);
+
+  // Filtered village groups for Level 1 (Default View)
+  const filteredVillageGroups = useMemo(() => {
+    return villageFreezerGroups.filter(vg => {
+      // Brand filter
+      if (brandFilter !== 'ALL') {
+        const hasBrand = Array.from(vg.brands).some(b => b.toLowerCase() === brandFilter.toLowerCase()) ||
+          vg.freezerShops.some(s => (s.freezer_model || '').toLowerCase().includes(brandFilter.toLowerCase()));
+        if (!hasBrand) return false;
+      }
+      // Search query filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesVillage = (vg.name && vg.name.toLowerCase().includes(q)) ||
+          (vg.code && vg.code.toLowerCase().includes(q));
+        const matchesShopInside = vg.shops.some(s => 
+          (s.name && s.name.toLowerCase().includes(q)) ||
+          (s.code && s.code.toLowerCase().includes(q)) ||
+          (s.owner_name && s.owner_name.toLowerCase().includes(q)) ||
+          (s.freezer_model && s.freezer_model.toLowerCase().includes(q)) ||
+          (s.freezer_serial && s.freezer_serial.toLowerCase().includes(q))
+        );
+        return matchesVillage || matchesShopInside;
+      }
+      return true;
+    });
+  }, [villageFreezerGroups, brandFilter, searchQuery]);
+
+  // Active village group when Level 2 is opened
+  const activeVillageGroup = useMemo(() => {
+    if (!selectedVillage) return null;
+    return villageFreezerGroups.find(vg => 
+      String(vg.id) === String(selectedVillage.id || selectedVillage) ||
+      vg.name.toLowerCase().trim() === String(selectedVillage.name || selectedVillage).toLowerCase().trim()
+    ) || selectedVillage;
+  }, [selectedVillage, villageFreezerGroups]);
+
+  // Level 2: Shops inside selected village
+  const activeVillageFreezerShops = useMemo(() => {
+    if (!activeVillageGroup) return [];
+    return (activeVillageGroup.freezerShops || []).filter(s => {
+      if (brandFilter !== 'ALL') {
+        const m = (s.freezer_model || '').toLowerCase();
+        if (!m.includes(brandFilter.toLowerCase())) return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        return (
+          (s.name && s.name.toLowerCase().includes(q)) ||
+          (s.code && s.code.toLowerCase().includes(q)) ||
+          (s.owner_name && s.owner_name.toLowerCase().includes(q)) ||
+          (s.freezer_model && s.freezer_model.toLowerCase().includes(q)) ||
+          (s.freezer_serial && s.freezer_serial.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [activeVillageGroup, brandFilter, searchQuery]);
+
+  const activeVillageNoFreezerShops = useMemo(() => {
+    if (!activeVillageGroup) return [];
+    return (activeVillageGroup.noFreezerShops || []).filter(s => {
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        return (
+          (s.name && s.name.toLowerCase().includes(q)) ||
+          (s.code && s.code.toLowerCase().includes(q)) ||
+          (s.owner_name && s.owner_name.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [activeVillageGroup, searchQuery]);
 
   // Filtered villages based on what user types in village input
   const filteredVillageOptions = useMemo(() => {
@@ -577,123 +716,266 @@ export const FreezerManagement = () => {
       </div>
 
       {/* ==================================================================== */}
-      {/* SECTION 1: SHOPS WITH FREEZER DEPLOYED */}
+      {/* LEVEL 1 (DEFAULT) OR LEVEL 2 (VILLAGE SELECTED) VIEW */}
       {/* ==================================================================== */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-black text-sm text-slate-900 uppercase tracking-wide flex items-center gap-2">
-            <Store className="w-4 h-4 text-cyan-600" />
-            SHOPS WITH FREEZER DEPLOYED ({freezerShops.length})
-          </h3>
-        </div>
-
-        {freezerShops.length === 0 ? (
-          <div className="text-center py-10 bg-white rounded-3xl border border-dashed border-slate-300 p-6 space-y-3">
-            <div className="w-12 h-12 rounded-full bg-cyan-50 text-cyan-600 flex items-center justify-center mx-auto text-2xl font-bold">
-              🧊
-            </div>
-            <h4 className="font-extrabold text-slate-700 text-sm">No Freezers Deployed Matching Criteria</h4>
-            <p className="text-xs text-slate-400">Click below to allocate a freezer to any eligible shop.</p>
-            <button
-              onClick={() => handleOpenAssignModal()}
-              className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-black text-xs inline-flex items-center gap-1.5 shadow-sm"
-            >
-              <Plus className="w-4 h-4" /> Assign Freezer
-            </button>
+      {!selectedVillage ? (
+        /* ------------------------------------------------------------------ */
+        /* LEVEL 1: VILLAGES WITH FREEZER ASSETS GRID                         */
+        /* ------------------------------------------------------------------ */
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+            <h3 className="font-black text-sm text-slate-900 uppercase tracking-wide flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-cyan-600" />
+              VILLAGES WITH FREEZER ASSETS ({filteredVillageGroups.length})
+            </h3>
+            <span className="text-xs font-bold text-slate-400">Click any village card to view its shops & freezers</span>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {freezerShops.map(shop => (
-              <div key={shop.id} className="glass-panel p-4 rounded-3xl bg-white border border-slate-200 space-y-3.5 shadow-sm hover:border-cyan-300 transition relative overflow-hidden group">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center font-bold text-xl flex-shrink-0">
-                      🧊
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <h4 className="font-black text-sm text-slate-900">{shop.name}</h4>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded font-black bg-slate-100 text-slate-700 border border-slate-200">
-                          {shop.code}
+
+          {filteredVillageGroups.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-3xl border border-dashed border-slate-300 p-6 space-y-3">
+              <div className="w-12 h-12 rounded-full bg-cyan-50 text-cyan-600 flex items-center justify-center mx-auto text-2xl font-bold">
+                📍
+              </div>
+              <h4 className="font-extrabold text-slate-700 text-sm">No Villages Found</h4>
+              <p className="text-xs text-slate-400">No villages match the selected search or brand filters.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredVillageGroups.map(vg => {
+                const totalShops = vg.shops.length;
+                const totalFreezers = vg.freezerShops.length;
+                const pendingShops = vg.noFreezerShops.length;
+                const brandsArray = Array.from(vg.brands || []);
+
+                return (
+                  <div
+                    key={vg.id || vg.name}
+                    onClick={() => setSelectedVillage(vg)}
+                    className="glass-panel p-5 rounded-3xl bg-white border border-slate-200 hover:border-cyan-400 hover:shadow-lg transition cursor-pointer relative overflow-hidden group flex flex-col justify-between"
+                  >
+                    <div className="space-y-3.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-105 transition shadow-sm">
+                            📍
+                          </div>
+                          <div>
+                            <h4 className="font-black text-base text-slate-900 group-hover:text-cyan-600 transition">
+                              {vg.name}
+                            </h4>
+                            {vg.code && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded font-black bg-slate-100 text-slate-700 border border-slate-200">
+                                {vg.code}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-black border flex-shrink-0 ${
+                          totalFreezers > 0 ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-slate-100 text-slate-600 border-slate-200'
+                        }`}>
+                          {totalFreezers} {totalFreezers === 1 ? 'Freezer' : 'Freezers'}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-500 font-bold mt-0.5">
-                        {shop.owner_name} {shop.phone ? `• ${shop.phone}` : ''}
-                      </p>
+
+                      <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200 text-xs space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-bold text-[11px]">Total Shops:</span>
+                          <span className="font-black text-slate-900">{totalShops} shops</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-bold text-[11px]">Freezers Deployed:</span>
+                          <span className="font-black text-emerald-600 font-mono">{totalFreezers} deployed</span>
+                        </div>
+                        {pendingShops > 0 && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-500 font-bold text-[11px]">Pending Allocation:</span>
+                            <span className="font-bold text-amber-600 font-mono">{pendingShops} eligible</span>
+                          </div>
+                        )}
+                        {brandsArray.length > 0 && (
+                          <div className="pt-2 border-t border-slate-200/60 flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Brands:</span>
+                            {brandsArray.slice(0, 3).map(b => (
+                              <span key={b} className="text-[10px] font-bold bg-white text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                                {b}
+                              </span>
+                            ))}
+                            {brandsArray.length > 3 && (
+                              <span className="text-[10px] text-slate-400 font-bold">+{brandsArray.length - 3}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-100 mt-3 flex items-center justify-between text-cyan-600 group-hover:text-cyan-700 font-black text-xs">
+                      <span>View Shops & Freezers</span>
+                      <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1.5 transition" />
                     </div>
                   </div>
-
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex-shrink-0">
-                    {shop.freezer_status || 'Active'}
-                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* ------------------------------------------------------------------ */
+        /* LEVEL 2: SELECTED VILLAGE SHOPS & FREEZERS VIEW                    */
+        /* ------------------------------------------------------------------ */
+        <div className="space-y-6">
+          {/* Back Navigation & Village Banner */}
+          <div className="bg-gradient-to-r from-cyan-900 via-slate-900 to-cyan-950 p-5 rounded-3xl text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setSelectedVillage(null)}
+                className="px-3.5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-black transition flex items-center gap-2 text-xs border border-white/15 cursor-pointer shadow-sm"
+                title="Back to all villages"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>← BACK TO ALL VILLAGES</span>
+              </button>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl font-black tracking-tight">{activeVillageGroup?.name}</h2>
+                  {activeVillageGroup?.code && (
+                    <span className="text-xs font-mono px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-400/30">
+                      {activeVillageGroup.code}
+                    </span>
+                  )}
                 </div>
-
-                <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200 text-xs space-y-1.5 font-mono">
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-500 font-sans font-bold text-[11px]">Model:</span>
-                    <span className="font-black text-slate-900 text-right">{shop.freezer_model || 'Standard Deep Freezer'}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-500 font-sans font-bold text-[11px]">Serial No:</span>
-                    <span className="font-black text-cyan-700">{shop.freezer_serial || 'FRZ-GEN-904'}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-500 font-sans font-bold text-[11px]">Allocation Date:</span>
-                    <span className="font-bold text-slate-700">{shop.freezer_date || 'N/A'}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
-                  <button
-                    onClick={() => handleOpenAssignModal(shop.id)}
-                    className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-[11px] flex items-center justify-center gap-1.5 transition"
-                  >
-                    <Edit3 className="w-3.5 h-3.5 text-cyan-600" />
-                    Change / Edit
-                  </button>
-                  <button
-                    onClick={() => setDeleteModal({ isOpen: true, shop })}
-                    className="py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-extrabold text-[11px] flex items-center justify-center gap-1 border border-rose-200 transition"
-                    title="Delete Freezer Allocation"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Delete
-                  </button>
-                </div>
+                <p className="text-xs text-cyan-200/80 font-medium mt-0.5">
+                  Managing Freezers for {activeVillageGroup?.shops?.length || 0} Shops in {activeVillageGroup?.name}
+                </p>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
 
-      {/* ==================================================================== */}
-      {/* SECTION 2: SHOPS WITHOUT FREEZER ALLOCATION */}
-      {/* ==================================================================== */}
-      {noFreezerShops.length > 0 && (
-        <div className="space-y-4 pt-6 border-t border-slate-200">
-          <div className="flex items-center justify-between">
-            <h3 className="font-black text-sm text-slate-900 uppercase tracking-wide flex items-center gap-2">
-              <Store className="w-4 h-4 text-amber-500" />
-              ELIGIBLE SHOPS PENDING FREEZER ALLOCATION ({noFreezerShops.length})
-            </h3>
+            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+              <div className="text-right">
+                <span className="text-[10px] text-cyan-300 font-extrabold uppercase tracking-wider block">Deployed in Village</span>
+                <span className="text-lg font-black font-mono text-white">
+                  {activeVillageGroup?.freezerShops?.length || 0} <span className="text-xs font-normal text-cyan-200">Freezers</span>
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {noFreezerShops.map(shop => (
-              <div key={shop.id} className="glass-card p-3.5 rounded-2xl bg-white border border-slate-200 flex items-center justify-between shadow-sm hover:border-cyan-300 transition">
-                <div>
-                  <h5 className="font-bold text-xs text-slate-900">{shop.name} ({shop.code})</h5>
-                  <p className="text-[10px] text-slate-500 font-semibold">{shop.owner_name} • {shop.village_name || 'Salem Area'}</p>
+          {/* SHOPS WITH FREEZER DEPLOYED */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-sm text-slate-900 uppercase tracking-wide flex items-center gap-2">
+                <Store className="w-4 h-4 text-cyan-600" />
+                SHOPS WITH FREEZER DEPLOYED IN {activeVillageGroup?.name} ({activeVillageFreezerShops.length})
+              </h3>
+            </div>
+
+            {activeVillageFreezerShops.length === 0 ? (
+              <div className="text-center py-10 bg-white rounded-3xl border border-dashed border-slate-300 p-6 space-y-3">
+                <div className="w-12 h-12 rounded-full bg-cyan-50 text-cyan-600 flex items-center justify-center mx-auto text-2xl font-bold">
+                  🧊
                 </div>
+                <h4 className="font-extrabold text-slate-700 text-sm">No Freezers Deployed in {activeVillageGroup?.name}</h4>
+                <p className="text-xs text-slate-400">Click below to assign a freezer to any eligible shop in this village.</p>
                 <button
-                  onClick={() => handleOpenAssignModal(shop.id)}
-                  className="px-3 py-1.5 bg-cyan-50 text-cyan-700 hover:bg-cyan-600 hover:text-white rounded-xl text-[11px] font-extrabold border border-cyan-200 transition flex items-center gap-1 shadow-sm"
+                  onClick={() => handleOpenAssignModal()}
+                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-black text-xs inline-flex items-center gap-1.5 shadow-sm"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Assign Freezer
+                  <Plus className="w-4 h-4" /> Assign Freezer
                 </button>
               </div>
-            ))}
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {activeVillageFreezerShops.map(shop => (
+                  <div key={shop.id} className="glass-panel p-4 rounded-3xl bg-white border border-slate-200 space-y-3.5 shadow-sm hover:border-cyan-300 transition relative overflow-hidden group">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-2xl bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center font-bold text-xl flex-shrink-0">
+                          🧊
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className="font-black text-sm text-slate-900">{shop.name}</h4>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded font-black bg-slate-100 text-slate-700 border border-slate-200">
+                              {shop.code}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 font-bold mt-0.5">
+                            {shop.owner_name} {shop.phone ? `• ${shop.phone}` : ''}
+                          </p>
+                        </div>
+                      </div>
+
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex-shrink-0">
+                        {shop.freezer_status || 'Active'}
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200 text-xs space-y-1.5 font-mono">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 font-sans font-bold text-[11px]">Model:</span>
+                        <span className="font-black text-slate-900 text-right">{shop.freezer_model || 'Standard Deep Freezer'}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 font-sans font-bold text-[11px]">Serial No:</span>
+                        <span className="font-black text-cyan-700">{shop.freezer_serial || 'FRZ-GEN-904'}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 font-sans font-bold text-[11px]">Allocation Date:</span>
+                        <span className="font-bold text-slate-700">{shop.freezer_date || 'N/A'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
+                      <button
+                        onClick={() => handleOpenAssignModal(shop.id)}
+                        className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-[11px] flex items-center justify-center gap-1.5 transition cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-cyan-600" />
+                        Change / Edit
+                      </button>
+                      <button
+                        onClick={() => setDeleteModal({ isOpen: true, shop })}
+                        className="py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-extrabold text-[11px] flex items-center justify-center gap-1 border border-rose-200 transition cursor-pointer"
+                        title="Delete Freezer Allocation"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+
+          {/* SHOPS WITHOUT FREEZER IN THIS VILLAGE */}
+          {activeVillageNoFreezerShops.length > 0 && (
+            <div className="space-y-4 pt-6 border-t border-slate-200">
+              <div className="flex items-center justify-between">
+                <h3 className="font-black text-sm text-slate-900 uppercase tracking-wide flex items-center gap-2">
+                  <Store className="w-4 h-4 text-amber-500" />
+                  ELIGIBLE SHOPS PENDING FREEZER ALLOCATION IN {activeVillageGroup?.name} ({activeVillageNoFreezerShops.length})
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {activeVillageNoFreezerShops.map(shop => (
+                  <div key={shop.id} className="glass-card p-3.5 rounded-2xl bg-white border border-slate-200 flex items-center justify-between shadow-sm hover:border-cyan-300 transition">
+                    <div>
+                      <h5 className="font-bold text-xs text-slate-900">{shop.name} ({shop.code})</h5>
+                      <p className="text-[10px] text-slate-500 font-semibold">{shop.owner_name}</p>
+                    </div>
+                    <button
+                      onClick={() => handleOpenAssignModal(shop.id)}
+                      className="px-3 py-1.5 bg-cyan-50 text-cyan-700 hover:bg-cyan-600 hover:text-white rounded-xl text-[11px] font-extrabold border border-cyan-200 transition flex items-center gap-1 shadow-sm cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Assign Freezer
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
