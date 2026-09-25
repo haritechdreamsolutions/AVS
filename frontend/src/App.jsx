@@ -30,6 +30,7 @@ export default function App() {
   const { activeRole, currentUser, isAuthChecking, createSale, activeBill, setActiveBill } = useApp();
 
   const [empScreen, setEmpScreen] = useState('home');
+  const [selectedVillage, setSelectedVillage] = useState(null);
   const [selectedShop, setSelectedShop] = useState(null);
   const [pendingBillData, setPendingBillData] = useState(null);
   const [lastCreatedBill, setLastCreatedBill] = useState(null);
@@ -56,6 +57,12 @@ export default function App() {
 
   const handleSelectShop = (shop) => {
     setSelectedShop(shop);
+    if (shop.village_id || shop.village_name || shop.village) {
+      setSelectedVillage({
+        id: shop.village_id || null,
+        name: shop.village_name || shop.village || 'Other Shops'
+      });
+    }
     setEmpScreen('billing');
   };
 
@@ -111,6 +118,8 @@ export default function App() {
 
                   {empScreen === 'shop_select' && (
                     <ShopSelection
+                      selectedVillage={selectedVillage}
+                      onSelectVillage={setSelectedVillage}
                       onSelectShop={handleSelectShop}
                       onBack={() => setEmpScreen('home')}
                     />
@@ -137,7 +146,7 @@ export default function App() {
                       billResult={lastCreatedBill}
                       onDone={() => {
                         setLastCreatedBill(null);
-                        setEmpScreen('home');
+                        setEmpScreen('shop_select');
                       }}
                     />
                   )}
