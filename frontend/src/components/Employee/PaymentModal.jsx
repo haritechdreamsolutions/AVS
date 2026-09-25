@@ -9,14 +9,19 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
   
   const totalAmount = Number(Number(billData?.total_amount || 0).toFixed(2));
 
-  // Dynamic SPLIT state (User types in primary input, secondary auto-calculates remaining)
-  const [cashReceived, setCashReceived] = useState('');
-  const [gpayReceived, setGpayReceived] = useState('');
+  // Dynamic SPLIT state (Defaults to full bill amount in primary input; user changes it and remaining auto-updates in secondary box)
+  const [cashReceived, setCashReceived] = useState(totalAmount.toString());
+  const [gpayReceived, setGpayReceived] = useState(totalAmount.toString());
 
-  // Reset inputs when switching split sub-options so user can type cleanly
+  // Default to full bill amount whenever totalAmount or splitOption changes
   useEffect(() => {
-    setCashReceived('');
-    setGpayReceived('');
+    if (splitOption === 'CASH_GPAY' || splitOption === 'CASH_CREDIT') {
+      setCashReceived(totalAmount.toString());
+      setGpayReceived('');
+    } else if (splitOption === 'GPAY_CREDIT') {
+      setGpayReceived(totalAmount.toString());
+      setCashReceived('');
+    }
   }, [totalAmount, splitOption]);
 
   // Compute clean numeric values based on mode & splitOption
