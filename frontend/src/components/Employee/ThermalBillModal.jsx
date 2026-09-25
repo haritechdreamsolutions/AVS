@@ -61,7 +61,7 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
     );
   }, [shops, bill]);
 
-  // Compute exact previous due and total current balance
+  const oldCreditPaid = Number(bill.old_credit_paid || 0);
   const thisBillCredit = paymentMode === 'CREDIT' ? totalAmount : (paymentMode === 'SPLIT' ? creditPaid : 0);
 
   const previousDue = useMemo(() => {
@@ -73,12 +73,15 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
     }
     if (matchedShop?.current_due !== undefined && matchedShop?.current_due !== null) {
       const currentShopDue = Number(matchedShop.current_due) || 0;
-      return Math.max(0, currentShopDue - thisBillCredit);
+      return Math.max(0, currentShopDue - thisBillCredit + oldCreditPaid);
     }
     return Number(bill.shop_due ?? 0);
-  }, [bill, matchedShop, thisBillCredit]);
+  }, [bill, matchedShop, thisBillCredit, oldCreditPaid]);
 
-  const totalShopDue = previousDue + thisBillCredit;
+  const totalShopDue = bill.shop_current_due !== undefined && bill.shop_current_due !== null && !isNaN(Number(bill.shop_current_due))
+    ? Number(bill.shop_current_due)
+    : Math.max(0, previousDue - oldCreditPaid) + thisBillCredit;
+
   const grandTotal = totalAmount + previousDue;
 
   const formattedDate = () => {
@@ -201,6 +204,12 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
                   <span>OLD CREDIT (பழைய கடன்):</span>
                   <span className="font-mono">₹{previousDue.toFixed(2)}</span>
                 </div>
+                {oldCreditPaid > 0 && (
+                  <div className="flex justify-between font-bold text-[10.5px] text-emerald-700 pt-0.5">
+                    <span>OLD CREDIT PAID (செலுத்தியது):</span>
+                    <span className="font-mono">₹{oldCreditPaid.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-black text-sm text-slate-950 pt-0.5 border-t border-slate-300">
                   <span>NET GRAND TOTAL:</span>
                   <span className="font-mono text-purple-700">

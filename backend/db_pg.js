@@ -1731,11 +1731,12 @@ export async function createSale(cid, d, actorUserId) {
     computedTotal = parseFloat(computedTotal.toFixed(2));
     let cash = 0, gpay = 0, credit = 0;
     const mode = (payment_mode || 'CASH').toUpperCase();
+    const oldCreditPaid = Number(d.old_credit_paid || (d.clear_previous_due ? (shop?.current_due || 0) : 0));
 
     if (mode === 'CASH') {
-      cash = computedTotal;
+      cash = computedTotal + oldCreditPaid;
     } else if (mode === 'GPAY') {
-      gpay = computedTotal;
+      gpay = computedTotal + oldCreditPaid;
     } else if (mode === 'CREDIT') {
       credit = computedTotal;
     } else if (mode === 'SPLIT') {
@@ -1743,14 +1744,20 @@ export async function createSale(cid, d, actorUserId) {
       gpay = Number(gpay_paid || 0);
       credit = Number(credit_paid || 0);
       const sum = parseFloat((cash + gpay + credit).toFixed(2));
-      if (Math.abs(sum - computedTotal) > 0.05) {
-        throw new Error(`Split payment sum (₹${sum}) does not equal total bill amount (₹${computedTotal})`);
+      const expectedTotal = parseFloat((computedTotal + oldCreditPaid).toFixed(2));
+      if (Math.abs(sum - expectedTotal) > 0.05 && Math.abs(sum - computedTotal) > 0.05) {
+        throw new Error(`Split payment sum (₹${sum}) does not equal expected total (₹${expectedTotal})`);
       }
     } else {
       throw new Error(`Invalid payment mode '${payment_mode}'`);
     }
 
-    if (credit > 0) {
+    const shopPrevDue = Number(shop?.current_due || 0);
+    if (oldCreditPaid > 0 && shop) {
+      await client.query('UPDATE shops SET current_due=GREATEST(0, current_due - $1), updated_at=NOW() WHERE id=$2', [oldCreditPaid, shop.id]);
+    }
+
+    if (credit > 0 && shop) {
       await client.query('UPDATE shops SET current_due=current_due+$1, updated_at=NOW() WHERE id=$2', [credit, shop.id]);
     }
 
@@ -1763,28 +1770,29 @@ export async function createSale(cid, d, actorUserId) {
       sR = await client.query(
         'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, sale_date, sale_time, total_amount, cash_paid, gpay_paid, credit_paid, payment_mode) ' +
         'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-        [cid, billNo, empId, empName, shop.id, shop.name, today, nowTime, computedTotal, cash, gpay, credit, mode]
+        [cid, billNo, empId, empName, shop ? shop.id : null, shop ? shop.name : (d.shop_name || 'Customer'), today, nowTime, computedTotal, cash, gpay, credit, mode]
       );
     } catch (insertErr) {
       try {
         sR = await client.query(
           'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, sale_date, sale_time, "date", "time", total_amount, cash_paid, gpay_paid, credit_paid, payment_mode) ' +
           'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
-          [cid, billNo, empId, empName, shop.id, shop.name, today, nowTime, today, nowTime, computedTotal, cash, gpay, credit, mode]
+          [cid, billNo, empId, empName, shop ? shop.id : null, shop ? shop.name : (d.shop_name || 'Customer'), today, nowTime, today, nowTime, computedTotal, cash, gpay, credit, mode]
         );
       } catch (insertErr2) {
         sR = await client.query(
           'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, "date", "time", total_amount, cash_paid, gpay_paid, credit_paid, payment_mode) ' +
           'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-          [cid, billNo, empId, empName, shop.id, shop.name, today, nowTime, computedTotal, cash, gpay, credit, mode]
+          [cid, billNo, empId, empName, shop ? shop.id : null, shop ? shop.name : (d.shop_name || 'Customer'), today, nowTime, computedTotal, cash, gpay, credit, mode]
         );
       }
     }
     const sale = sR.rows[0];
-    sale.shop_code = shop.code || '';
-    sale.previous_due = Number(shop.current_due || 0);
-    sale.shop_previous_due = Number(shop.current_due || 0);
-    sale.shop_current_due = Number(shop.current_due || 0) + credit;
+    sale.shop_code = shop?.code || '';
+    sale.previous_due = shopPrevDue;
+    sale.shop_previous_due = shopPrevDue;
+    sale.old_credit_paid = oldCreditPaid;
+    sale.shop_current_due = Math.max(0, shopPrevDue - oldCreditPaid) + credit;
 
     for (const item of evaluatedItems) {
       await client.query(

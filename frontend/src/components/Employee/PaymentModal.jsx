@@ -7,22 +7,27 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
   const [splitOption, setSplitOption] = useState('CASH_GPAY'); // 'CASH_GPAY', 'CASH_CREDIT', 'GPAY_CREDIT'
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const totalAmount = Number(Number(billData?.total_amount || 0).toFixed(2));
+  const totalBillAmount = Number(Number(billData?.total_amount || 0).toFixed(2));
+  const previousDue = Number(Number(billData?.previous_due || 0).toFixed(2));
+  const [includeOldCredit, setIncludeOldCredit] = useState(false);
 
-  // Dynamic SPLIT state (Defaults to full bill amount in primary input; user changes it and remaining auto-updates in secondary box)
-  const [cashReceived, setCashReceived] = useState(totalAmount.toString());
-  const [gpayReceived, setGpayReceived] = useState(totalAmount.toString());
+  // Total payable depends on whether old credit is included
+  const payableAmount = Number((includeOldCredit ? totalBillAmount + previousDue : totalBillAmount).toFixed(2));
 
-  // Default to full bill amount whenever totalAmount or splitOption changes
+  // Dynamic SPLIT state (Defaults to full payable amount in primary input; user changes it and remaining auto-updates in secondary box)
+  const [cashReceived, setCashReceived] = useState(payableAmount.toString());
+  const [gpayReceived, setGpayReceived] = useState(payableAmount.toString());
+
+  // Default to full payable amount whenever payableAmount or splitOption changes
   useEffect(() => {
     if (splitOption === 'CASH_GPAY' || splitOption === 'CASH_CREDIT') {
-      setCashReceived(totalAmount.toString());
+      setCashReceived(payableAmount.toString());
       setGpayReceived('');
     } else if (splitOption === 'GPAY_CREDIT') {
-      setGpayReceived(totalAmount.toString());
+      setGpayReceived(payableAmount.toString());
       setCashReceived('');
     }
-  }, [totalAmount, splitOption]);
+  }, [payableAmount, splitOption]);
 
   // Compute clean numeric values based on mode & splitOption
   let numCash = 0;
@@ -30,32 +35,32 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
   let numCredit = 0;
 
   if (mode === 'CASH') {
-    numCash = totalAmount;
+    numCash = payableAmount;
   } else if (mode === 'GPAY') {
-    numGpay = totalAmount;
+    numGpay = payableAmount;
   } else if (mode === 'CREDIT') {
-    numCredit = totalAmount;
+    numCredit = totalBillAmount;
   } else if (mode === 'SPLIT') {
     if (splitOption === 'CASH_GPAY') {
-      const parsedCash = cashReceived === '' ? 0 : Math.min(totalAmount, Math.max(0, parseFloat(cashReceived) || 0));
+      const parsedCash = cashReceived === '' ? 0 : Math.min(payableAmount, Math.max(0, parseFloat(cashReceived) || 0));
       numCash = parsedCash;
-      numGpay = Number(Math.max(0, totalAmount - parsedCash).toFixed(2));
+      numGpay = Number(Math.max(0, payableAmount - parsedCash).toFixed(2));
       numCredit = 0;
     } else if (splitOption === 'CASH_CREDIT') {
-      const parsedCash = cashReceived === '' ? 0 : Math.min(totalAmount, Math.max(0, parseFloat(cashReceived) || 0));
+      const parsedCash = cashReceived === '' ? 0 : Math.min(payableAmount, Math.max(0, parseFloat(cashReceived) || 0));
       numCash = parsedCash;
-      numCredit = Number(Math.max(0, totalAmount - parsedCash).toFixed(2));
+      numCredit = Number(Math.max(0, payableAmount - parsedCash).toFixed(2));
       numGpay = 0;
     } else if (splitOption === 'GPAY_CREDIT') {
-      const parsedGpay = gpayReceived === '' ? 0 : Math.min(totalAmount, Math.max(0, parseFloat(gpayReceived) || 0));
+      const parsedGpay = gpayReceived === '' ? 0 : Math.min(payableAmount, Math.max(0, parseFloat(gpayReceived) || 0));
       numGpay = parsedGpay;
-      numCredit = Number(Math.max(0, totalAmount - parsedGpay).toFixed(2));
+      numCredit = Number(Math.max(0, payableAmount - parsedGpay).toFixed(2));
       numCash = 0;
     }
   }
 
   const totalReceived = Number((numCash + numGpay + numCredit).toFixed(2));
-  const balance = Number(Math.max(0, totalAmount - totalReceived).toFixed(2));
+  const balance = Number(Math.max(0, payableAmount - totalReceived).toFixed(2));
 
   // Smart Handlers when typing
   const handleCashChange = (val) => {
@@ -68,9 +73,9 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
       setCashReceived('');
       return;
     }
-    if (numericVal > totalAmount) {
-      toast.error(`ரொக்கத் தொகை மொத்த பில் தொகையை (₹${totalAmount.toFixed(2)}) விட அதிகமாக இருக்க முடியாது!`);
-      setCashReceived(totalAmount.toString());
+    if (numericVal > payableAmount) {
+      toast.error(`ரொக்கத் தொகை மொத்த தொகையை (₹${payableAmount.toFixed(2)}) விட அதிகமாக இருக்க முடியாது!`);
+      setCashReceived(payableAmount.toString());
       return;
     }
     setCashReceived(val);
@@ -86,9 +91,9 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
       setGpayReceived('');
       return;
     }
-    if (numericVal > totalAmount) {
-      toast.error(`ஜிபே தொகை மொத்த பில் தொகையை (₹${totalAmount.toFixed(2)}) விட அதிகமாக இருக்க முடியாது!`);
-      setGpayReceived(totalAmount.toString());
+    if (numericVal > payableAmount) {
+      toast.error(`ஜிபே தொகை மொத்த தொகையை (₹${payableAmount.toFixed(2)}) விட அதிகமாக இருக்க முடியாது!`);
+      setGpayReceived(payableAmount.toString());
       return;
     }
     setGpayReceived(val);
@@ -103,16 +108,21 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
 
     try {
       setIsSubmitting(true);
+      const oldCreditPaid = includeOldCredit ? previousDue : 0;
       await onConfirmBill({
         ...billData,
         shop_id: billData?.shop_id,
         shop_name: billData?.shop_name,
         shop_code: billData?.shop_code,
-        previous_due: billData?.previous_due || 0,
+        previous_due: previousDue,
+        old_credit_paid: oldCreditPaid,
+        clear_previous_due: includeOldCredit,
+        total_amount: totalBillAmount,
+        payable_amount: payableAmount,
         payment_mode: mode,
-        cash_paid: mode === 'CASH' ? totalAmount : (mode === 'SPLIT' ? numCash : 0),
-        gpay_paid: mode === 'GPAY' ? totalAmount : (mode === 'SPLIT' ? numGpay : 0),
-        credit_paid: mode === 'CREDIT' ? totalAmount : (mode === 'SPLIT' ? numCredit : 0),
+        cash_paid: mode === 'CASH' ? payableAmount : (mode === 'SPLIT' ? numCash : 0),
+        gpay_paid: mode === 'GPAY' ? payableAmount : (mode === 'SPLIT' ? numGpay : 0),
+        credit_paid: mode === 'CREDIT' ? totalBillAmount : (mode === 'SPLIT' ? numCredit : 0),
         balance: balance
       });
     } finally {
@@ -143,11 +153,63 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
 
       {/* Total Amount Display Card */}
       <div className="glass-panel p-4 sm:p-5 rounded-2xl text-center bg-white border border-emerald-300 shadow-sm glow-green">
-        <span className="text-xs text-slate-500 uppercase font-extrabold tracking-wider">Total Bill Amount</span>
+        <span className="text-xs text-slate-500 uppercase font-extrabold tracking-wider">
+          {includeOldCredit ? 'Total Payable (மொத்தம் செலுத்த வேண்டியது)' : 'Total Bill Amount (பில் தொகை)'}
+        </span>
         <div className="font-mono font-black text-3xl sm:text-4xl text-emerald-600 mt-1">
-          ₹{totalAmount.toFixed(2)}
+          ₹{payableAmount.toFixed(2)}
         </div>
+        {includeOldCredit && (
+          <div className="text-[11px] font-bold text-slate-500 mt-1 flex items-center justify-center gap-2">
+            <span>பில்: ₹{totalBillAmount.toFixed(2)}</span>
+            <span>+</span>
+            <span className="text-amber-700 font-extrabold">பழைய கடன்: ₹{previousDue.toFixed(2)}</span>
+          </div>
+        )}
       </div>
+
+      {/* Old Credit Due Selection Banner (Only if shop has outstanding credit) */}
+      {previousDue > 0 && (
+        <div className="p-3 bg-gradient-to-r from-amber-50/90 to-orange-50/90 border-2 border-amber-300 rounded-2xl space-y-2 shadow-xs">
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-black text-amber-900 flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              OLD CREDIT (பழைய பாக்கி கடன்):
+            </span>
+            <span className="font-mono font-black text-amber-800 text-sm">₹{previousDue.toFixed(2)}</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-0.5">
+            <button
+              type="button"
+              onClick={() => setIncludeOldCredit(false)}
+              className={`py-2.5 px-2 rounded-xl text-xs font-black transition cursor-pointer text-center ${
+                !includeOldCredit
+                  ? 'bg-white text-slate-900 border-2 border-slate-800 shadow-sm'
+                  : 'bg-white/60 text-slate-600 hover:bg-white border border-slate-200'
+              }`}
+            >
+              <div>பில் மட்டும்</div>
+              <div className="text-[10px] font-mono text-slate-500 font-bold">₹{totalBillAmount.toFixed(2)}</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIncludeOldCredit(true)}
+              className={`py-2.5 px-2 rounded-xl text-xs font-black transition cursor-pointer text-center ${
+                includeOldCredit
+                  ? 'bg-emerald-600 text-white shadow-md glow-green border-2 border-emerald-600'
+                  : 'bg-white/70 text-amber-900 hover:bg-white border border-amber-300'
+              }`}
+            >
+              <div>⚡ கடன் சேர்த்து செலுத்து</div>
+              <div className={`text-[10px] font-mono font-bold ${includeOldCredit ? 'text-emerald-100' : 'text-amber-700'}`}>
+                ₹{(totalBillAmount + previousDue).toFixed(2)}
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Payment Mode Selector Grid */}
       <div className="space-y-2">
@@ -190,7 +252,10 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
 
           {/* CREDIT BUTTON */}
           <button
-            onClick={() => setMode('CREDIT')}
+            onClick={() => {
+              setIncludeOldCredit(false);
+              setMode('CREDIT');
+            }}
             className={`p-3 rounded-2xl border font-black text-xs flex flex-col items-center gap-2 transition active:scale-95 cursor-pointer ${
               mode === 'CREDIT'
                 ? 'bg-amber-600 border-amber-600 text-white shadow-lg'
@@ -231,7 +296,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
               Split Payment Breakdown
             </span>
             <span className="text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-              Bill: ₹{totalAmount.toFixed(2)}
+              Payable: ₹{payableAmount.toFixed(2)}
             </span>
           </div>
 
@@ -294,7 +359,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
                       inputMode="decimal"
                       step="0.01"
                       min="0"
-                      max={totalAmount}
+                      max={payableAmount}
                       value={cashReceived}
                       placeholder="0.00"
                       onFocus={(e) => e.target.select()}
@@ -348,7 +413,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
                       inputMode="decimal"
                       step="0.01"
                       min="0"
-                      max={totalAmount}
+                      max={payableAmount}
                       value={cashReceived}
                       placeholder="0.00"
                       onFocus={(e) => e.target.select()}
@@ -402,7 +467,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
                       inputMode="decimal"
                       step="0.01"
                       min="0"
-                      max={totalAmount}
+                      max={payableAmount}
                       value={gpayReceived}
                       placeholder="0.00"
                       onFocus={(e) => e.target.select()}
@@ -439,8 +504,18 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
           {/* Breakdown Summary */}
           <div className="pt-2 border-t border-slate-100 text-xs space-y-1.5 font-mono">
             <div className="flex justify-between text-slate-600 font-bold">
-              <span>Total Bill:</span>
-              <span className="text-slate-900 font-black">₹{totalAmount.toFixed(2)}</span>
+              <span>Bill Amount:</span>
+              <span className="text-slate-900 font-black">₹{totalBillAmount.toFixed(2)}</span>
+            </div>
+            {includeOldCredit && (
+              <div className="flex justify-between text-amber-800 font-bold">
+                <span>Old Credit:</span>
+                <span className="font-black">₹{previousDue.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-purple-900 font-black pt-0.5 border-t border-dashed border-slate-200">
+              <span>Total Payable:</span>
+              <span>₹{payableAmount.toFixed(2)}</span>
             </div>
             {numCash > 0 && (
               <div className="flex justify-between text-slate-600 font-bold">
