@@ -9,28 +9,14 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
   
   const totalAmount = Number(Number(billData?.total_amount || 0).toFixed(2));
 
-  // Dynamic SPLIT state
-  const [cashReceived, setCashReceived] = useState(totalAmount.toString());
-  const [gpayReceived, setGpayReceived] = useState('0');
-  const [creditReceived, setCreditReceived] = useState('0');
+  // Dynamic SPLIT state (User types in primary input, secondary auto-calculates remaining)
+  const [cashReceived, setCashReceived] = useState('');
+  const [gpayReceived, setGpayReceived] = useState('');
 
-  // Sync state whenever totalAmount or splitOption changes
+  // Reset inputs when switching split sub-options so user can type cleanly
   useEffect(() => {
-    if (splitOption === 'CASH_GPAY') {
-      setCashReceived(totalAmount.toString());
-      setGpayReceived('0');
-      setCreditReceived('0');
-    } else if (splitOption === 'CASH_CREDIT') {
-      const half = Math.floor(totalAmount / 2);
-      setCashReceived(half.toString());
-      setGpayReceived('0');
-      setCreditReceived((totalAmount - half).toFixed(2));
-    } else if (splitOption === 'GPAY_CREDIT') {
-      const half = Math.floor(totalAmount / 2);
-      setCashReceived('0');
-      setGpayReceived(half.toString());
-      setCreditReceived((totalAmount - half).toFixed(2));
-    }
+    setCashReceived('');
+    setGpayReceived('');
   }, [totalAmount, splitOption]);
 
   // Compute clean numeric values based on mode & splitOption
@@ -46,17 +32,17 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
     numCredit = totalAmount;
   } else if (mode === 'SPLIT') {
     if (splitOption === 'CASH_GPAY') {
-      const parsedCash = Math.min(totalAmount, Math.max(0, parseFloat(cashReceived) || 0));
+      const parsedCash = cashReceived === '' ? 0 : Math.min(totalAmount, Math.max(0, parseFloat(cashReceived) || 0));
       numCash = parsedCash;
       numGpay = Number(Math.max(0, totalAmount - parsedCash).toFixed(2));
       numCredit = 0;
     } else if (splitOption === 'CASH_CREDIT') {
-      const parsedCash = Math.min(totalAmount, Math.max(0, parseFloat(cashReceived) || 0));
+      const parsedCash = cashReceived === '' ? 0 : Math.min(totalAmount, Math.max(0, parseFloat(cashReceived) || 0));
       numCash = parsedCash;
       numCredit = Number(Math.max(0, totalAmount - parsedCash).toFixed(2));
       numGpay = 0;
     } else if (splitOption === 'GPAY_CREDIT') {
-      const parsedGpay = Math.min(totalAmount, Math.max(0, parseFloat(gpayReceived) || 0));
+      const parsedGpay = gpayReceived === '' ? 0 : Math.min(totalAmount, Math.max(0, parseFloat(gpayReceived) || 0));
       numGpay = parsedGpay;
       numCredit = Number(Math.max(0, totalAmount - parsedGpay).toFixed(2));
       numCash = 0;
