@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Printer, ArrowRight, Check, Bluetooth, Store, Calendar, Clock, User, Truck, Receipt, CheckCircle2 } from 'lucide-react';
 import { printBillViaBluetooth } from '../../utils/bluetoothPrinter';
 import { toast } from 'sonner';
 
 export const BillSummary = ({ billResult, onDone }) => {
-  const { companyInfo, currentUser, API_URL, apiFetch } = useApp();
+  const { companyInfo, currentUser, API_URL, apiFetch, shops } = useApp();
   const [bill, setBill] = useState(billResult?.sale || billResult || {});
   const [items, setItems] = useState(billResult?.items || billResult?.sale?.items || []);
   const [loading, setLoading] = useState(false);
@@ -44,6 +44,35 @@ export const BillSummary = ({ billResult, onDone }) => {
   const gpayPaid = Number(bill.gpay_paid || 0);
   const creditPaid = Number(bill.credit_paid || 0);
   const paymentMode = (bill.payment_mode || 'CASH').toUpperCase();
+
+  // Match shop from master list
+  const matchedShop = useMemo(() => {
+    return (shops || []).find(s => 
+      (bill.shop_id && String(s.id) === String(bill.shop_id)) || 
+      (bill.shop_code && String(s.code).toLowerCase() === String(bill.shop_code).toLowerCase()) || 
+      (bill.shop_name && String(s.name).toLowerCase() === String(bill.shop_name).toLowerCase())
+    );
+  }, [shops, bill]);
+
+  // Compute exact previous due and total current balance
+  const thisBillCredit = paymentMode === 'CREDIT' ? totalAmount : (paymentMode === 'SPLIT' ? creditPaid : 0);
+
+  const previousDue = useMemo(() => {
+    if (bill.previous_due !== undefined && bill.previous_due !== null && !isNaN(Number(bill.previous_due))) {
+      return Number(bill.previous_due);
+    }
+    if (bill.shop_previous_due !== undefined && bill.shop_previous_due !== null && !isNaN(Number(bill.shop_previous_due))) {
+      return Number(bill.shop_previous_due);
+    }
+    if (matchedShop?.current_due !== undefined && matchedShop?.current_due !== null) {
+      const currentShopDue = Number(matchedShop.current_due) || 0;
+      return Math.max(0, currentShopDue - thisBillCredit);
+    }
+    return Number(bill.shop_due ?? 0);
+  }, [bill, matchedShop, thisBillCredit]);
+
+  const totalShopDue = previousDue + thisBillCredit;
+  const grandTotal = totalAmount + previousDue;
 
   const handleSystemPrint = () => {
     window.print();
@@ -161,28 +190,28 @@ export const BillSummary = ({ billResult, onDone }) => {
 
         {/* Totals Section */}
         <div className="border-t border-b border-dashed border-slate-400 py-1.5 space-y-1">
-          <div className="flex justify-between font-bold text-[11px]">
+          <div className="flex justify-between font-bold text-[10.5px]">
             <span>TOTAL ITEMS:</span>
             <span>{items.length}</span>
           </div>
-          <div className="flex justify-between font-bold text-[11px]">
+          <div className="flex justify-between font-bold text-[10.5px]">
             <span>TOTAL QTY:</span>
             <span>{totalQty}</span>
           </div>
           <div className="flex justify-between font-black text-sm pt-0.5 text-slate-900 border-t border-slate-200">
-            <span>TOTAL:</span>
+            <span>BILL TOTAL:</span>
             <span className="text-emerald-700">₹{totalAmount.toFixed(2)}</span>
           </div>
-          {Number(bill.previous_due ?? bill.shop_previous_due ?? bill.shop_due ?? 0) > 0 && (
+          {previousDue > 0 && (
             <>
               <div className="flex justify-between font-bold text-[10.5px] text-amber-700 pt-0.5">
-                <span>PREVIOUS CREDIT:</span>
-                <span className="font-mono">₹{Number(bill.previous_due ?? bill.shop_previous_due ?? bill.shop_due ?? 0).toFixed(2)}</span>
+                <span>OLD CREDIT (பழைய கடன்):</span>
+                <span className="font-mono">₹{previousDue.toFixed(2)}</span>
               </div>
               <div className="flex justify-between font-black text-sm text-slate-950 pt-0.5 border-t border-slate-300">
                 <span>NET GRAND TOTAL:</span>
                 <span className="font-mono text-purple-700">
-                  ₹{(totalAmount + Number(bill.previous_due ?? bill.shop_previous_due ?? bill.shop_due ?? 0)).toFixed(2)}
+                  ₹{grandTotal.toFixed(2)}
                 </span>
               </div>
             </>
@@ -190,7 +219,7 @@ export const BillSummary = ({ billResult, onDone }) => {
         </div>
 
         {/* Payment Summary Section */}
-        <div className="space-y-1 text-[10.5px]">
+        <div className="space-y-1 text-[10px]">
           <div className="flex justify-between font-extrabold text-purple-800">
             <span>MODE:</span>
             <span>{paymentMode}</span>
@@ -201,28 +230,24 @@ export const BillSummary = ({ billResult, onDone }) => {
               {cashPaid > 0 && (
                 <div className="flex justify-between">
                   <span>Cash Received:</span>
-                  <span className="font-bold">₹{cashPaid.toFixed(2)}</span>
+                  <span className="font-bold font-mono">₹{cashPaid.toFixed(2)}</span>
                 </div>
               )}
               {gpayPaid > 0 && (
                 <div className="flex justify-between">
-                  <span>GPay / UPI:</span>
-                  <span className="font-bold">₹{gpayPaid.toFixed(2)}</span>
+                  <span>GPay / UPI Received:</span>
+                  <span className="font-bold font-mono">₹{gpayPaid.toFixed(2)}</span>
                 </div>
               )}
               {creditPaid > 0 && (
                 <div className="flex justify-between text-amber-700">
-                  <span>Credit Due:</span>
-                  <span className="font-bold">₹{creditPaid.toFixed(2)}</span>
+                  <span>Credit on this Bill:</span>
+                  <span className="font-bold font-mono">₹{creditPaid.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold pt-0.5 border-t border-slate-200 text-slate-900">
-                <span>Total Accounted:</span>
-                <span>₹{(cashPaid + gpayPaid + creditPaid).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-emerald-700">
-                <span>Balance:</span>
-                <span>₹0.00</span>
+                <span>Paid on this Bill:</span>
+                <span className="font-mono">₹{(cashPaid + gpayPaid).toFixed(2)}</span>
               </div>
             </div>
           ) : paymentMode === 'CASH' ? (
@@ -236,11 +261,21 @@ export const BillSummary = ({ billResult, onDone }) => {
               <span className="font-mono text-blue-700 font-black">₹{totalAmount.toFixed(2)}</span>
             </div>
           ) : (
-            <div className="flex justify-between text-slate-700 font-bold">
-              <span>Credit Due:</span>
-              <span className="font-mono text-amber-700 font-black">₹{totalAmount.toFixed(2)}</span>
+            <div className="flex justify-between text-amber-700 font-bold">
+              <span>Credit on this Bill:</span>
+              <span className="font-mono font-black">₹{totalAmount.toFixed(2)}</span>
             </div>
           )}
+
+          {/* Total Shop Due Balance */}
+          <div className="flex justify-between font-black text-[11px] pt-1 border-t border-dashed border-slate-300">
+            <span className={totalShopDue > 0 ? 'text-amber-800' : 'text-emerald-700'}>
+              SHOP BALANCE (கடை பாக்கி):
+            </span>
+            <span className={`font-mono ${totalShopDue > 0 ? 'text-amber-800' : 'text-emerald-700'}`}>
+              ₹{totalShopDue.toFixed(2)}
+            </span>
+          </div>
         </div>
 
         {/* Footer */}
