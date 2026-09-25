@@ -147,11 +147,14 @@ export const BillingPOS = ({ shop, onProceedToPayment, onBack }) => {
       shop_id: shop.id,
       shop_name: shop.name,
       shop_code: shop.code,
+      previous_due: Number(shop?.current_due || shop?.credit || shop?.due || 0),
       items: activeCartItems,
       total_items: totalItemsCount,
       total_amount: totalAmount
     });
   };
+
+  const shopCredit = Number(shop?.current_due || shop?.credit || shop?.due || 0);
 
   return (
     <div className="max-w-md mx-auto p-3 sm:p-4 space-y-3.5 pb-32 sm:pb-36">
@@ -185,8 +188,10 @@ export const BillingPOS = ({ shop, onProceedToPayment, onBack }) => {
           </p>
         </div>
         <div className="text-right shrink-0">
-          <span className="text-[9px] uppercase font-extrabold text-slate-400 block leading-tight">Total</span>
-          <span className="font-mono font-black text-emerald-600 text-sm sm:text-base">₹{totalAmount.toFixed(2)}</span>
+          <span className="text-[9px] uppercase font-extrabold text-amber-700 block leading-tight">Credit</span>
+          <span className={`font-mono font-black text-sm sm:text-base ${shopCredit > 0 ? 'text-amber-600' : 'text-slate-600'}`}>
+            ₹{shopCredit.toFixed(2)}
+          </span>
         </div>
       </div>
 

@@ -1782,6 +1782,9 @@ export async function createSale(cid, d, actorUserId) {
     }
     const sale = sR.rows[0];
     sale.shop_code = shop.code || '';
+    sale.previous_due = Number(shop.current_due || 0);
+    sale.shop_previous_due = Number(shop.current_due || 0);
+    sale.shop_current_due = Number(shop.current_due || 0) + credit;
 
     for (const item of evaluatedItems) {
       await client.query(
@@ -1882,7 +1885,7 @@ export async function getSaleById(cid, saleId) {
   let sale = null;
   if (isNumeric) {
     sale = await queryOne(`
-      SELECT s.*, sh.code as shop_code, COALESCE(e.vehicle_number, '') as vehicle_no 
+      SELECT s.*, sh.code as shop_code, COALESCE(sh.current_due, 0) as shop_current_due, COALESCE(sh.current_due, 0) as previous_due, COALESCE(e.vehicle_number, '') as vehicle_no 
       FROM sales s 
       LEFT JOIN shops sh ON sh.id = s.shop_id 
       LEFT JOIN employees e ON e.id = s.employee_id 
@@ -1891,7 +1894,7 @@ export async function getSaleById(cid, saleId) {
   }
   if (!sale) {
     sale = await queryOne(`
-      SELECT s.*, sh.code as shop_code, COALESCE(e.vehicle_number, '') as vehicle_no 
+      SELECT s.*, sh.code as shop_code, COALESCE(sh.current_due, 0) as shop_current_due, COALESCE(sh.current_due, 0) as previous_due, COALESCE(e.vehicle_number, '') as vehicle_no 
       FROM sales s 
       LEFT JOIN shops sh ON sh.id = s.shop_id 
       LEFT JOIN employees e ON e.id = s.employee_id 

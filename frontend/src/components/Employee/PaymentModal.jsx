@@ -4,38 +4,69 @@ import { toast } from 'sonner';
 
 export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
   const [mode, setMode] = useState('SPLIT');
+  const [splitOption, setSplitOption] = useState('CASH_GPAY'); // 'CASH_GPAY', 'CASH_CREDIT', 'GPAY_CREDIT'
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const totalAmount = Number(Number(billData?.total_amount || 0).toFixed(2));
 
   // Dynamic SPLIT state
   const [cashReceived, setCashReceived] = useState(totalAmount.toString());
-  const [creditAmount, setCreditAmount] = useState(0);
+  const [gpayReceived, setGpayReceived] = useState('0');
+  const [creditReceived, setCreditReceived] = useState('0');
 
-  // Sync state whenever totalAmount changes
+  // Sync state whenever totalAmount or splitOption changes
   useEffect(() => {
-    setCashReceived(totalAmount.toString());
-    setCreditAmount(0);
-  }, [totalAmount]);
+    if (splitOption === 'CASH_GPAY') {
+      setCashReceived(totalAmount.toString());
+      setGpayReceived('0');
+      setCreditReceived('0');
+    } else if (splitOption === 'CASH_CREDIT') {
+      const half = Math.floor(totalAmount / 2);
+      setCashReceived(half.toString());
+      setGpayReceived('0');
+      setCreditReceived((totalAmount - half).toFixed(2));
+    } else if (splitOption === 'GPAY_CREDIT') {
+      const half = Math.floor(totalAmount / 2);
+      setCashReceived('0');
+      setGpayReceived(half.toString());
+      setCreditReceived((totalAmount - half).toFixed(2));
+    }
+  }, [totalAmount, splitOption]);
 
-  // Compute clean numeric values
-  const numCash = Math.min(totalAmount, Math.max(0, Number(cashReceived) || 0));
-  
-  // GPay is automatically calculated in SPLIT mode: Total - Cash
-  const numGpay = mode === 'SPLIT' 
-    ? Number(Math.max(0, totalAmount - numCash).toFixed(2))
-    : (mode === 'GPAY' ? totalAmount : 0);
+  // Compute clean numeric values based on mode & splitOption
+  let numCash = 0;
+  let numGpay = 0;
+  let numCredit = 0;
 
-  const numCredit = Number(creditAmount) || 0;
+  if (mode === 'CASH') {
+    numCash = totalAmount;
+  } else if (mode === 'GPAY') {
+    numGpay = totalAmount;
+  } else if (mode === 'CREDIT') {
+    numCredit = totalAmount;
+  } else if (mode === 'SPLIT') {
+    if (splitOption === 'CASH_GPAY') {
+      const parsedCash = Math.min(totalAmount, Math.max(0, parseFloat(cashReceived) || 0));
+      numCash = parsedCash;
+      numGpay = Number(Math.max(0, totalAmount - parsedCash).toFixed(2));
+      numCredit = 0;
+    } else if (splitOption === 'CASH_CREDIT') {
+      const parsedCash = Math.min(totalAmount, Math.max(0, parseFloat(cashReceived) || 0));
+      numCash = parsedCash;
+      numCredit = Number(Math.max(0, totalAmount - parsedCash).toFixed(2));
+      numGpay = 0;
+    } else if (splitOption === 'GPAY_CREDIT') {
+      const parsedGpay = Math.min(totalAmount, Math.max(0, parseFloat(gpayReceived) || 0));
+      numGpay = parsedGpay;
+      numCredit = Number(Math.max(0, totalAmount - parsedGpay).toFixed(2));
+      numCash = 0;
+    }
+  }
 
-  const totalReceived = mode === 'CASH' ? totalAmount :
-                        mode === 'GPAY' ? totalAmount :
-                        mode === 'CREDIT' ? 0 :
-                        Number((numCash + numGpay + numCredit).toFixed(2));
-  
+  const totalReceived = Number((numCash + numGpay + numCredit).toFixed(2));
   const balance = Number(Math.max(0, totalAmount - totalReceived).toFixed(2));
 
-  // Smart Auto-Fill Helper when Cash is typed in Split Mode
+  // Smart Handlers when typing
   const handleCashChange = (val) => {
     if (val === '' || val === null || val === undefined) {
       setCashReceived('');
@@ -54,6 +85,24 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
     setCashReceived(val);
   };
 
+  const handleGpayChange = (val) => {
+    if (val === '' || val === null || val === undefined) {
+      setGpayReceived('');
+      return;
+    }
+    const numericVal = parseFloat(val);
+    if (isNaN(numericVal) || numericVal < 0) {
+      setGpayReceived('');
+      return;
+    }
+    if (numericVal > totalAmount) {
+      toast.error(`ஜிபே தொகை மொத்த பில் தொகையை (₹${totalAmount.toFixed(2)}) விட அதிகமாக இருக்க முடியாது!`);
+      setGpayReceived(totalAmount.toString());
+      return;
+    }
+    setGpayReceived(val);
+  };
+
   const handleConfirm = async () => {
     if (isSubmitting) return;
     if (balance !== 0 && mode !== 'CREDIT') {
@@ -68,6 +117,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
         shop_id: billData?.shop_id,
         shop_name: billData?.shop_name,
         shop_code: billData?.shop_code,
+        previous_due: billData?.previous_due || 0,
         payment_mode: mode,
         cash_paid: mode === 'CASH' ? totalAmount : (mode === 'SPLIT' ? numCash : 0),
         gpay_paid: mode === 'GPAY' ? totalAmount : (mode === 'SPLIT' ? numGpay : 0),
@@ -159,7 +209,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
             <CreditCard className={`w-6 h-6 ${mode === 'CREDIT' ? 'text-white' : 'text-amber-600'}`} />
             <div className="text-center">
               <span className="block font-black text-xs">CREDIT</span>
-              <span className="text-[10px] font-bold opacity-80">கடமை / DUES</span>
+              <span className="text-[10px] font-bold opacity-80">முழு கடன்</span>
             </div>
           </button>
 
@@ -183,66 +233,216 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
 
       {/* Split Payment inputs */}
       {mode === 'SPLIT' && (
-        <div className="glass-panel p-4 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-sm">
-          <h3 className="font-extrabold text-xs text-slate-700 uppercase tracking-wider border-b border-slate-100 pb-2 flex items-center justify-between">
-            <span className="flex items-center gap-1.5">
+        <div className="glass-panel p-4 rounded-2xl bg-white border border-slate-200 space-y-3.5 shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <span className="font-extrabold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
               <Split className="w-4 h-4 text-purple-600" />
               Split Payment Breakdown
             </span>
             <span className="text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
               Bill: ₹{totalAmount.toFixed(2)}
             </span>
-          </h3>
+          </div>
+
+          {/* Split Mode Sub-Options Tabs */}
+          <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setSplitOption('CASH_GPAY')}
+              className={`py-2 px-1 rounded-lg text-[11px] font-black transition text-center cursor-pointer ${
+                splitOption === 'CASH_GPAY'
+                  ? 'bg-white text-purple-700 shadow-xs border border-purple-200'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              💵 Cash + 📱 GPay
+            </button>
+            <button
+              type="button"
+              onClick={() => setSplitOption('CASH_CREDIT')}
+              className={`py-2 px-1 rounded-lg text-[11px] font-black transition text-center cursor-pointer ${
+                splitOption === 'CASH_CREDIT'
+                  ? 'bg-white text-amber-700 shadow-xs border border-amber-300'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              💵 Cash + 💳 Credit
+            </button>
+            <button
+              type="button"
+              onClick={() => setSplitOption('GPAY_CREDIT')}
+              className={`py-2 px-1 rounded-lg text-[11px] font-black transition text-center cursor-pointer ${
+                splitOption === 'GPAY_CREDIT'
+                  ? 'bg-white text-blue-700 shadow-xs border border-blue-300'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              📱 GPay + 💳 Credit
+            </button>
+          </div>
 
           <div className="space-y-2.5">
-            {/* Cash Received Input */}
-            <div className="flex items-center justify-between bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-200">
-              <div className="min-w-0">
-                <span className="text-xs font-black text-emerald-700 flex items-center gap-1.5 truncate">
-                  <Banknote className="w-4 h-4 shrink-0" />
-                  Cash Received (ரொக்கம்)
-                </span>
-                <span className="text-[10px] font-bold text-slate-400 block pl-5.5">
-                  Type cash collected
-                </span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-slate-400 font-mono font-black text-sm">₹</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min="0"
-                  max={totalAmount}
-                  value={cashReceived}
-                  placeholder="0.00"
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => handleCashChange(e.target.value)}
-                  className="w-24 sm:w-28 bg-white border border-slate-300 rounded-lg px-2 py-1 text-right font-mono font-black text-slate-900 text-sm sm:text-base focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 shadow-xs"
-                />
-              </div>
-            </div>
-
-            {/* GPay Received Automatically Calculated (Read-only) */}
-            <div className="flex items-center justify-between bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-200">
-              <div className="min-w-0">
-                <span className="text-xs font-black text-blue-700 flex items-center gap-1.5 truncate">
-                  <Smartphone className="w-4 h-4 shrink-0" />
-                  GPay Received (ஜிபே)
-                </span>
-                <span className="text-[10px] font-bold text-blue-600 block pl-5.5">
-                  Auto-calculated remaining
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono">
-                  AUTO
-                </span>
-                <div className="w-24 sm:w-28 bg-slate-100 border border-slate-300 rounded-lg px-2 py-1 text-right font-mono font-black text-slate-900 text-sm sm:text-base select-none">
-                  ₹{numGpay.toFixed(2)}
+            {/* 1. Cash + GPay */}
+            {splitOption === 'CASH_GPAY' && (
+              <>
+                {/* Cash Input */}
+                <div className="flex items-center justify-between bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-200">
+                  <div className="min-w-0">
+                    <span className="text-xs font-black text-emerald-700 flex items-center gap-1.5 truncate">
+                      <Banknote className="w-4 h-4 shrink-0" />
+                      Cash Received (ரொக்கம்)
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400 block pl-5.5">
+                      Type cash collected
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-slate-400 font-mono font-black text-sm">₹</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min="0"
+                      max={totalAmount}
+                      value={cashReceived}
+                      placeholder="0.00"
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => handleCashChange(e.target.value)}
+                      className="w-24 sm:w-28 bg-white border border-slate-300 rounded-lg px-2 py-1 text-right font-mono font-black text-slate-900 text-sm sm:text-base focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 shadow-xs"
+                    />
+                  </div>
                 </div>
-              </div>
-            </div>
+
+                {/* GPay Auto */}
+                <div className="flex items-center justify-between bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-200">
+                  <div className="min-w-0">
+                    <span className="text-xs font-black text-blue-700 flex items-center gap-1.5 truncate">
+                      <Smartphone className="w-4 h-4 shrink-0" />
+                      GPay Received (ஜிபே)
+                    </span>
+                    <span className="text-[10px] font-bold text-blue-600 block pl-5.5">
+                      Auto-calculated remaining
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono">
+                      AUTO
+                    </span>
+                    <div className="w-24 sm:w-28 bg-slate-100 border border-slate-300 rounded-lg px-2 py-1 text-right font-mono font-black text-slate-900 text-sm sm:text-base select-none">
+                      ₹{numGpay.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* 2. Cash + Credit */}
+            {splitOption === 'CASH_CREDIT' && (
+              <>
+                {/* Cash Input */}
+                <div className="flex items-center justify-between bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-200">
+                  <div className="min-w-0">
+                    <span className="text-xs font-black text-emerald-700 flex items-center gap-1.5 truncate">
+                      <Banknote className="w-4 h-4 shrink-0" />
+                      Cash Received (ரொக்கம்)
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400 block pl-5.5">
+                      Type cash collected
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-slate-400 font-mono font-black text-sm">₹</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min="0"
+                      max={totalAmount}
+                      value={cashReceived}
+                      placeholder="0.00"
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => handleCashChange(e.target.value)}
+                      className="w-24 sm:w-28 bg-white border border-slate-300 rounded-lg px-2 py-1 text-right font-mono font-black text-slate-900 text-sm sm:text-base focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 shadow-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Credit Auto */}
+                <div className="flex items-center justify-between bg-amber-50/70 p-2.5 sm:p-3 rounded-xl border border-amber-200">
+                  <div className="min-w-0">
+                    <span className="text-xs font-black text-amber-800 flex items-center gap-1.5 truncate">
+                      <CreditCard className="w-4 h-4 shrink-0 text-amber-600" />
+                      Credit Amount (மீதி கடன்)
+                    </span>
+                    <span className="text-[10px] font-bold text-amber-700 block pl-5.5">
+                      Auto-added to shop dues
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 font-mono">
+                      CREDIT
+                    </span>
+                    <div className="w-24 sm:w-28 bg-white border border-amber-300 rounded-lg px-2 py-1 text-right font-mono font-black text-amber-700 text-sm sm:text-base select-none">
+                      ₹{numCredit.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* 3. GPay + Credit */}
+            {splitOption === 'GPAY_CREDIT' && (
+              <>
+                {/* GPay Input */}
+                <div className="flex items-center justify-between bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-200">
+                  <div className="min-w-0">
+                    <span className="text-xs font-black text-blue-700 flex items-center gap-1.5 truncate">
+                      <Smartphone className="w-4 h-4 shrink-0" />
+                      GPay / UPI Received (ஜிபே)
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400 block pl-5.5">
+                      Type online amount received
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-slate-400 font-mono font-black text-sm">₹</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min="0"
+                      max={totalAmount}
+                      value={gpayReceived}
+                      placeholder="0.00"
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => handleGpayChange(e.target.value)}
+                      className="w-24 sm:w-28 bg-white border border-slate-300 rounded-lg px-2 py-1 text-right font-mono font-black text-slate-900 text-sm sm:text-base focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Credit Auto */}
+                <div className="flex items-center justify-between bg-amber-50/70 p-2.5 sm:p-3 rounded-xl border border-amber-200">
+                  <div className="min-w-0">
+                    <span className="text-xs font-black text-amber-800 flex items-center gap-1.5 truncate">
+                      <CreditCard className="w-4 h-4 shrink-0 text-amber-600" />
+                      Credit Amount (மீதி கடன்)
+                    </span>
+                    <span className="text-[10px] font-bold text-amber-700 block pl-5.5">
+                      Auto-added to shop dues
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 font-mono">
+                      CREDIT
+                    </span>
+                    <div className="w-24 sm:w-28 bg-white border border-amber-300 rounded-lg px-2 py-1 text-right font-mono font-black text-amber-700 text-sm sm:text-base select-none">
+                      ₹{numCredit.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Breakdown Summary */}
@@ -251,16 +451,26 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
               <span>Total Bill:</span>
               <span className="text-slate-900 font-black">₹{totalAmount.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-slate-600 font-bold">
-              <span>Cash:</span>
-              <span className="text-emerald-700 font-bold">₹{numCash.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-slate-600 font-bold">
-              <span>GPay:</span>
-              <span className="text-blue-700 font-bold">₹{numGpay.toFixed(2)}</span>
-            </div>
+            {numCash > 0 && (
+              <div className="flex justify-between text-slate-600 font-bold">
+                <span>Cash:</span>
+                <span className="text-emerald-700 font-bold">₹{numCash.toFixed(2)}</span>
+              </div>
+            )}
+            {numGpay > 0 && (
+              <div className="flex justify-between text-slate-600 font-bold">
+                <span>GPay / UPI:</span>
+                <span className="text-blue-700 font-bold">₹{numGpay.toFixed(2)}</span>
+              </div>
+            )}
+            {numCredit > 0 && (
+              <div className="flex justify-between text-amber-700 font-bold">
+                <span>Credit Due:</span>
+                <span className="text-amber-700 font-black">₹{numCredit.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-slate-900 pt-1 font-black text-sm border-t border-slate-200">
-              <span>Total Paid:</span>
+              <span>Total Accounted:</span>
               <span className="text-emerald-600">₹{totalReceived.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-slate-600 font-bold">

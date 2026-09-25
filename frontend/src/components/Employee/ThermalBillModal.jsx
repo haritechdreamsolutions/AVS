@@ -187,6 +187,7 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
           </div>
 
           {/* Totals Section */}
+          {/* Totals Section */}
           <div className="border-t border-b border-dashed border-slate-400 py-1.5 space-y-1">
             <div className="flex justify-between font-bold text-[10.5px]">
               <span>TOTAL ITEMS:</span>
@@ -200,6 +201,20 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
               <span>TOTAL:</span>
               <span className="text-emerald-700">₹{totalAmount.toFixed(2)}</span>
             </div>
+            {Number(bill.previous_due ?? bill.shop_previous_due ?? bill.shop_due ?? 0) > 0 && (
+              <>
+                <div className="flex justify-between font-bold text-[10.5px] text-amber-700 pt-0.5">
+                  <span>PREVIOUS CREDIT:</span>
+                  <span className="font-mono">₹{Number(bill.previous_due ?? bill.shop_previous_due ?? bill.shop_due ?? 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-black text-sm text-slate-950 pt-0.5 border-t border-slate-300">
+                  <span>NET GRAND TOTAL:</span>
+                  <span className="font-mono text-purple-700">
+                    ₹{(totalAmount + Number(bill.previous_due ?? bill.shop_previous_due ?? bill.shop_due ?? 0)).toFixed(2)}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Payment Section */}
@@ -211,14 +226,18 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
 
             {paymentMode === 'SPLIT' ? (
               <div className="space-y-0.5 text-slate-700 pt-0.5">
-                <div className="flex justify-between">
-                  <span>Cash Received:</span>
-                  <span className="font-bold">₹{cashPaid.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>GPay / UPI:</span>
-                  <span className="font-bold">₹{gpayPaid.toFixed(2)}</span>
-                </div>
+                {cashPaid > 0 && (
+                  <div className="flex justify-between">
+                    <span>Cash Received:</span>
+                    <span className="font-bold">₹{cashPaid.toFixed(2)}</span>
+                  </div>
+                )}
+                {gpayPaid > 0 && (
+                  <div className="flex justify-between">
+                    <span>GPay / UPI:</span>
+                    <span className="font-bold">₹{gpayPaid.toFixed(2)}</span>
+                  </div>
+                )}
                 {creditPaid > 0 && (
                   <div className="flex justify-between text-amber-700">
                     <span>Credit Due:</span>
@@ -226,7 +245,7 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
                   </div>
                 )}
                 <div className="flex justify-between font-bold pt-0.5 border-t border-slate-200 text-slate-900">
-                  <span>Total Paid:</span>
+                  <span>Total Accounted:</span>
                   <span>₹{(cashPaid + gpayPaid + creditPaid).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-emerald-700">
@@ -260,30 +279,21 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
 
         </div>
 
-        {/* Triple Print Action Options */}
+        {/* Print & Close Actions */}
         <div className="space-y-2 no-print">
           <button
-            onClick={handleBluetoothPrint}
-            disabled={printingBluetooth}
-            className="touch-btn touch-btn-primary w-full text-xs font-black bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white flex items-center justify-center gap-2 py-3 rounded-2xl shadow-md min-h-[46px] cursor-pointer"
-          >
-            <Bluetooth className="w-5 h-5 text-cyan-300 animate-pulse" />
-            <span>{printingBluetooth ? 'PAIRING & PRINTING...' : '📲 PRINT VIA BLUETOOTH (ப்ளூடூத்)'}</span>
-          </button>
-
-          <button
-            onClick={handleRawBTPrint}
-            className="w-full text-xs font-black bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl py-3 flex items-center justify-center gap-2 shadow-md min-h-[44px] cursor-pointer transition active:scale-[0.98]"
-          >
-            <span>⚡ DIRECT ONE-CLICK THERMAL PRINT (RawBT)</span>
-          </button>
-
-          <button
             onClick={handleSystemPrint}
-            className="w-full text-xs font-black bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl py-3 flex items-center justify-center gap-2 border border-slate-300 min-h-[44px] cursor-pointer transition active:scale-[0.98]"
+            className="w-full text-xs font-black bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl py-3.5 flex items-center justify-center gap-2 shadow-md min-h-[46px] cursor-pointer transition active:scale-[0.98]"
           >
-            <Printer className="w-4 h-4 text-slate-700" />
-            <span>🖨️ SYSTEM / 58MM THERMAL PRINT</span>
+            <Printer className="w-4 h-4 text-white" />
+            <span>🖨️ PRINT BILL (பில் அச்சிடு)</span>
+          </button>
+
+          <button
+            onClick={onClose}
+            className="w-full text-xs font-black bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl py-2.5 flex items-center justify-center gap-2 border border-slate-300 min-h-[40px] cursor-pointer transition active:scale-[0.98]"
+          >
+            <span>CLOSE (மூடு)</span>
           </button>
         </div>
 
