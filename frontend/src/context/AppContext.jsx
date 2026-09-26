@@ -345,17 +345,50 @@ export const AppProvider = ({ children }) => {
       ...payload
     };
 
-    // Optimistically update freezers array immediately
-    setFreezers(prev => [optimisticFreezer, ...prev.filter(f => !(f.id === tempId || (f.shop_id === shopId && f.serial_no === payload.serial_no)))]);
+    // Check if shop had an existing legacy freezer not yet present in freezers array
+    const legacyFreezer = (shop?.has_freezer && (shop?.freezer_model || shop?.freezer_serial)) ? {
+      id: `legacy-${shop.id}`,
+      shop_id: shop.id,
+      shop_name: shop?.name || 'Shop',
+      shop_code: shop?.code || '',
+      owner_name: shop?.owner_name || '',
+      phone: shop?.phone || '',
+      village_id: shop?.village_id,
+      village_name: shop?.village_name,
+      model_name: shop.freezer_model || 'Deep Freezer',
+      freezer_model: shop.freezer_model || 'Deep Freezer',
+      serial_no: shop.freezer_serial || `FRZ-${shop.code || shop.id}`,
+      freezer_serial: shop.freezer_serial || `FRZ-${shop.code || shop.id}`,
+      allocation_date: shop.freezer_date || 'N/A',
+      freezer_date: shop.freezer_date || 'N/A',
+      status: shop.freezer_status || 'Active',
+      freezer_status: shop.freezer_status || 'Active',
+      notes: ''
+    } : null;
 
-    // Optimistically update shops array
+    // Optimistically update freezers array immediately
+    setFreezers(prev => {
+      const currentList = Array.isArray(prev) ? [...prev] : [];
+      if (legacyFreezer) {
+        const legacySerial = String(legacyFreezer.serial_no).trim().toLowerCase();
+        const alreadyPresent = currentList.some(f => 
+          String(f.shop_id) === String(shopId) && 
+          String(f.serial_no || f.freezer_serial || '').trim().toLowerCase() === legacySerial
+        );
+        if (!alreadyPresent) {
+          currentList.push(legacyFreezer);
+        }
+      }
+      return [
+        optimisticFreezer,
+        ...currentList.filter(f => !(f.id === tempId || (String(f.shop_id) === String(shopId) && String(f.serial_no || '').toLowerCase() === String(payload.serial_no).toLowerCase())))
+      ];
+    });
+
+    // Optimistically update shops array (mark has_freezer without overwriting other freezers)
     setShops(prev => prev.map(s => String(s.id) === String(shopId) ? {
       ...s,
-      has_freezer: true,
-      freezer_model: payload.freezer_model,
-      freezer_serial: payload.freezer_serial,
-      freezer_date: payload.freezer_date,
-      freezer_status: payload.freezer_status
+      has_freezer: true
     } : s));
 
     try {

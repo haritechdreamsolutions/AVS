@@ -294,16 +294,29 @@ export const FreezerManagement = () => {
       const sFreezers = shopFreezersMap.get(String(s.id)) || [];
       if (sFreezers.length > 0 || s.has_freezer) {
         group.freezerShops.push(s);
-        sFreezers.forEach(f => {
-          group.allFreezers.push(f);
-          if (f.model_name) {
-            const matchedBrand = availableBrands.find(b => f.model_name.toLowerCase().includes(b.toLowerCase()));
+        if (sFreezers.length > 0) {
+          sFreezers.forEach(f => {
+            group.allFreezers.push(f);
+            if (f.model_name) {
+              const matchedBrand = availableBrands.find(b => f.model_name.toLowerCase().includes(b.toLowerCase()));
+              if (matchedBrand) group.brands.add(matchedBrand);
+            }
+          });
+        } else if (s.has_freezer) {
+          const fallbackFreezer = {
+            id: `legacy-${s.id}`,
+            shop_id: s.id,
+            shop_name: s.name,
+            model_name: s.freezer_model || 'Deep Freezer',
+            serial_no: s.freezer_serial || `FRZ-${s.code || s.id}`,
+            allocation_date: s.freezer_date || 'N/A',
+            status: s.freezer_status || 'Active'
+          };
+          group.allFreezers.push(fallbackFreezer);
+          if (s.freezer_model) {
+            const matchedBrand = availableBrands.find(b => s.freezer_model.toLowerCase().includes(b.toLowerCase()));
             if (matchedBrand) group.brands.add(matchedBrand);
           }
-        });
-        if (sFreezers.length === 0 && s.freezer_model) {
-          const matchedBrand = availableBrands.find(b => s.freezer_model.toLowerCase().includes(b.toLowerCase()));
-          if (matchedBrand) group.brands.add(matchedBrand);
         }
       } else {
         group.noFreezerShops.push(s);
