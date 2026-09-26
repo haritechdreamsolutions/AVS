@@ -76,6 +76,12 @@ export default function App() {
     if (res.success) {
       setLastCreatedBill(res);
       setEmpScreen('bill_summary');
+      if (selectedShop) {
+        const newDue = res.sale?.shop_current_due !== undefined 
+          ? Number(res.sale.shop_current_due) 
+          : (finalBillData.clear_previous_due ? 0 : selectedShop.current_due);
+        setSelectedShop(prev => ({ ...prev, current_due: newDue }));
+      }
       toast.success(`Bill #${res.sale.bill_no} saved & stock updated!`);
     } else {
       toast.error("Error creating bill: " + res.message);

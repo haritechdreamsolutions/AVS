@@ -1777,16 +1777,16 @@ export async function createSale(cid, d, actorUserId) {
     let sR;
     try {
       sR = await client.query(
-        'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, sale_date, sale_time, total_amount, cash_paid, gpay_paid, credit_paid, payment_mode) ' +
-        'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-        [cid, billNo, empId, empName, shop ? shop.id : null, shop ? shop.name : (d.shop_name || 'Customer'), today, nowTime, computedTotal, cash, gpay, credit, mode]
+        'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, sale_date, sale_time, total_amount, cash_paid, gpay_paid, credit_paid, payment_mode, previous_due, old_credit_paid) ' +
+        'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
+        [cid, billNo, empId, empName, shop ? shop.id : null, shop ? shop.name : (d.shop_name || 'Customer'), today, nowTime, computedTotal, cash, gpay, credit, mode, shopPrevDue, oldCreditPaid]
       );
     } catch (insertErr) {
       try {
         sR = await client.query(
-          'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, sale_date, sale_time, "date", "time", total_amount, cash_paid, gpay_paid, credit_paid, payment_mode) ' +
-          'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
-          [cid, billNo, empId, empName, shop ? shop.id : null, shop ? shop.name : (d.shop_name || 'Customer'), today, nowTime, today, nowTime, computedTotal, cash, gpay, credit, mode]
+          'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, sale_date, sale_time, total_amount, cash_paid, gpay_paid, credit_paid, payment_mode) ' +
+          'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+          [cid, billNo, empId, empName, shop ? shop.id : null, shop ? shop.name : (d.shop_name || 'Customer'), today, nowTime, computedTotal, cash, gpay, credit, mode]
         );
       } catch (insertErr2) {
         sR = await client.query(
@@ -1902,7 +1902,10 @@ export async function getSaleById(cid, saleId) {
   let sale = null;
   if (isNumeric) {
     sale = await queryOne(`
-      SELECT s.*, sh.code as shop_code, COALESCE(sh.current_due, 0) as shop_current_due, COALESCE(sh.current_due, 0) as previous_due, COALESCE(e.vehicle_number, '') as vehicle_no 
+      SELECT s.*, sh.code as shop_code, COALESCE(sh.current_due, 0) as shop_current_due, 
+             COALESCE(s.previous_due, sh.current_due, 0) as previous_due, 
+             COALESCE(s.old_credit_paid, 0) as old_credit_paid,
+             COALESCE(e.vehicle_number, '') as vehicle_no 
       FROM sales s 
       LEFT JOIN shops sh ON sh.id = s.shop_id 
       LEFT JOIN employees e ON e.id = s.employee_id 
@@ -1911,7 +1914,10 @@ export async function getSaleById(cid, saleId) {
   }
   if (!sale) {
     sale = await queryOne(`
-      SELECT s.*, sh.code as shop_code, COALESCE(sh.current_due, 0) as shop_current_due, COALESCE(sh.current_due, 0) as previous_due, COALESCE(e.vehicle_number, '') as vehicle_no 
+      SELECT s.*, sh.code as shop_code, COALESCE(sh.current_due, 0) as shop_current_due, 
+             COALESCE(s.previous_due, sh.current_due, 0) as previous_due, 
+             COALESCE(s.old_credit_paid, 0) as old_credit_paid,
+             COALESCE(e.vehicle_number, '') as vehicle_no 
       FROM sales s 
       LEFT JOIN shops sh ON sh.id = s.shop_id 
       LEFT JOIN employees e ON e.id = s.employee_id 
