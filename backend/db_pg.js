@@ -2539,23 +2539,40 @@ export async function assignFreezer(cid, shopId, d) {
   const fStatus = d.freezer_status || d.status || 'Active';
   const fNotes = d.notes || null;
 
-  // Insert into shop_freezers
+  // 1. Ensure existing legacy freezer on `shops` table is preserved in `shop_freezers` if not already present
+  const existingCountRes = await queryOne(`SELECT COUNT(*) as count FROM shop_freezers WHERE shop_id = $1`, [shopId]);
+  const existingCount = Number(existingCountRes?.count || 0);
+
+  if (existingCount === 0) {
+    const shopRow = await queryOne(`SELECT * FROM shops WHERE id = $1`, [shopId]);
+    if (shopRow && shopRow.has_freezer && (shopRow.freezer_model || shopRow.freezer_serial)) {
+      const legacySerial = String(shopRow.freezer_serial || `FRZ-${shopRow.code || shopId}`).trim();
+      if (legacySerial.toLowerCase() !== fSerial.toLowerCase()) {
+        await query(`
+          INSERT INTO shop_freezers (company_id, shop_id, model_name, serial_no, allocation_date, status, notes)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `, [cid, shopId, shopRow.freezer_model || 'Deep Freezer', legacySerial, shopRow.freezer_date || fDate, shopRow.freezer_status || 'Active', 'Original allocation']);
+      }
+    }
+  }
+
+  // 2. Insert new freezer asset into shop_freezers table
   const freezerRow = await queryOne(`
     INSERT INTO shop_freezers (company_id, shop_id, model_name, serial_no, allocation_date, status, notes)
     VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING *
   `, [cid, shopId, fModel, fSerial, fDate, fStatus, fNotes]);
 
-  // Update shops table for backward compatibility
-  const shopRow = await queryOne(`
+  // 3. Mark shop has_freezer = true on shops table
+  const updatedShop = await queryOne(`
     UPDATE shops 
     SET has_freezer = TRUE, freezer_model = $1, freezer_serial = $2, freezer_date = $3, freezer_status = $4, updated_at = NOW() 
     WHERE id = $5 AND (company_id = $6 OR $6 = 1 OR company_id IS NULL) 
     RETURNING *
   `, [fModel, fSerial, fDate, fStatus, shopId, cid]);
 
-  if (!shopRow) throw new Error('Shop not found.');
-  return { success: true, freezer: freezerRow, shop: shopRow };
+  if (!updatedShop) throw new Error('Shop not found.');
+  return { success: true, freezer: freezerRow, shop: updatedShop };
 }
 
 export async function updateFreezer(cid, freezerId, d) {

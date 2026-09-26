@@ -743,13 +743,22 @@ export async function runAutoMigrations() {
     // Safe Backfill: Migrate any existing shop freezer data from shops table into shop_freezers table
     await safeQuery(client, `
       INSERT INTO shop_freezers (company_id, shop_id, model_name, serial_no, allocation_date, status)
-      SELECT s.company_id, s.id, s.freezer_model, s.freezer_serial, COALESCE(s.freezer_date, CURRENT_DATE::text), COALESCE(s.freezer_status, 'Active')
+      SELECT 
+        COALESCE(s.company_id, 1), 
+        s.id, 
+        COALESCE(NULLIF(TRIM(s.freezer_model), ''), 'Deep Freezer'), 
+        COALESCE(NULLIF(TRIM(s.freezer_serial), ''), 'FRZ-' || COALESCE(s.code, s.id::text)), 
+        COALESCE(NULLIF(TRIM(s.freezer_date), ''), CURRENT_DATE::text), 
+        COALESCE(NULLIF(TRIM(s.freezer_status), ''), 'Active')
       FROM shops s
       WHERE s.has_freezer = TRUE 
-        AND s.freezer_serial IS NOT NULL 
-        AND TRIM(s.freezer_serial) != ''
         AND NOT EXISTS (
-          SELECT 1 FROM shop_freezers sf WHERE sf.shop_id = s.id AND LOWER(TRIM(sf.serial_no)) = LOWER(TRIM(s.freezer_serial))
+          SELECT 1 FROM shop_freezers sf 
+          WHERE sf.shop_id = s.id 
+            AND (
+              LOWER(TRIM(sf.serial_no)) = LOWER(TRIM(COALESCE(NULLIF(TRIM(s.freezer_serial), ''), 'FRZ-' || COALESCE(s.code, s.id::text))))
+              OR LOWER(TRIM(sf.model_name)) = LOWER(TRIM(COALESCE(NULLIF(TRIM(s.freezer_model), ''), 'Deep Freezer')))
+            )
         );
     `, [], 'backfill existing shop freezers');
 

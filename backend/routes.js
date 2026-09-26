@@ -761,6 +761,58 @@ router.delete('/freezer-models/:id', async (req, res) => {
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
+// ====== FREEZERS (MULTI-FREEZER ASSETS) ======
+router.get(['/freezers', '/shop-freezers'], async (req, res) => {
+  try {
+    const freezers = await db.getFreezers(getCid(req), req.query.shop_id);
+    res.json(freezers);
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.get('/shops/:id/freezers', async (req, res) => {
+  try {
+    const freezers = await db.getFreezers(getCid(req), req.params.id);
+    res.json(freezers);
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.post(['/freezers', '/shop-freezers'], async (req, res) => {
+  try {
+    const shopId = req.body.shop_id;
+    if (!shopId) return res.status(400).json({ success: false, message: 'Shop ID is required' });
+    const result = await db.assignFreezer(getCid(req), Number(shopId), req.body);
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+router.post('/shops/:id/freezer', async (req, res) => {
+  try {
+    const result = await db.assignFreezer(getCid(req), Number(req.params.id), req.body);
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+router.put('/freezers/:id', async (req, res) => {
+  try {
+    const result = await db.updateFreezer(getCid(req), Number(req.params.id), req.body);
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+router.delete(['/freezers/:id', '/shop-freezers/:id'], async (req, res) => {
+  try {
+    const result = await db.unassignFreezer(getCid(req), Number(req.params.id), req.query.shop_id);
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+router.delete('/shops/:id/freezer', async (req, res) => {
+  try {
+    const result = await db.unassignFreezer(getCid(req), null, Number(req.params.id));
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
 router.post('/shops/:id/collect-due', requireAuth, async (req, res) => {
   try {
     const result = await db.collectShopDue(getCid(req), req.params.id, req.body);
