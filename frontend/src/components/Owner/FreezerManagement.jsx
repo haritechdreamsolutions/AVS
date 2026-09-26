@@ -145,22 +145,33 @@ export const FreezerManagement = () => {
   // Build Comprehensive List of All Freezers (merging shop_freezers table and fallback from shops table)
   const allFreezersList = useMemo(() => {
     const list = [];
-    const seenIds = new Set();
+    const seenKeys = new Set();
 
     if (Array.isArray(freezers)) {
       freezers.forEach(f => {
-        if (f && f.id) {
-          seenIds.add(String(f.id));
-          list.push(f);
+        if (f) {
+          const key = f.id ? String(f.id) : `${f.shop_id}-${f.serial_no || f.model_name}`;
+          if (!seenKeys.has(key)) {
+            seenKeys.add(key);
+            list.push(f);
+          }
         }
       });
     }
 
-    // Fallback: If any shop has has_freezer and not in shop_freezers, add it
+    // Fallback: If any shop has has_freezer and that specific freezer serial is not in list, add it
     shops.forEach(s => {
-      if (s.has_freezer && s.freezer_model) {
-        const alreadyExists = list.some(f => String(f.shop_id) === String(s.id));
-        if (!alreadyExists) {
+      if (s.has_freezer && (s.freezer_model || s.freezer_serial)) {
+        const sSerial = String(s.freezer_serial || '').trim().toLowerCase();
+        const serialAlreadyInList = sSerial ? list.some(f => 
+          String(f.shop_id) === String(s.id) && 
+          String(f.serial_no || f.freezer_serial || '').trim().toLowerCase() === sSerial
+        ) : false;
+
+        const shopHasAnyFreezerInList = list.some(f => String(f.shop_id) === String(s.id));
+
+        // If specific serial isn't in list yet, or if shop has no freezers in list at all, add fallback
+        if ((sSerial && !serialAlreadyInList) || (!sSerial && !shopHasAnyFreezerInList)) {
           list.push({
             id: `legacy-${s.id}`,
             shop_id: s.id,
@@ -170,7 +181,7 @@ export const FreezerManagement = () => {
             phone: s.phone,
             village_id: s.village_id,
             village_name: s.village_name,
-            model_name: s.freezer_model,
+            model_name: s.freezer_model || 'Deep Freezer',
             serial_no: s.freezer_serial || `FRZ-${s.code || s.id}`,
             allocation_date: s.freezer_date || 'N/A',
             status: s.freezer_status || 'Active',
