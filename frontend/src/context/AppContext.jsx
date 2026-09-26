@@ -174,6 +174,24 @@ export const AppProvider = ({ children }) => {
       if (data.success) {
         const fullSale = { ...data.sale, items: data.sale?.items || data.items || [] };
         setActiveBill(fullSale);
+
+        // Update local shops state immediately
+        const targetShopId = saleData.shop_id || fullSale.shop_id;
+        const targetShopCode = saleData.shop_code || fullSale.shop_code;
+        const newDue = fullSale.shop_current_due !== undefined 
+          ? Number(fullSale.shop_current_due)
+          : (saleData.clear_previous_due ? 0 : undefined);
+
+        if (newDue !== undefined) {
+          setShops(prev => prev.map(s => {
+            if ((targetShopId && String(s.id) === String(targetShopId)) || 
+                (targetShopCode && String(s.code).toLowerCase() === String(targetShopCode).toLowerCase())) {
+              return { ...s, current_due: newDue };
+            }
+            return s;
+          }));
+        }
+
         await fetchData();
         return { success: true, sale: fullSale, items: fullSale.items };
       } else {

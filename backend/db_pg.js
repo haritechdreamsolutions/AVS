@@ -1729,9 +1729,19 @@ export async function createSale(cid, d, actorUserId) {
     }
 
     computedTotal = parseFloat(computedTotal.toFixed(2));
+    const shopPrevDue = Number(shop?.current_due || 0);
+    let oldCreditPaid = Number(d.old_credit_paid || (d.clear_previous_due ? shopPrevDue : 0));
+
+    // If client paid more than bill total in cash/gpay, attribute excess to old credit
+    if (oldCreditPaid === 0 && shopPrevDue > 0) {
+      const extraPaid = Math.max(0, (Number(cash_paid || 0) + Number(gpay_paid || 0)) - computedTotal);
+      if (extraPaid > 0) {
+        oldCreditPaid = Math.min(shopPrevDue, extraPaid);
+      }
+    }
+
     let cash = 0, gpay = 0, credit = 0;
     const mode = (payment_mode || 'CASH').toUpperCase();
-    const oldCreditPaid = Number(d.old_credit_paid || (d.clear_previous_due ? (shop?.current_due || 0) : 0));
 
     if (mode === 'CASH') {
       cash = computedTotal + oldCreditPaid;
@@ -1752,7 +1762,6 @@ export async function createSale(cid, d, actorUserId) {
       throw new Error(`Invalid payment mode '${payment_mode}'`);
     }
 
-    const shopPrevDue = Number(shop?.current_due || 0);
     if (oldCreditPaid > 0 && shop) {
       await client.query('UPDATE shops SET current_due=GREATEST(0, current_due - $1), updated_at=NOW() WHERE id=$2', [oldCreditPaid, shop.id]);
     }

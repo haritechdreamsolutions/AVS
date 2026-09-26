@@ -3,8 +3,20 @@ import { useApp } from '../../context/AppContext';
 import { ArrowLeft, ArrowRight, ShoppingBag, AlertTriangle, X, Search, Box } from 'lucide-react';
 import { getOperationalUnit } from '../../utils/unitHelper';
 
-export const BillingPOS = ({ shop, onProceedToPayment, onBack }) => {
-  const { products, employeeStock } = useApp();
+export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) => {
+  const { products, employeeStock, shops } = useApp();
+
+  // Always resolve the freshest shop object from AppContext
+  const shop = useMemo(() => {
+    if (!initialShop) return null;
+    const fresh = (shops || []).find(s => 
+      (initialShop.id && String(s.id) === String(initialShop.id)) ||
+      (initialShop.code && String(s.code).toLowerCase() === String(initialShop.code).toLowerCase()) ||
+      (initialShop.name && String(s.name).toLowerCase() === String(initialShop.name).toLowerCase())
+    );
+    return fresh || initialShop;
+  }, [shops, initialShop]);
+
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [quantities, setQuantities] = useState({});

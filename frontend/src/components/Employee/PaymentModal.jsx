@@ -9,7 +9,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
   
   const totalBillAmount = Number(Number(billData?.total_amount || 0).toFixed(2));
   const previousDue = Number(Number(billData?.previous_due || 0).toFixed(2));
-  const [includeOldCredit, setIncludeOldCredit] = useState(false);
+  const [includeOldCredit, setIncludeOldCredit] = useState(previousDue > 0);
 
   // Total payable depends on whether old credit is included
   const payableAmount = Number((includeOldCredit ? totalBillAmount + previousDue : totalBillAmount).toFixed(2));
