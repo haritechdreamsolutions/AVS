@@ -318,12 +318,14 @@ export const AppProvider = ({ children }) => {
   };
 
   const assignFreezer = async (shopId, freezerData) => {
+    const shop = shops.find(s => String(s.id) === String(shopId));
+    const tempId = `temp-${Date.now()}`;
     const payload = {
       shop_id: shopId,
-      model_name: freezerData.model || freezerData.freezer_model || freezerData.model_name,
-      freezer_model: freezerData.model || freezerData.freezer_model || freezerData.model_name,
-      serial_no: freezerData.serial || freezerData.freezer_serial || freezerData.serial_no,
-      freezer_serial: freezerData.serial || freezerData.freezer_serial || freezerData.serial_no,
+      model_name: freezerData.model || freezerData.freezer_model || freezerData.model_name || 'Deep Freezer',
+      freezer_model: freezerData.model || freezerData.freezer_model || freezerData.model_name || 'Deep Freezer',
+      serial_no: freezerData.serial || freezerData.freezer_serial || freezerData.serial_no || `FRZ-${Date.now().toString().slice(-6)}`,
+      freezer_serial: freezerData.serial || freezerData.freezer_serial || freezerData.serial_no || `FRZ-${Date.now().toString().slice(-6)}`,
       allocation_date: freezerData.date || freezerData.freezer_date || freezerData.allocation_date || new Date().toISOString().split('T')[0],
       freezer_date: freezerData.date || freezerData.freezer_date || freezerData.allocation_date || new Date().toISOString().split('T')[0],
       status: freezerData.status || freezerData.freezer_status || 'Active',
@@ -331,7 +333,22 @@ export const AppProvider = ({ children }) => {
       notes: freezerData.notes || null
     };
 
-    // Optimistic UI update
+    const optimisticFreezer = {
+      id: tempId,
+      shop_id: shopId,
+      shop_name: shop?.name || 'Shop',
+      shop_code: shop?.code || '',
+      owner_name: shop?.owner_name || '',
+      phone: shop?.phone || '',
+      village_id: shop?.village_id,
+      village_name: shop?.village_name,
+      ...payload
+    };
+
+    // Optimistically update freezers array immediately
+    setFreezers(prev => [optimisticFreezer, ...prev.filter(f => !(f.id === tempId || (f.shop_id === shopId && f.serial_no === payload.serial_no)))]);
+
+    // Optimistically update shops array
     setShops(prev => prev.map(s => String(s.id) === String(shopId) ? {
       ...s,
       has_freezer: true,
@@ -350,6 +367,9 @@ export const AppProvider = ({ children }) => {
       let data = null;
       try { data = await res.json(); } catch(e) { data = null; }
       if (data && data.success) {
+        if (data.freezer) {
+          setFreezers(prev => prev.map(f => f.id === tempId ? { ...f, ...data.freezer } : f));
+        }
         await fetchData();
         return { success: true, freezer: data.freezer };
       }
@@ -362,7 +382,7 @@ export const AppProvider = ({ children }) => {
       await fetchData();
       return { success: true };
     } catch (err) {
-      console.warn("assignFreezer optimistic fallback:", err);
+      console.warn("assignFreezer fallback:", err);
       await fetchData();
       return { success: true };
     }
@@ -380,6 +400,9 @@ export const AppProvider = ({ children }) => {
       freezer_status: freezerData.status || freezerData.freezer_status,
       notes: freezerData.notes
     };
+
+    // Optimistically update freezers array
+    setFreezers(prev => prev.map(f => String(f.id) === String(freezerId) ? { ...f, ...payload } : f));
 
     try {
       const res = await apiFetch(`${API_URL}/freezers/${freezerId}`, {
@@ -402,6 +425,9 @@ export const AppProvider = ({ children }) => {
   };
 
   const unassignFreezer = async (freezerId, shopId = null) => {
+    // Optimistically remove freezer from freezers array
+    setFreezers(prev => prev.filter(f => String(f.id) !== String(freezerId)));
+
     try {
       let res = await apiFetch(`${API_URL}/freezers/${freezerId}${shopId ? `?shop_id=${shopId}` : ''}`, {
         method: 'DELETE'
