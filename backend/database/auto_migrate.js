@@ -722,6 +722,37 @@ export async function runAutoMigrations() {
       );
     `, [], 'seed freezer_models');
 
+    // 20.2 Shop Freezers Assets Table (Supports multiple freezers per shop)
+    await safeQuery(client, `
+      CREATE TABLE IF NOT EXISTS shop_freezers (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER NOT NULL DEFAULT 1,
+        shop_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        model_name VARCHAR(150) NOT NULL,
+        serial_no VARCHAR(100) NOT NULL,
+        allocation_date VARCHAR(30) NOT NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'Active',
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `, [], 'create shop_freezers table');
+    await safeQuery(client, 'CREATE INDEX IF NOT EXISTS idx_shop_freezers_shop ON shop_freezers(shop_id);', [], 'idx_shop_freezers_shop');
+    await safeQuery(client, 'CREATE INDEX IF NOT EXISTS idx_shop_freezers_company ON shop_freezers(company_id);', [], 'idx_shop_freezers_company');
+
+    // Safe Backfill: Migrate any existing shop freezer data from shops table into shop_freezers table
+    await safeQuery(client, `
+      INSERT INTO shop_freezers (company_id, shop_id, model_name, serial_no, allocation_date, status)
+      SELECT s.company_id, s.id, s.freezer_model, s.freezer_serial, COALESCE(s.freezer_date, CURRENT_DATE::text), COALESCE(s.freezer_status, 'Active')
+      FROM shops s
+      WHERE s.has_freezer = TRUE 
+        AND s.freezer_serial IS NOT NULL 
+        AND TRIM(s.freezer_serial) != ''
+        AND NOT EXISTS (
+          SELECT 1 FROM shop_freezers sf WHERE sf.shop_id = s.id AND LOWER(TRIM(sf.serial_no)) = LOWER(TRIM(s.freezer_serial))
+        );
+    `, [], 'backfill existing shop freezers');
+
     // 21. Ensure Company, Roles & Users
     let cR = await safeQuery(client, 'SELECT id FROM companies LIMIT 1');
     let cid = 1;

@@ -38,6 +38,7 @@ export const AppProvider = ({ children }) => {
   const [employees, setEmployees] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [routes, setRoutes] = useState([]);
+  const [freezers, setFreezers] = useState([]);
   const [freezerModels, setFreezerModels] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -82,7 +83,7 @@ export const AppProvider = ({ children }) => {
       setLoading(true);
       const stockEmpId = currentUser?.employee_id || currentUser?.id;
       const isOwner = (currentUser?.role || '').toUpperCase() === 'OWNER' || (activeRole || '').toUpperCase() === 'OWNER';
-      const [shopsRes, villagesRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes, empRes, driversRes, freezerModelsRes] = await Promise.all([
+      const [shopsRes, villagesRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes, empRes, driversRes, freezerModelsRes, freezersRes] = await Promise.all([
         apiFetch(`${API_URL}/shops`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/villages`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/products`).then(r => r.ok ? r.json() : []).catch(() => []),
@@ -96,7 +97,8 @@ export const AppProvider = ({ children }) => {
         apiFetch(`${API_URL}/routes`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/employees`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/drivers`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/freezer-models`).then(r => r.ok ? r.json() : []).catch(() => [])
+        apiFetch(`${API_URL}/freezer-models`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/freezers`).then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
 
       setShops(Array.isArray(shopsRes) ? shopsRes : []);
@@ -113,6 +115,7 @@ export const AppProvider = ({ children }) => {
       setEmployees(Array.isArray(empRes) ? empRes : []);
       setDrivers(Array.isArray(driversRes) ? driversRes : []);
       setFreezerModels(Array.isArray(freezerModelsRes) ? freezerModelsRes : []);
+      setFreezers(Array.isArray(freezersRes) ? freezersRes : []);
     } catch (err) {
       console.error("Failed to load initial data:", err);
     } finally {
@@ -316,14 +319,16 @@ export const AppProvider = ({ children }) => {
 
   const assignFreezer = async (shopId, freezerData) => {
     const payload = {
-      model: freezerData.model || freezerData.freezer_model,
-      freezer_model: freezerData.model || freezerData.freezer_model,
-      serial: freezerData.serial || freezerData.freezer_serial,
-      freezer_serial: freezerData.serial || freezerData.freezer_serial,
-      date: freezerData.date || freezerData.freezer_date || new Date().toISOString().split('T')[0],
-      freezer_date: freezerData.date || freezerData.freezer_date || new Date().toISOString().split('T')[0],
+      shop_id: shopId,
+      model_name: freezerData.model || freezerData.freezer_model || freezerData.model_name,
+      freezer_model: freezerData.model || freezerData.freezer_model || freezerData.model_name,
+      serial_no: freezerData.serial || freezerData.freezer_serial || freezerData.serial_no,
+      freezer_serial: freezerData.serial || freezerData.freezer_serial || freezerData.serial_no,
+      allocation_date: freezerData.date || freezerData.freezer_date || freezerData.allocation_date || new Date().toISOString().split('T')[0],
+      freezer_date: freezerData.date || freezerData.freezer_date || freezerData.allocation_date || new Date().toISOString().split('T')[0],
       status: freezerData.status || freezerData.freezer_status || 'Active',
-      freezer_status: freezerData.status || freezerData.freezer_status || 'Active'
+      freezer_status: freezerData.status || freezerData.freezer_status || 'Active',
+      notes: freezerData.notes || null
     };
 
     // Optimistic UI update
@@ -337,7 +342,7 @@ export const AppProvider = ({ children }) => {
     } : s));
 
     try {
-      const res = await apiFetch(`${API_URL}/shops/${shopId}/freezer`, {
+      const res = await apiFetch(`${API_URL}/freezers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -345,45 +350,74 @@ export const AppProvider = ({ children }) => {
       let data = null;
       try { data = await res.json(); } catch(e) { data = null; }
       if (data && data.success) {
-        fetchData();
-        return { success: true };
+        await fetchData();
+        return { success: true, freezer: data.freezer };
       }
-      return { success: true }; // Optimistically succeeded
+      // Fallback
+      await apiFetch(`${API_URL}/shops/${shopId}/freezer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      await fetchData();
+      return { success: true };
     } catch (err) {
       console.warn("assignFreezer optimistic fallback:", err);
+      await fetchData();
       return { success: true };
     }
   };
 
-  const unassignFreezer = async (shopId) => {
-    // Optimistic UI update
-    setShops(prev => prev.map(s => String(s.id) === String(shopId) ? {
-      ...s,
-      has_freezer: false,
-      freezer_model: null,
-      freezer_serial: null,
-      freezer_date: null,
-      freezer_status: null
-    } : s));
+  const updateFreezer = async (freezerId, freezerData) => {
+    const payload = {
+      model_name: freezerData.model || freezerData.freezer_model || freezerData.model_name,
+      freezer_model: freezerData.model || freezerData.freezer_model || freezerData.model_name,
+      serial_no: freezerData.serial || freezerData.freezer_serial || freezerData.serial_no,
+      freezer_serial: freezerData.serial || freezerData.freezer_serial || freezerData.serial_no,
+      allocation_date: freezerData.date || freezerData.freezer_date || freezerData.allocation_date,
+      freezer_date: freezerData.date || freezerData.freezer_date || freezerData.allocation_date,
+      status: freezerData.status || freezerData.freezer_status,
+      freezer_status: freezerData.status || freezerData.freezer_status,
+      notes: freezerData.notes
+    };
 
     try {
-      let res = await apiFetch(`${API_URL}/shops/${shopId}/freezer`, {
+      const res = await apiFetch(`${API_URL}/freezers/${freezerId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      let data = null;
+      try { data = await res.json(); } catch(e) { data = null; }
+      await fetchData();
+      if (data && data.success) {
+        return { success: true, freezer: data.freezer };
+      }
+      return { success: true };
+    } catch (err) {
+      console.warn("updateFreezer fallback:", err);
+      await fetchData();
+      return { success: true };
+    }
+  };
+
+  const unassignFreezer = async (freezerId, shopId = null) => {
+    try {
+      let res = await apiFetch(`${API_URL}/freezers/${freezerId}${shopId ? `?shop_id=${shopId}` : ''}`, {
         method: 'DELETE'
       });
-      if (!res.ok) {
-        res = await apiFetch(`${API_URL}/shops/${shopId}/freezer/unassign`, {
-          method: 'POST'
+      if (!res.ok && shopId) {
+        res = await apiFetch(`${API_URL}/shops/${shopId}/freezer`, {
+          method: 'DELETE'
         });
       }
       let data = null;
       try { data = await res.json(); } catch(e) { data = null; }
-      if (data && data.success) {
-        fetchData();
-        return { success: true };
-      }
-      return { success: true }; // Optimistically succeeded
+      await fetchData();
+      return { success: true };
     } catch (err) {
-      console.warn("unassignFreezer optimistic fallback:", err);
+      console.warn("unassignFreezer fallback:", err);
+      await fetchData();
       return { success: true };
     }
   };
@@ -1494,7 +1528,10 @@ export const AppProvider = ({ children }) => {
       addRoute,
       updateRoute,
       deleteRoute,
+      freezers,
+      setFreezers,
       assignFreezer,
+      updateFreezer,
       unassignFreezer,
       freezerModels,
       setFreezerModels,

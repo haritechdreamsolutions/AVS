@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { 
   Snowflake, Plus, Store, X, Save, Search, Filter, 
   Trash2, Edit3, CheckCircle2, AlertTriangle, Layers, 
-  Sparkles, RefreshCw, Boxes, ArrowRight, ArrowLeft, Tag, ShieldAlert, Undo2, MapPin, ChevronDown, Check
+  Sparkles, RefreshCw, Boxes, ArrowRight, ArrowLeft, Tag, ShieldAlert, Undo2, MapPin, ChevronDown, Check, PlusCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -42,7 +42,9 @@ export const FreezerManagement = () => {
   const { 
     shops = [], 
     villages = [],
+    freezers = [],
     assignFreezer, 
+    updateFreezer,
     unassignFreezer, 
     freezerModels = [], 
     addFreezerModel, 
@@ -56,11 +58,12 @@ export const FreezerManagement = () => {
 
   // Modals State
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [editingFreezer, setEditingFreezer] = useState(null); // null when creating new, or freezer object when editing
   const [showCreateModelModal, setShowCreateModelModal] = useState(false);
   const [showManageModelsModal, setShowManageModelsModal] = useState(false);
-  const [deleteModal, setDeleteModal] = useState({ isOpen: false, shop: null });
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, freezer: null, shop: null });
 
-  // Assign Form State
+  // Assign / Edit Form State
   const [selectedShopId, setSelectedShopId] = useState('');
   const [modalVillageFilter, setModalVillageFilter] = useState('ALL');
   const [villageSearchText, setVillageSearchText] = useState('');
@@ -75,6 +78,7 @@ export const FreezerManagement = () => {
   const [serial, setSerial] = useState('');
   const [allocationDate, setAllocationDate] = useState(new Date().toISOString().split('T')[0]);
   const [freezerStatus, setFreezerStatus] = useState('Active');
+  const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Create Model Form State
@@ -110,7 +114,7 @@ export const FreezerManagement = () => {
     return Array.from(brandsSet);
   }, [allAvailableModels]);
 
-  // Models filtered by selected brand in the assign modal (guaranteed never empty!)
+  // Models filtered by selected brand in the assign modal
   const filteredBrandModels = useMemo(() => {
     if (!selectedBrand || selectedBrand === 'ALL') {
       return allAvailableModels;
@@ -138,6 +142,58 @@ export const FreezerManagement = () => {
     setNewModelDisplayName(generated);
   }, [newModelBrand, customBrandInput, newModelCapacity, customCapacityInput, newModelType]);
 
+  // Build Comprehensive List of All Freezers (merging shop_freezers table and fallback from shops table)
+  const allFreezersList = useMemo(() => {
+    const list = [];
+    const seenIds = new Set();
+
+    if (Array.isArray(freezers)) {
+      freezers.forEach(f => {
+        if (f && f.id) {
+          seenIds.add(String(f.id));
+          list.push(f);
+        }
+      });
+    }
+
+    // Fallback: If any shop has has_freezer and not in shop_freezers, add it
+    shops.forEach(s => {
+      if (s.has_freezer && s.freezer_model) {
+        const alreadyExists = list.some(f => String(f.shop_id) === String(s.id));
+        if (!alreadyExists) {
+          list.push({
+            id: `legacy-${s.id}`,
+            shop_id: s.id,
+            shop_name: s.name,
+            shop_code: s.code,
+            owner_name: s.owner_name,
+            phone: s.phone,
+            village_id: s.village_id,
+            village_name: s.village_name,
+            model_name: s.freezer_model,
+            serial_no: s.freezer_serial || `FRZ-${s.code || s.id}`,
+            allocation_date: s.freezer_date || 'N/A',
+            status: s.freezer_status || 'Active',
+            notes: ''
+          });
+        }
+      }
+    });
+
+    return list;
+  }, [freezers, shops]);
+
+  // Map of shopId -> array of Freezers
+  const shopFreezersMap = useMemo(() => {
+    const map = new Map();
+    allFreezersList.forEach(f => {
+      const key = String(f.shop_id);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(f);
+    });
+    return map;
+  }, [allFreezersList]);
+
   // Auto-generate serial when shop or model changes
   const generateSerial = (shopIdVal, modelNameVal) => {
     const s = shops.find(item => String(item.id) === String(shopIdVal));
@@ -146,43 +202,6 @@ export const FreezerManagement = () => {
     const rand = Math.floor(100 + Math.random() * 900);
     return `FRZ-${cleanShopCode}-${cleanModel}-${rand}`;
   };
-
-  const freezerShops = useMemo(() => {
-    return shops.filter(s => {
-      if (!s.has_freezer) return false;
-      if (brandFilter !== 'ALL') {
-        const m = (s.freezer_model || '').toLowerCase();
-        if (!m.includes(brandFilter.toLowerCase())) return false;
-      }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        return (
-          (s.name && s.name.toLowerCase().includes(q)) ||
-          (s.code && s.code.toLowerCase().includes(q)) ||
-          (s.owner_name && s.owner_name.toLowerCase().includes(q)) ||
-          (s.freezer_model && s.freezer_model.toLowerCase().includes(q)) ||
-          (s.freezer_serial && s.freezer_serial.toLowerCase().includes(q))
-        );
-      }
-      return true;
-    });
-  }, [shops, brandFilter, searchQuery]);
-
-  const noFreezerShops = useMemo(() => {
-    return shops.filter(s => {
-      if (s.has_freezer) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        return (
-          (s.name && s.name.toLowerCase().includes(q)) ||
-          (s.code && s.code.toLowerCase().includes(q)) ||
-          (s.owner_name && s.owner_name.toLowerCase().includes(q)) ||
-          (s.village_name && s.village_name.toLowerCase().includes(q))
-        );
-      }
-      return true;
-    });
-  }, [shops, searchQuery]);
 
   // Active villages for village selector
   const activeVillages = useMemo(() => {
@@ -207,7 +226,7 @@ export const FreezerManagement = () => {
     return 'Salem Area';
   };
 
-  // Group all shops by Village
+  // Group all shops and freezers by Village
   const villageFreezerGroups = useMemo(() => {
     const groupMap = new Map();
 
@@ -221,11 +240,12 @@ export const FreezerManagement = () => {
         shops: [],
         freezerShops: [],
         noFreezerShops: [],
+        allFreezers: [],
         brands: new Set()
       });
     });
 
-    // 2. Put shops into respective villages
+    // 2. Put shops & their freezers into respective villages
     (shops || []).forEach(s => {
       let matchedKey = null;
       if (s.village_id && groupMap.has(String(s.village_id).toLowerCase().trim())) {
@@ -251,6 +271,7 @@ export const FreezerManagement = () => {
             shops: [],
             freezerShops: [],
             noFreezerShops: [],
+            allFreezers: [],
             brands: new Set()
           });
         }
@@ -258,9 +279,18 @@ export const FreezerManagement = () => {
 
       const group = groupMap.get(matchedKey);
       group.shops.push(s);
-      if (s.has_freezer) {
+
+      const sFreezers = shopFreezersMap.get(String(s.id)) || [];
+      if (sFreezers.length > 0 || s.has_freezer) {
         group.freezerShops.push(s);
-        if (s.freezer_model) {
+        sFreezers.forEach(f => {
+          group.allFreezers.push(f);
+          if (f.model_name) {
+            const matchedBrand = availableBrands.find(b => f.model_name.toLowerCase().includes(b.toLowerCase()));
+            if (matchedBrand) group.brands.add(matchedBrand);
+          }
+        });
+        if (sFreezers.length === 0 && s.freezer_model) {
           const matchedBrand = availableBrands.find(b => s.freezer_model.toLowerCase().includes(b.toLowerCase()));
           if (matchedBrand) group.brands.add(matchedBrand);
         }
@@ -270,7 +300,7 @@ export const FreezerManagement = () => {
     });
 
     return Array.from(groupMap.values()).filter(g => g.shops.length > 0 || g.freezerShops.length > 0);
-  }, [villages, shops, availableBrands]);
+  }, [villages, shops, shopFreezersMap, availableBrands]);
 
   // Filtered village groups for Level 1 (Default View)
   const filteredVillageGroups = useMemo(() => {
@@ -278,7 +308,7 @@ export const FreezerManagement = () => {
       // Brand filter
       if (brandFilter !== 'ALL') {
         const hasBrand = Array.from(vg.brands).some(b => b.toLowerCase() === brandFilter.toLowerCase()) ||
-          vg.freezerShops.some(s => (s.freezer_model || '').toLowerCase().includes(brandFilter.toLowerCase()));
+          vg.allFreezers.some(f => (f.model_name || '').toLowerCase().includes(brandFilter.toLowerCase()));
         if (!hasBrand) return false;
       }
       // Search query filter
@@ -289,11 +319,13 @@ export const FreezerManagement = () => {
         const matchesShopInside = vg.shops.some(s => 
           (s.name && s.name.toLowerCase().includes(q)) ||
           (s.code && s.code.toLowerCase().includes(q)) ||
-          (s.owner_name && s.owner_name.toLowerCase().includes(q)) ||
-          (s.freezer_model && s.freezer_model.toLowerCase().includes(q)) ||
-          (s.freezer_serial && s.freezer_serial.toLowerCase().includes(q))
+          (s.owner_name && s.owner_name.toLowerCase().includes(q))
         );
-        return matchesVillage || matchesShopInside;
+        const matchesFreezerInside = vg.allFreezers.some(f => 
+          (f.model_name && f.model_name.toLowerCase().includes(q)) ||
+          (f.serial_no && f.serial_no.toLowerCase().includes(q))
+        );
+        return matchesVillage || matchesShopInside || matchesFreezerInside;
       }
       return true;
     });
@@ -308,27 +340,30 @@ export const FreezerManagement = () => {
     ) || selectedVillage;
   }, [selectedVillage, villageFreezerGroups]);
 
-  // Level 2: Shops inside selected village
+  // Level 2: Shops inside selected village with freezers
   const activeVillageFreezerShops = useMemo(() => {
     if (!activeVillageGroup) return [];
     return (activeVillageGroup.freezerShops || []).filter(s => {
+      const sFreezers = shopFreezersMap.get(String(s.id)) || [];
       if (brandFilter !== 'ALL') {
-        const m = (s.freezer_model || '').toLowerCase();
-        if (!m.includes(brandFilter.toLowerCase())) return false;
+        const hasBrandInFreezers = sFreezers.some(f => (f.model_name || '').toLowerCase().includes(brandFilter.toLowerCase()));
+        const hasBrandInShop = (s.freezer_model || '').toLowerCase().includes(brandFilter.toLowerCase());
+        if (!hasBrandInFreezers && !hasBrandInShop) return false;
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        return (
-          (s.name && s.name.toLowerCase().includes(q)) ||
+        const matchesShop = (s.name && s.name.toLowerCase().includes(q)) ||
           (s.code && s.code.toLowerCase().includes(q)) ||
-          (s.owner_name && s.owner_name.toLowerCase().includes(q)) ||
-          (s.freezer_model && s.freezer_model.toLowerCase().includes(q)) ||
-          (s.freezer_serial && s.freezer_serial.toLowerCase().includes(q))
+          (s.owner_name && s.owner_name.toLowerCase().includes(q));
+        const matchesFreezers = sFreezers.some(f => 
+          (f.model_name && f.model_name.toLowerCase().includes(q)) ||
+          (f.serial_no && f.serial_no.toLowerCase().includes(q))
         );
+        return matchesShop || matchesFreezers;
       }
       return true;
     });
-  }, [activeVillageGroup, brandFilter, searchQuery]);
+  }, [activeVillageGroup, shopFreezersMap, brandFilter, searchQuery]);
 
   const activeVillageNoFreezerShops = useMemo(() => {
     if (!activeVillageGroup) return [];
@@ -402,9 +437,10 @@ export const FreezerManagement = () => {
     setIsShopDropdownOpen(false);
   };
 
-  // Handle open assign modal (with smart pre-fill if shop already has freezer)
+  // Open Assign Modal (To assign a new freezer or an additional freezer to any shop)
   const handleOpenAssignModal = (shopId = '') => {
-    const targetShopId = shopId || (noFreezerShops[0]?.id || (shops[0]?.id || ''));
+    setEditingFreezer(null); // Adding fresh freezer asset
+    const targetShopId = shopId || (shops[0]?.id || '');
     setSelectedShopId(targetShopId);
 
     const targetShop = shops.find(s => String(s.id) === String(targetShopId));
@@ -428,32 +464,50 @@ export const FreezerManagement = () => {
     setIsVillageDropdownOpen(false);
     setIsShopDropdownOpen(false);
 
-    if (targetShop && targetShop.has_freezer && targetShop.freezer_model) {
-      const existingModel = targetShop.freezer_model;
-      setCustomModelName(existingModel);
-      setSerial(targetShop.freezer_serial || generateSerial(targetShopId, existingModel));
-      setAllocationDate(targetShop.freezer_date || new Date().toISOString().split('T')[0]);
-      setFreezerStatus(targetShop.freezer_status || 'Active');
+    const initialBrand = availableBrands[0] || 'Blue Star';
+    setSelectedBrand(initialBrand);
+    const brandList = allAvailableModels.filter(m => (m.brand || '').toLowerCase() === initialBrand.toLowerCase());
+    const initialModel = brandList[0] || allAvailableModels[0];
+    const modelName = initialModel?.model_name || `${initialBrand} 300L Deep Freezer`;
+    setSelectedModelId(initialModel?.id || '');
+    setCustomModelName(modelName);
+    setSerial(generateSerial(targetShopId, modelName));
+    setAllocationDate(new Date().toISOString().split('T')[0]);
+    setFreezerStatus('Active');
+    setNotes('');
 
-      // Detect brand from existing model
-      const matchedBrand = availableBrands.find(b => existingModel.toLowerCase().includes(b.toLowerCase())) || 'Blue Star';
-      setSelectedBrand(matchedBrand);
+    setShowAssignModal(true);
+  };
 
-      const brandList = allAvailableModels.filter(m => (m.brand || '').toLowerCase() === matchedBrand.toLowerCase());
-      const matchedModelObj = brandList.find(m => m.model_name.toLowerCase() === existingModel.toLowerCase()) || brandList[0];
-      setSelectedModelId(matchedModelObj?.id || '');
-    } else {
-      const initialBrand = availableBrands[0] || 'Blue Star';
-      setSelectedBrand(initialBrand);
-      const brandList = allAvailableModels.filter(m => (m.brand || '').toLowerCase() === initialBrand.toLowerCase());
-      const initialModel = brandList[0] || allAvailableModels[0];
-      const modelName = initialModel?.model_name || `${initialBrand} 300L Deep Freezer`;
-      setSelectedModelId(initialModel?.id || '');
-      setCustomModelName(modelName);
-      setSerial(generateSerial(targetShopId, modelName));
-      setAllocationDate(new Date().toISOString().split('T')[0]);
-      setFreezerStatus('Active');
+  // Open Edit Modal for a SPECIFIC freezer asset
+  const handleOpenEditModal = (freezer, shop) => {
+    setEditingFreezer(freezer);
+    const targetShopId = freezer.shop_id || shop?.id;
+    setSelectedShopId(targetShopId);
+
+    const targetShop = shop || shops.find(s => String(s.id) === String(targetShopId));
+    if (targetShop) {
+      setShopSearchText(`${targetShop.name} (${targetShop.code})`);
+      if (targetShop.village_id) {
+        const vName = getShopVillageName(targetShop);
+        setModalVillageFilter(String(targetShop.village_id));
+        setVillageSearchText(vName !== 'Salem Area' ? vName : '');
+      }
     }
+
+    const modelName = freezer.model_name || freezer.freezer_model || 'Deep Freezer';
+    setCustomModelName(modelName);
+    setSerial(freezer.serial_no || freezer.freezer_serial || '');
+    setAllocationDate(freezer.allocation_date || freezer.freezer_date || new Date().toISOString().split('T')[0]);
+    setFreezerStatus(freezer.status || freezer.freezer_status || 'Active');
+    setNotes(freezer.notes || '');
+
+    // Match brand
+    const matchedBrand = availableBrands.find(b => modelName.toLowerCase().includes(b.toLowerCase())) || 'Blue Star';
+    setSelectedBrand(matchedBrand);
+    const brandList = allAvailableModels.filter(m => (m.brand || '').toLowerCase() === matchedBrand.toLowerCase());
+    const matchedModelObj = brandList.find(m => m.model_name.toLowerCase() === modelName.toLowerCase()) || brandList[0];
+    setSelectedModelId(matchedModelObj?.id || '');
 
     setShowAssignModal(true);
   };
@@ -464,19 +518,7 @@ export const FreezerManagement = () => {
     const targetShop = shops.find(s => String(s.id) === String(newShopId));
     if (targetShop) {
       setShopSearchText(`${targetShop.name} (${targetShop.code})`);
-      if (targetShop.has_freezer && targetShop.freezer_model) {
-        const existingModel = targetShop.freezer_model;
-        setCustomModelName(existingModel);
-        setSerial(targetShop.freezer_serial || generateSerial(newShopId, existingModel));
-        setAllocationDate(targetShop.freezer_date || new Date().toISOString().split('T')[0]);
-        setFreezerStatus(targetShop.freezer_status || 'Active');
-
-        const matchedBrand = availableBrands.find(b => existingModel.toLowerCase().includes(b.toLowerCase())) || 'Blue Star';
-        setSelectedBrand(matchedBrand);
-        const brandList = allAvailableModels.filter(m => (m.brand || '').toLowerCase() === matchedBrand.toLowerCase());
-        const matchedModelObj = brandList.find(m => m.model_name.toLowerCase() === existingModel.toLowerCase()) || brandList[0];
-        setSelectedModelId(matchedModelObj?.id || '');
-      } else {
+      if (!editingFreezer) {
         setSerial(generateSerial(newShopId, customModelName));
       }
     }
@@ -490,12 +532,16 @@ export const FreezerManagement = () => {
       const first = modelsForBrand[0];
       setSelectedModelId(first.id);
       setCustomModelName(first.model_name);
-      setSerial(generateSerial(selectedShopId, first.model_name));
+      if (!editingFreezer) {
+        setSerial(generateSerial(selectedShopId, first.model_name));
+      }
     } else {
       setSelectedModelId('');
       const fallbackName = `${brand} 300L Deep Freezer`;
       setCustomModelName(fallbackName);
-      setSerial(generateSerial(selectedShopId, fallbackName));
+      if (!editingFreezer) {
+        setSerial(generateSerial(selectedShopId, fallbackName));
+      }
     }
   };
 
@@ -505,14 +551,16 @@ export const FreezerManagement = () => {
     const found = allAvailableModels.find(m => String(m.id) === String(modelId));
     if (found) {
       setCustomModelName(found.model_name);
-      setSerial(generateSerial(selectedShopId, found.model_name));
+      if (!editingFreezer) {
+        setSerial(generateSerial(selectedShopId, found.model_name));
+      }
     }
   };
 
-  // Handle save freezer assignment
+  // Handle save freezer (both new assignment and editing existing asset)
   const handleSaveFreezer = async () => {
     if (!selectedShopId) {
-      toast.error("Please select a shop!");
+      toast.error("Please select a target shop!");
       return;
     }
 
@@ -520,23 +568,47 @@ export const FreezerManagement = () => {
     const finalSerial = serial.trim() || generateSerial(selectedShopId, finalModel);
 
     setSaving(true);
-    const res = await assignFreezer(selectedShopId, {
-      model: finalModel,
-      freezer_model: finalModel,
-      serial: finalSerial,
-      freezer_serial: finalSerial,
-      date: allocationDate || new Date().toISOString().split('T')[0],
-      freezer_date: allocationDate || new Date().toISOString().split('T')[0],
-      status: freezerStatus || 'Active',
-      freezer_status: freezerStatus || 'Active'
-    });
+    let res;
+
+    if (editingFreezer && editingFreezer.id && !String(editingFreezer.id).startsWith('legacy-')) {
+      // Update existing freezer asset
+      res = await updateFreezer(editingFreezer.id, {
+        shop_id: selectedShopId,
+        model_name: finalModel,
+        freezer_model: finalModel,
+        serial_no: finalSerial,
+        freezer_serial: finalSerial,
+        allocation_date: allocationDate || new Date().toISOString().split('T')[0],
+        freezer_date: allocationDate || new Date().toISOString().split('T')[0],
+        status: freezerStatus || 'Active',
+        freezer_status: freezerStatus || 'Active',
+        notes: notes || null
+      });
+    } else {
+      // Assign new freezer asset (can be 1st, 2nd, 3rd, etc.)
+      res = await assignFreezer(selectedShopId, {
+        model: finalModel,
+        freezer_model: finalModel,
+        model_name: finalModel,
+        serial: finalSerial,
+        freezer_serial: finalSerial,
+        serial_no: finalSerial,
+        date: allocationDate || new Date().toISOString().split('T')[0],
+        freezer_date: allocationDate || new Date().toISOString().split('T')[0],
+        allocation_date: allocationDate || new Date().toISOString().split('T')[0],
+        status: freezerStatus || 'Active',
+        freezer_status: freezerStatus || 'Active',
+        notes: notes || null
+      });
+    }
     setSaving(false);
 
     if (res.success) {
-      toast.success(`🎉 Freezer '${finalModel}' assigned / updated successfully!`);
+      toast.success(editingFreezer ? `🎉 Freezer asset '${finalModel}' updated successfully!` : `🎉 Freezer '${finalModel}' assigned to shop!`);
       setShowAssignModal(false);
+      setEditingFreezer(null);
     } else {
-      toast.error("Error assigning freezer: " + (res.message || "Failed to assign"));
+      toast.error("Error saving freezer: " + (res.message || "Failed to save"));
     }
   };
 
@@ -580,26 +652,27 @@ export const FreezerManagement = () => {
     }
   };
 
-  // Check if current selected shop in assign modal is in edit mode
-  const currentModalShop = useMemo(() => {
-    return shops.find(s => String(s.id) === String(selectedShopId));
-  }, [shops, selectedShopId]);
-
-  const isEditMode = Boolean(currentModalShop && currentModalShop.has_freezer);
-
   // Handle delete freezer allocation
   const handleConfirmDelete = async () => {
-    if (!deleteModal.shop) return;
-    const shopId = deleteModal.shop.id;
-    const shopName = deleteModal.shop.name;
-    const res = await unassignFreezer(shopId);
+    if (!deleteModal.freezer && !deleteModal.shop) return;
+    const freezerId = deleteModal.freezer?.id;
+    const shopId = deleteModal.shop?.id || deleteModal.freezer?.shop_id;
+    const shopName = deleteModal.shop?.name || deleteModal.freezer?.shop_name || 'Shop';
+    
+    const targetId = freezerId && !String(freezerId).startsWith('legacy-') ? freezerId : shopId;
+    const res = await unassignFreezer(targetId, shopId);
     if (res.success) {
-      toast.success(`🗑️ Freezer allocation deleted successfully from '${shopName}'!`);
-      setDeleteModal({ isOpen: false, shop: null });
+      toast.success(`🗑️ Freezer asset removed successfully from '${shopName}'!`);
+      setDeleteModal({ isOpen: false, freezer: null, shop: null });
+      if (showAssignModal) setShowAssignModal(false);
     } else {
       toast.error(res.message || "Failed to delete freezer allocation");
     }
   };
+
+  const currentModalShop = useMemo(() => {
+    return shops.find(s => String(s.id) === String(selectedShopId));
+  }, [shops, selectedShopId]);
 
   return (
     <div className="space-y-6 pb-8">
@@ -615,7 +688,7 @@ export const FreezerManagement = () => {
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-900 tracking-tight">FREEZER ASSET MANAGEMENT</h2>
-              <p className="text-xs text-slate-500 font-bold">Track, deploy & manage cold storage freezer assets across partner shops</p>
+              <p className="text-xs text-slate-500 font-bold">Track, deploy & assign multiple cold storage freezer assets per shop</p>
             </div>
           </div>
         </div>
@@ -659,21 +732,21 @@ export const FreezerManagement = () => {
         <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-cyan-500 border border-slate-200 shadow-sm">
           <span className="text-xs text-slate-500 font-extrabold block uppercase tracking-wider">Total Freezers Deployed</span>
           <div className="font-mono font-black text-3xl text-cyan-600 mt-1">
-            {shops.filter(s => s.has_freezer).length} <span className="text-sm font-sans font-bold text-slate-400">Assets</span>
+            {allFreezersList.length} <span className="text-sm font-sans font-bold text-slate-400">Assets</span>
           </div>
         </div>
 
         <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-emerald-500 border border-slate-200 shadow-sm">
           <span className="text-xs text-slate-500 font-extrabold block uppercase tracking-wider">Active In Shops</span>
           <div className="font-mono font-black text-3xl text-emerald-600 mt-1">
-            {shops.filter(s => s.has_freezer && (s.freezer_status || 'Active') === 'Active').length} <span className="text-sm font-sans font-bold text-slate-400">Active</span>
+            {allFreezersList.filter(f => (f.status || f.freezer_status || 'Active') === 'Active').length} <span className="text-sm font-sans font-bold text-slate-400">Active</span>
           </div>
         </div>
 
         <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-amber-500 border border-slate-200 shadow-sm">
-          <span className="text-xs text-slate-500 font-extrabold block uppercase tracking-wider">Eligible Shops Without Freezer</span>
+          <span className="text-xs text-slate-500 font-extrabold block uppercase tracking-wider">Shops Without Freezer</span>
           <div className="font-mono font-black text-3xl text-amber-600 mt-1">
-            {shops.filter(s => !s.has_freezer).length} <span className="text-sm font-sans font-bold text-slate-400">Shops</span>
+            {shops.filter(s => !s.has_freezer && !(shopFreezersMap.get(String(s.id))?.length > 0)).length} <span className="text-sm font-sans font-bold text-slate-400">Shops</span>
           </div>
         </div>
       </div>
@@ -743,7 +816,7 @@ export const FreezerManagement = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredVillageGroups.map(vg => {
                 const totalShops = vg.shops.length;
-                const totalFreezers = vg.freezerShops.length;
+                const totalFreezers = vg.allFreezers.length;
                 const pendingShops = vg.noFreezerShops.length;
                 const brandsArray = Array.from(vg.brands || []);
 
@@ -785,12 +858,12 @@ export const FreezerManagement = () => {
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-bold text-[11px]">Freezers Deployed:</span>
-                          <span className="font-black text-emerald-600 font-mono">{totalFreezers} deployed</span>
+                          <span className="font-black text-emerald-600 font-mono">{totalFreezers} freezers</span>
                         </div>
                         {pendingShops > 0 && (
                           <div className="flex justify-between items-center">
                             <span className="text-slate-500 font-bold text-[11px]">Pending Allocation:</span>
-                            <span className="font-bold text-amber-600 font-mono">{pendingShops} eligible</span>
+                            <span className="font-bold text-amber-600 font-mono">{pendingShops} shops</span>
                           </div>
                         )}
                         {brandsArray.length > 0 && (
@@ -821,7 +894,7 @@ export const FreezerManagement = () => {
         </div>
       ) : (
         /* ------------------------------------------------------------------ */
-        /* LEVEL 2: SELECTED VILLAGE SHOPS & FREEZERS VIEW                    */
+        /* LEVEL 2: SELECTED VILLAGE SHOPS & MULTI-FREEZER VIEW               */
         /* ------------------------------------------------------------------ */
         <div className="space-y-6">
           {/* Back Navigation & Village Banner */}
@@ -854,13 +927,13 @@ export const FreezerManagement = () => {
               <div className="text-right">
                 <span className="text-[10px] text-cyan-300 font-extrabold uppercase tracking-wider block">Deployed in Village</span>
                 <span className="text-lg font-black font-mono text-white">
-                  {activeVillageGroup?.freezerShops?.length || 0} <span className="text-xs font-normal text-cyan-200">Freezers</span>
+                  {activeVillageGroup?.allFreezers?.length || 0} <span className="text-xs font-normal text-cyan-200">Freezers</span>
                 </span>
               </div>
             </div>
           </div>
 
-          {/* SHOPS WITH FREEZER DEPLOYED */}
+          {/* SHOPS WITH FREEZER DEPLOYED (MULTI-FREEZER CARDS) */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-black text-sm text-slate-900 uppercase tracking-wide flex items-center gap-2">
@@ -884,66 +957,104 @@ export const FreezerManagement = () => {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {activeVillageFreezerShops.map(shop => (
-                  <div key={shop.id} className="glass-panel p-4 rounded-3xl bg-white border border-slate-200 space-y-3.5 shadow-sm hover:border-cyan-300 transition relative overflow-hidden group">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-2xl bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center font-bold text-xl flex-shrink-0">
-                          🧊
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <h4 className="font-black text-sm text-slate-900">{shop.name}</h4>
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded font-black bg-slate-100 text-slate-700 border border-slate-200">
-                              {shop.code}
-                            </span>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {activeVillageFreezerShops.map(shop => {
+                  const sFreezers = shopFreezersMap.get(String(shop.id)) || [];
+                  const freezerList = sFreezers.length > 0 ? sFreezers : [{
+                    id: `legacy-${shop.id}`,
+                    shop_id: shop.id,
+                    model_name: shop.freezer_model || 'Deep Freezer',
+                    serial_no: shop.freezer_serial || `FRZ-${shop.code}`,
+                    allocation_date: shop.freezer_date || 'N/A',
+                    status: shop.freezer_status || 'Active'
+                  }];
+
+                  return (
+                    <div key={shop.id} className="glass-panel p-5 rounded-3xl bg-white border border-slate-200 space-y-4 shadow-sm hover:border-cyan-300 transition relative">
+                      
+                      {/* Shop Header */}
+                      <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-2xl bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center font-bold text-xl flex-shrink-0">
+                            🏪
                           </div>
-                          <p className="text-[11px] text-slate-500 font-bold mt-0.5">
-                            {shop.owner_name} {shop.phone ? `• ${shop.phone}` : ''}
-                          </p>
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h4 className="font-black text-base text-slate-900">{shop.name}</h4>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded font-black bg-slate-100 text-slate-700 border border-slate-200">
+                                {shop.code}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 font-bold mt-0.5">
+                              {shop.owner_name} {shop.phone ? `• 📞 ${shop.phone}` : ''}
+                            </p>
+                          </div>
                         </div>
+
+                        <span className="px-3 py-1 rounded-full text-xs font-black bg-cyan-50 text-cyan-800 border border-cyan-200 flex-shrink-0">
+                          🧊 {freezerList.length} {freezerList.length === 1 ? 'Freezer' : 'Freezers'}
+                        </span>
                       </div>
 
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex-shrink-0">
-                        {shop.freezer_status || 'Active'}
-                      </span>
-                    </div>
+                      {/* List of Freezers for this Shop */}
+                      <div className="space-y-2.5">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                          Assigned Freezer Assets ({freezerList.length})
+                        </span>
 
-                    <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200 text-xs space-y-1.5 font-mono">
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 font-sans font-bold text-[11px]">Model:</span>
-                        <span className="font-black text-slate-900 text-right">{shop.freezer_model || 'Standard Deep Freezer'}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 font-sans font-bold text-[11px]">Serial No:</span>
-                        <span className="font-black text-cyan-700">{shop.freezer_serial || 'FRZ-GEN-904'}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-500 font-sans font-bold text-[11px]">Allocation Date:</span>
-                        <span className="font-bold text-slate-700">{shop.freezer_date || 'N/A'}</span>
-                      </div>
-                    </div>
+                        {freezerList.map((frz, idx) => (
+                          <div key={frz.id || idx} className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-black text-slate-900">{frz.model_name}</span>
+                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black border ${
+                                    (frz.status || 'Active') === 'Active' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-amber-100 text-amber-800 border-amber-300'
+                                  }`}>
+                                    {frz.status || 'Active'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3 text-[11px] text-slate-500 font-mono mt-1">
+                                  <span>Tag: <strong className="text-cyan-700">{frz.serial_no}</strong></span>
+                                  <span>Allocated: <strong>{frz.allocation_date || 'N/A'}</strong></span>
+                                </div>
+                              </div>
 
-                    <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
-                      <button
-                        onClick={() => handleOpenAssignModal(shop.id)}
-                        className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-[11px] flex items-center justify-center gap-1.5 transition cursor-pointer"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-cyan-600" />
-                        Change / Edit
-                      </button>
-                      <button
-                        onClick={() => setDeleteModal({ isOpen: true, shop })}
-                        className="py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-extrabold text-[11px] flex items-center justify-center gap-1 border border-rose-200 transition cursor-pointer"
-                        title="Delete Freezer Allocation"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Delete
-                      </button>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  onClick={() => handleOpenEditModal(frz, shop)}
+                                  className="p-1.5 bg-white hover:bg-cyan-50 text-slate-600 hover:text-cyan-700 rounded-lg border border-slate-200 shadow-2xs transition"
+                                  title="Edit this freezer specification"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => setDeleteModal({ isOpen: true, freezer: frz, shop })}
+                                  className="p-1.5 bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-600 rounded-lg border border-slate-200 shadow-2xs transition"
+                                  title="Delete this freezer allocation"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Add Another Freezer Action Button */}
+                      <div className="pt-2 border-t border-slate-100">
+                        <button
+                          onClick={() => handleOpenAssignModal(shop.id)}
+                          className="w-full py-2.5 rounded-xl bg-cyan-50 hover:bg-cyan-100 text-cyan-700 font-extrabold text-xs flex items-center justify-center gap-2 border border-cyan-200/80 transition cursor-pointer"
+                        >
+                          <PlusCircle className="w-4 h-4 text-cyan-600" />
+                          <span>+ ADD ANOTHER FREEZER TO THIS SHOP</span>
+                        </button>
+                      </div>
+
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -980,7 +1091,7 @@ export const FreezerManagement = () => {
       )}
 
       {/* ==================================================================== */}
-      {/* MODAL 1: ASSIGN FREEZER TO SHOP */}
+      {/* MODAL 1: ASSIGN / EDIT FREEZER TO SHOP */}
       {/* ==================================================================== */}
       {showAssignModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
@@ -989,138 +1100,144 @@ export const FreezerManagement = () => {
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold border ${isEditMode ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-cyan-100 text-cyan-700 border-cyan-200'}`}>
-                  {isEditMode ? <Edit3 className="w-5 h-5" /> : <Snowflake className="w-5 h-5" />}
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold border ${editingFreezer ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-cyan-100 text-cyan-700 border-cyan-200'}`}>
+                  {editingFreezer ? <Edit3 className="w-5 h-5" /> : <Snowflake className="w-5 h-5" />}
                 </div>
                 <div>
                   <h4 className="font-black text-base text-slate-900">
-                    {isEditMode ? 'Edit Freezer Details' : 'Assign Freezer to Shop'}
+                    {editingFreezer ? 'Edit Freezer Asset' : (currentModalShop?.has_freezer ? 'Add Additional Freezer' : 'Assign Freezer to Shop')}
                   </h4>
                   <span className="text-[10px] text-slate-500 font-bold">
-                    {isEditMode ? `Update or delete freezer allocated to ${currentModalShop?.name || 'Shop'}` : 'AVS Asset Deployment Workflow'}
+                    {editingFreezer 
+                      ? `Update spec for ${currentModalShop?.name || 'Shop'} • Tag: ${editingFreezer.serial_no}`
+                      : 'Deploy multiple freezer assets per shop'}
                   </span>
                 </div>
               </div>
-              <button onClick={() => setShowAssignModal(false)} className="p-1 text-slate-400 hover:text-slate-700">
+              <button onClick={() => { setShowAssignModal(false); setEditingFreezer(null); }} className="p-1 text-slate-400 hover:text-slate-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* 1. VILLAGE SELECTOR (TYPE-TO-SEARCH SUGGESTION COMBOBOX) */}
-            <div className="space-y-1.5 bg-gradient-to-r from-cyan-50/70 to-blue-50/70 p-3 rounded-2xl border border-cyan-100 relative">
-              <div className="flex items-center justify-between">
-                <label className="text-[11px] font-black text-cyan-950 uppercase flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-cyan-600" />
-                  Select Village (கிராமம்)
-                </label>
-                {modalVillageFilter !== 'ALL' && (
-                  <button
-                    type="button"
-                    onClick={() => handleSelectVillage('ALL', '')}
-                    className="text-[10px] font-bold text-cyan-700 hover:text-cyan-900 hover:underline flex items-center gap-1"
-                  >
-                    <X className="w-3 h-3" /> Show All Villages
-                  </button>
-                )}
-              </div>
-
-              {/* Village Combobox Input */}
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="🔍 Type or select village name (e.g. இறையூர்)..."
-                  value={villageSearchText}
-                  onChange={(e) => {
-                    setVillageSearchText(e.target.value);
-                    setIsVillageDropdownOpen(true);
-                  }}
-                  onFocus={() => setIsVillageDropdownOpen(true)}
-                  className="w-full bg-white border border-cyan-200 rounded-xl pl-3 pr-16 py-2 text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-cyan-500 shadow-2xs transition"
-                />
-                
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-slate-400">
-                  {villageSearchText && (
+            {/* 1. VILLAGE SELECTOR */}
+            {!editingFreezer && (
+              <div className="space-y-1.5 bg-gradient-to-r from-cyan-50/70 to-blue-50/70 p-3 rounded-2xl border border-cyan-100 relative">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-black text-cyan-950 uppercase flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-cyan-600" />
+                    Select Village (கிராமம்)
+                  </label>
+                  {modalVillageFilter !== 'ALL' && (
                     <button
                       type="button"
                       onClick={() => handleSelectVillage('ALL', '')}
-                      className="p-1 hover:text-slate-700 rounded-md"
-                      title="Clear village filter"
+                      className="text-[10px] font-bold text-cyan-700 hover:text-cyan-900 hover:underline flex items-center gap-1"
                     >
-                      <X className="w-3 h-3" />
+                      <X className="w-3 h-3" /> Show All Villages
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setIsVillageDropdownOpen(!isVillageDropdownOpen)}
-                    className="p-1 hover:text-slate-700 rounded-md"
-                  >
-                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isVillageDropdownOpen ? 'rotate-180' : ''}`} />
-                  </button>
                 </div>
 
-                {/* Village Suggestions Dropdown List */}
-                {isVillageDropdownOpen && (
-                  <div className="absolute z-50 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-52 overflow-y-auto divide-y divide-slate-100">
+                {/* Village Combobox Input */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="🔍 Type or select village name (e.g. இறையூர்)..."
+                    value={villageSearchText}
+                    onChange={(e) => {
+                      setVillageSearchText(e.target.value);
+                      setIsVillageDropdownOpen(true);
+                    }}
+                    onFocus={() => setIsVillageDropdownOpen(true)}
+                    className="w-full bg-white border border-cyan-200 rounded-xl pl-3 pr-16 py-2 text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-cyan-500 shadow-2xs transition"
+                  />
+                  
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-slate-400">
+                    {villageSearchText && (
+                      <button
+                        type="button"
+                        onClick={() => handleSelectVillage('ALL', '')}
+                        className="p-1 hover:text-slate-700 rounded-md"
+                        title="Clear village filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleSelectVillage('ALL', '');
-                      }}
-                      className={`w-full text-left px-3.5 py-2 text-xs font-bold transition flex items-center justify-between hover:bg-cyan-50 ${modalVillageFilter === 'ALL' ? 'bg-cyan-100/60 text-cyan-900' : 'text-slate-700'}`}
+                      onClick={() => setIsVillageDropdownOpen(!isVillageDropdownOpen)}
+                      className="p-1 hover:text-slate-700 rounded-md"
                     >
-                      <span className="flex items-center gap-1.5">
-                        <span>🌐</span>
-                        <span>All Villages (அனைத்து கிராமங்களும்)</span>
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-mono font-black">{shops.length} கடைகள்</span>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isVillageDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
-
-                    {filteredVillageOptions.length === 0 ? (
-                      <div className="p-3 text-center text-xs text-slate-400 font-medium">
-                        No matching village found for "{villageSearchText}"
-                      </div>
-                    ) : (
-                      filteredVillageOptions.map(v => {
-                        const vShopsCount = shops.filter(s => String(s.village_id) === String(v.id) || (s.village_name && s.village_name.toLowerCase() === v.name.toLowerCase())).length;
-                        const isSelected = String(modalVillageFilter) === String(v.id);
-                        return (
-                          <button
-                            key={v.id}
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              handleSelectVillage(String(v.id), v.name);
-                            }}
-                            className={`w-full text-left px-3.5 py-2 text-xs font-bold transition flex items-center justify-between hover:bg-cyan-50 ${isSelected ? 'bg-cyan-100/60 text-cyan-900' : 'text-slate-700'}`}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-cyan-600">📍</span>
-                              <span>{v.name}</span>
-                              {v.code && <span className="text-[10px] font-mono text-slate-400 font-semibold">({v.code})</span>}
-                            </div>
-                            <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-mono font-black text-slate-600">
-                              {vShopsCount} கடைகள்
-                            </span>
-                          </button>
-                        );
-                      })
-                    )}
                   </div>
-                )}
-              </div>
-            </div>
 
-            {/* 2. TARGET SHOP SELECTOR (TYPE-TO-SEARCH SUGGESTION COMBOBOX) */}
+                  {/* Village Suggestions Dropdown List */}
+                  {isVillageDropdownOpen && (
+                    <div className="absolute z-50 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-52 overflow-y-auto divide-y divide-slate-100">
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSelectVillage('ALL', '');
+                        }}
+                        className={`w-full text-left px-3.5 py-2 text-xs font-bold transition flex items-center justify-between hover:bg-cyan-50 ${modalVillageFilter === 'ALL' ? 'bg-cyan-100/60 text-cyan-900' : 'text-slate-700'}`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span>🌐</span>
+                          <span>All Villages (அனைத்து கிராமங்களும்)</span>
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono font-black">{shops.length} கடைகள்</span>
+                      </button>
+
+                      {filteredVillageOptions.length === 0 ? (
+                        <div className="p-3 text-center text-xs text-slate-400 font-medium">
+                          No matching village found for "{villageSearchText}"
+                        </div>
+                      ) : (
+                        filteredVillageOptions.map(v => {
+                          const vShopsCount = shops.filter(s => String(s.village_id) === String(v.id) || (s.village_name && s.village_name.toLowerCase() === v.name.toLowerCase())).length;
+                          const isSelected = String(modalVillageFilter) === String(v.id);
+                          return (
+                            <button
+                              key={v.id}
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleSelectVillage(String(v.id), v.name);
+                              }}
+                              className={`w-full text-left px-3.5 py-2 text-xs font-bold transition flex items-center justify-between hover:bg-cyan-50 ${isSelected ? 'bg-cyan-100/60 text-cyan-900' : 'text-slate-700'}`}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-cyan-600">📍</span>
+                                <span>{v.name}</span>
+                                {v.code && <span className="text-[10px] font-mono text-slate-400 font-semibold">({v.code})</span>}
+                              </div>
+                              <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-mono font-black text-slate-600">
+                                {vShopsCount} கடைகள்
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 2. TARGET SHOP SELECTOR */}
             <div className="space-y-1.5 relative">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-black text-slate-700 uppercase flex items-center gap-1.5">
                   <Store className="w-3.5 h-3.5 text-slate-600" />
-                  Select Target Shop (கடை) *
+                  Target Shop (கடை) *
                 </label>
-                <span className="text-[10px] font-bold text-slate-500">
-                  {modalFilteredShops.length} Shop{modalFilteredShops.length === 1 ? '' : 's'} Available
-                </span>
+                {!editingFreezer && (
+                  <span className="text-[10px] font-bold text-slate-500">
+                    {modalFilteredShops.length} Shop{modalFilteredShops.length === 1 ? '' : 's'} Available
+                  </span>
+                )}
               </div>
 
               {/* Shop Combobox Input */}
@@ -1129,26 +1246,29 @@ export const FreezerManagement = () => {
                   type="text"
                   placeholder="🔍 Type shop name / code to search & select..."
                   value={shopSearchText}
+                  disabled={Boolean(editingFreezer)}
                   onChange={(e) => {
                     setShopSearchText(e.target.value);
                     setIsShopDropdownOpen(true);
                   }}
-                  onFocus={() => setIsShopDropdownOpen(true)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3 pr-10 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition"
+                  onFocus={() => { if (!editingFreezer) setIsShopDropdownOpen(true); }}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3 pr-10 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition disabled:opacity-80"
                 />
 
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-slate-400">
-                  <button
-                    type="button"
-                    onClick={() => setIsShopDropdownOpen(!isShopDropdownOpen)}
-                    className="p-1 hover:text-slate-700 rounded-md"
-                  >
-                    <ChevronDown className={`w-4 h-4 transition-transform ${isShopDropdownOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                </div>
+                {!editingFreezer && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-slate-400">
+                    <button
+                      type="button"
+                      onClick={() => setIsShopDropdownOpen(!isShopDropdownOpen)}
+                      className="p-1 hover:text-slate-700 rounded-md"
+                    >
+                      <ChevronDown className={`w-4 h-4 transition-transform ${isShopDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                  </div>
+                )}
 
                 {/* Shop Suggestions Dropdown List */}
-                {isShopDropdownOpen && (
+                {isShopDropdownOpen && !editingFreezer && (
                   <div className="absolute z-50 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100">
                     {modalFilteredShops.length === 0 ? (
                       <div className="p-3 text-center text-xs text-slate-400 font-medium">
@@ -1158,6 +1278,7 @@ export const FreezerManagement = () => {
                       modalFilteredShops.map(s => {
                         const isSelected = String(selectedShopId) === String(s.id);
                         const vName = getShopVillageName(s);
+                        const sCount = shopFreezersMap.get(String(s.id))?.length || (s.has_freezer ? 1 : 0);
                         return (
                           <button
                             key={s.id}
@@ -1178,13 +1299,13 @@ export const FreezerManagement = () => {
                               </p>
                             </div>
 
-                            {s.has_freezer ? (
+                            {sCount > 0 ? (
                               <span className="text-[10px] bg-cyan-100 text-cyan-800 px-2 py-0.5 rounded-full font-bold">
-                                🧊 {s.freezer_model || 'Assigned'}
+                                🧊 {sCount} {sCount === 1 ? 'Freezer' : 'Freezers'}
                               </span>
                             ) : (
                               <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold">
-                                ✨ Available
+                                ✨ 0 Freezers
                               </span>
                             )}
                           </button>
@@ -1302,21 +1423,18 @@ export const FreezerManagement = () => {
             </div>
 
             {/* Action Buttons */}
-            {isEditMode ? (
+            {editingFreezer ? (
               <div className="flex items-center gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => {
-                    if (currentModalShop) {
-                      setShowAssignModal(false);
-                      setDeleteModal({ isOpen: true, shop: currentModalShop });
-                    }
+                    setDeleteModal({ isOpen: true, freezer: editingFreezer, shop: currentModalShop });
                   }}
                   className="py-3 px-4 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs flex items-center justify-center gap-1.5 border border-rose-200 shadow-sm transition"
-                  title="Delete freezer allocation from this shop"
+                  title="Delete this freezer asset"
                 >
                   <Trash2 className="w-4 h-4" />
-                  <span>Delete Freezer</span>
+                  <span>Delete Asset</span>
                 </button>
                 <button
                   type="button"
@@ -1325,7 +1443,7 @@ export const FreezerManagement = () => {
                   className="flex-1 py-3 text-xs sm:text-sm font-black bg-cyan-600 hover:bg-cyan-700 text-white rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20 transition"
                 >
                   <Save className="w-5 h-5" />
-                  {saving ? 'UPDATING ALLOCATION...' : 'UPDATE ALLOCATION'}
+                  {saving ? 'UPDATING ASSET...' : 'UPDATE FREEZER ASSET'}
                 </button>
               </div>
             ) : (
@@ -1539,7 +1657,7 @@ export const FreezerManagement = () => {
 
             <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
               {freezerModels.map(m => {
-                const deployedCount = shops.filter(s => s.has_freezer && (s.freezer_model || '').includes(m.model_name)).length;
+                const deployedCount = allFreezersList.filter(f => (f.model_name || '').includes(m.model_name)).length;
                 return (
                   <div key={m.id} className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 text-xs">
                     <div>
@@ -1550,7 +1668,7 @@ export const FreezerManagement = () => {
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
-                        Type: {m.freezer_type || 'Deep Freezer'} • Capacity: {m.capacity || 'Standard'} • Deployed: {deployedCount} shops
+                        Type: {m.freezer_type || 'Deep Freezer'} • Capacity: {m.capacity || 'Standard'} • Deployed: {deployedCount} freezers
                       </p>
                     </div>
 
@@ -1579,7 +1697,7 @@ export const FreezerManagement = () => {
       {/* ==================================================================== */}
       {/* MODAL 4: DELETE FREEZER ALLOCATION CONFIRMATION */}
       {/* ==================================================================== */}
-      {deleteModal.isOpen && deleteModal.shop && (
+      {deleteModal.isOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
             <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
@@ -1589,18 +1707,18 @@ export const FreezerManagement = () => {
             <div className="text-center space-y-1">
               <h4 className="font-black text-base text-slate-900">Delete Freezer Allocation?</h4>
               <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                Are you sure you want to delete and remove the freezer allocation from <strong className="text-slate-900">{deleteModal.shop.name}</strong> ({deleteModal.shop.code})?
+                Are you sure you want to remove this freezer asset from <strong className="text-slate-900">{deleteModal.shop?.name || deleteModal.freezer?.shop_name || 'Shop'}</strong> ({deleteModal.shop?.code || deleteModal.freezer?.shop_code || 'CODE'})?
               </p>
             </div>
 
             <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs font-mono space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-500 font-sans">Model:</span>
-                <span className="font-black text-slate-900">{deleteModal.shop.freezer_model || 'Assigned Cold Storage Freezer'}</span>
+                <span className="font-black text-slate-900">{deleteModal.freezer?.model_name || deleteModal.shop?.freezer_model || 'Assigned Cold Storage Freezer'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500 font-sans">Serial No:</span>
-                <span className="font-black text-cyan-700">{deleteModal.shop.freezer_serial || `FRZ-${deleteModal.shop.code || 'ASSET'}`}</span>
+                <span className="font-black text-cyan-700">{deleteModal.freezer?.serial_no || deleteModal.shop?.freezer_serial || 'FRZ-ASSET'}</span>
               </div>
             </div>
 
@@ -1613,7 +1731,7 @@ export const FreezerManagement = () => {
                 Yes, Delete Freezer
               </button>
               <button
-                onClick={() => setDeleteModal({ isOpen: false, shop: null })}
+                onClick={() => setDeleteModal({ isOpen: false, freezer: null, shop: null })}
                 className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
               >
                 Cancel
@@ -1626,3 +1744,4 @@ export const FreezerManagement = () => {
     </div>
   );
 };
+

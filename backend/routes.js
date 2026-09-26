@@ -701,6 +701,44 @@ router.post('/shops/:id/freezer/delete', async (req, res) => {
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
+// ====== FREEZERS ASSETS API ======
+router.get('/freezers', async (req, res) => {
+  try {
+    const freezers = await db.getFreezers(getCid(req), req.query.shop_id);
+    res.json(freezers);
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.get('/shops/:id/freezers', async (req, res) => {
+  try {
+    const freezers = await db.getFreezers(getCid(req), req.params.id);
+    res.json(freezers);
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.post('/freezers', async (req, res) => {
+  try {
+    const shopId = req.body.shop_id || req.body.shopId;
+    if (!shopId) return res.status(400).json({ success: false, message: 'shop_id is required' });
+    const result = await db.assignFreezer(getCid(req), shopId, req.body);
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+router.put('/freezers/:id', async (req, res) => {
+  try {
+    const result = await db.updateFreezer(getCid(req), req.params.id, req.body);
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+router.delete('/freezers/:id', async (req, res) => {
+  try {
+    const result = await db.unassignFreezer(getCid(req), req.params.id, req.query.shop_id);
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
 // ====== FREEZER MODELS MASTER ======
 router.get('/freezer-models', async (req, res) => {
   try {

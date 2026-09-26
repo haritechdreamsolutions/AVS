@@ -2496,21 +2496,142 @@ export async function deleteFreezerModel(cid, id) {
   return { success: true, message: 'Freezer model removed successfully.' };
 }
 
-export async function assignFreezer(cid,shopId,d) {
-  const fModel = d.freezer_model || d.model || null;
-  const fSerial = d.freezer_serial || d.serial || null;
-  const fDate = d.freezer_date || d.date || new Date().toISOString().split('T')[0];
-  const fStatus = d.freezer_status || d.status || 'Active';
-
-  const row = await queryOne('UPDATE shops SET has_freezer=TRUE,freezer_model=$1,freezer_serial=$2,freezer_date=$3,freezer_status=$4,updated_at=NOW() WHERE id=$5 AND (company_id=$6 OR $6=1 OR company_id IS NULL) RETURNING *',[fModel, fSerial, fDate, fStatus, shopId, cid]);
-  if(!row) throw new Error('Shop not found.');
-  return {success:true,shop:row};
+export async function getFreezers(cid, shopId = null) {
+  let sql = `
+    SELECT 
+      sf.id,
+      sf.company_id,
+      sf.shop_id,
+      sf.model_name,
+      sf.serial_no,
+      sf.allocation_date,
+      sf.status,
+      sf.notes,
+      sf.created_at,
+      sf.updated_at,
+      sh.name as shop_name,
+      sh.code as shop_code,
+      sh.owner_name,
+      sh.phone,
+      v.id as village_id,
+      v.name as village_name,
+      r.id as route_id,
+      r.name as route_name
+    FROM shop_freezers sf
+    JOIN shops sh ON sh.id = sf.shop_id
+    LEFT JOIN villages v ON v.id = sh.village_id
+    LEFT JOIN routes r ON r.id = sh.route_id
+    WHERE (sf.company_id = $1 OR $1 = 1 OR sf.company_id IS NULL)
+  `;
+  const params = [cid];
+  if (shopId) {
+    sql += ` AND sf.shop_id = $2`;
+    params.push(Number(shopId));
+  }
+  sql += ` ORDER BY sf.id DESC`;
+  return await queryAll(sql, params);
 }
 
-export async function unassignFreezer(cid, shopId) {
-  const row = await queryOne('UPDATE shops SET has_freezer=FALSE,freezer_model=NULL,freezer_serial=NULL,freezer_date=NULL,freezer_status=NULL,updated_at=NOW() WHERE id=$1 AND (company_id=$2 OR $2=1 OR company_id IS NULL) RETURNING *',[shopId, cid]);
-  if(!row) throw new Error('Shop not found.');
-  return {success:true, message: 'Freezer removed from shop successfully.', shop:row};
+export async function assignFreezer(cid, shopId, d) {
+  const fModel = d.freezer_model || d.model || d.model_name || 'Deep Freezer';
+  const fSerial = String(d.freezer_serial || d.serial || d.serial_no || `FRZ-${Date.now().toString().slice(-6)}`).trim();
+  const fDate = d.freezer_date || d.date || d.allocation_date || new Date().toISOString().split('T')[0];
+  const fStatus = d.freezer_status || d.status || 'Active';
+  const fNotes = d.notes || null;
+
+  // Insert into shop_freezers
+  const freezerRow = await queryOne(`
+    INSERT INTO shop_freezers (company_id, shop_id, model_name, serial_no, allocation_date, status, notes)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING *
+  `, [cid, shopId, fModel, fSerial, fDate, fStatus, fNotes]);
+
+  // Update shops table for backward compatibility
+  const shopRow = await queryOne(`
+    UPDATE shops 
+    SET has_freezer = TRUE, freezer_model = $1, freezer_serial = $2, freezer_date = $3, freezer_status = $4, updated_at = NOW() 
+    WHERE id = $5 AND (company_id = $6 OR $6 = 1 OR company_id IS NULL) 
+    RETURNING *
+  `, [fModel, fSerial, fDate, fStatus, shopId, cid]);
+
+  if (!shopRow) throw new Error('Shop not found.');
+  return { success: true, freezer: freezerRow, shop: shopRow };
+}
+
+export async function updateFreezer(cid, freezerId, d) {
+  const fModel = d.freezer_model || d.model || d.model_name;
+  const fSerial = d.freezer_serial || d.serial || d.serial_no;
+  const fDate = d.freezer_date || d.date || d.allocation_date;
+  const fStatus = d.freezer_status || d.status;
+  const fNotes = d.notes;
+
+  const freezerRow = await queryOne(`
+    UPDATE shop_freezers
+    SET model_name = COALESCE($1, model_name),
+        serial_no = COALESCE($2, serial_no),
+        allocation_date = COALESCE($3, allocation_date),
+        status = COALESCE($4, status),
+        notes = COALESCE($5, notes),
+        updated_at = NOW()
+    WHERE id = $6 AND (company_id = $7 OR $7 = 1 OR company_id IS NULL)
+    RETURNING *
+  `, [fModel, fSerial, fDate, fStatus, fNotes, freezerId, cid]);
+
+  if (!freezerRow) throw new Error('Freezer asset not found.');
+
+  // Update shop record with latest freezer info if applicable
+  if (freezerRow.shop_id) {
+    await query(`
+      UPDATE shops 
+      SET freezer_model = $1, freezer_serial = $2, freezer_date = $3, freezer_status = $4, updated_at = NOW()
+      WHERE id = $5
+    `, [freezerRow.model_name, freezerRow.serial_no, freezerRow.allocation_date, freezerRow.status, freezerRow.shop_id]);
+  }
+
+  return { success: true, freezer: freezerRow };
+}
+
+export async function unassignFreezer(cid, targetId, shopId = null) {
+  let deletedFreezer = await queryOne(`
+    DELETE FROM shop_freezers 
+    WHERE id = $1 AND (company_id = $2 OR $2 = 1 OR company_id IS NULL)
+    RETURNING *
+  `, [targetId, cid]);
+
+  let targetShopId = deletedFreezer?.shop_id || shopId || targetId;
+
+  // Fallback: If not deleted by id, try by shop_id
+  if (!deletedFreezer && targetShopId) {
+    deletedFreezer = await queryOne(`
+      DELETE FROM shop_freezers
+      WHERE shop_id = $1 AND (company_id = $2 OR $2 = 1 OR company_id IS NULL)
+      RETURNING *
+    `, [targetShopId, cid]);
+  }
+
+  // Update shops table flag & latest info
+  if (targetShopId) {
+    const remaining = await queryOne(`SELECT COUNT(*) as count FROM shop_freezers WHERE shop_id = $1`, [targetShopId]);
+    const remCount = Number(remaining?.count || 0);
+    if (remCount === 0) {
+      await query(`
+        UPDATE shops 
+        SET has_freezer = FALSE, freezer_model = NULL, freezer_serial = NULL, freezer_date = NULL, freezer_status = NULL, updated_at = NOW() 
+        WHERE id = $1
+      `, [targetShopId]);
+    } else {
+      const latest = await queryOne(`SELECT * FROM shop_freezers WHERE shop_id = $1 ORDER BY id DESC LIMIT 1`, [targetShopId]);
+      if (latest) {
+        await query(`
+          UPDATE shops 
+          SET has_freezer = TRUE, freezer_model = $1, freezer_serial = $2, freezer_date = $3, freezer_status = $4, updated_at = NOW() 
+          WHERE id = $5
+        `, [latest.model_name, latest.serial_no, latest.allocation_date, latest.status, targetShopId]);
+      }
+    }
+  }
+
+  return { success: true, message: 'Freezer removed successfully.', freezer: deletedFreezer };
 }
 
 export async function collectShopDue(cid,shopId,d) {
