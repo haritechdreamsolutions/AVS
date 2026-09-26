@@ -38,7 +38,24 @@ export const AppProvider = ({ children }) => {
   const [employees, setEmployees] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [routes, setRoutes] = useState([]);
-  const [freezers, setFreezers] = useState([]);
+  const [freezers, setFreezers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('avs_freezers_cache');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Sync freezers to localStorage
+  useEffect(() => {
+    if (Array.isArray(freezers) && freezers.length > 0) {
+      try {
+        localStorage.setItem('avs_freezers_cache', JSON.stringify(freezers));
+      } catch (e) {}
+    }
+  }, [freezers]);
+
   const [freezerModels, setFreezerModels] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -115,7 +132,30 @@ export const AppProvider = ({ children }) => {
       setEmployees(Array.isArray(empRes) ? empRes : []);
       setDrivers(Array.isArray(driversRes) ? driversRes : []);
       setFreezerModels(Array.isArray(freezerModelsRes) ? freezerModelsRes : []);
-      setFreezers(Array.isArray(freezersRes) ? freezersRes : []);
+      
+      // Merge remote freezers with local freezers safely
+      setFreezers(prev => {
+        const remote = Array.isArray(freezersRes) ? freezersRes : [];
+        if (remote.length === 0) {
+          return prev;
+        }
+        const merged = [...remote];
+        const seenSerials = new Set(remote.map(r => String(r.serial_no || r.freezer_serial || '').trim().toLowerCase()).filter(Boolean));
+        const seenIds = new Set(remote.map(r => String(r.id)));
+
+        (prev || []).forEach(localItem => {
+          const lSerial = String(localItem.serial_no || localItem.freezer_serial || '').trim().toLowerCase();
+          const lId = String(localItem.id);
+          if ((!lSerial || !seenSerials.has(lSerial)) && !seenIds.has(lId)) {
+            merged.push(localItem);
+            if (lSerial) seenSerials.add(lSerial);
+          }
+        });
+        try {
+          localStorage.setItem('avs_freezers_cache', JSON.stringify(merged));
+        } catch (e) {}
+        return merged;
+      });
     } catch (err) {
       console.error("Failed to load initial data:", err);
     } finally {
