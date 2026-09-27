@@ -1018,7 +1018,7 @@ export async function receiveStock(cid, data, actorUserId) {
       if (prod.is_active === false || prod.is_active === 0) {
         throw new Error('Cannot receive stock for an inactive product.');
       }
-      const itemRate = Number(item.rate || prod.purchase_price || 0);
+      const itemRate = (item.rate !== undefined && item.rate !== null && !isNaN(Number(item.rate))) ? Number(item.rate) : Number(prod.purchase_price || 0);
       const itemTotal = itemRate * qty;
       const uRes = await client.query('UPDATE products SET warehouse_stock_units=warehouse_stock_units+$1, updated_at=NOW() WHERE id=$2 RETURNING *', [qty, pid]);
       const movNo = 'MOV-IN-' + Date.now() + '-' + Math.floor(Math.random()*1000);

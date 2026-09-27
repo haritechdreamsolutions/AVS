@@ -34,16 +34,21 @@ export const StockReceiveModal = ({ onClose }) => {
     return activeSuppliers.find(s => String(s.id) === String(selectedSupplierId));
   }, [activeSuppliers, selectedSupplierId]);
 
-  // Get effective buy rate for a product based on selected company
+  // Get effective buy rate for a product strictly based on owner configured company rate
   const getProductBuyRate = (prod) => {
     if (customRates[prod.id] !== undefined && customRates[prod.id] !== '') {
       return Number(customRates[prod.id]);
     }
-    const companyRates = currentSupplier?.product_rates || {};
-    if (companyRates[prod.id] !== undefined && companyRates[prod.id] !== '' && !isNaN(Number(companyRates[prod.id]))) {
-      return Number(companyRates[prod.id]);
+    if (currentSupplier) {
+      const companyRates = currentSupplier.product_rates || {};
+      const rateVal = companyRates[prod.id];
+      if (rateVal !== undefined && rateVal !== null && rateVal !== '' && !isNaN(Number(rateVal))) {
+        return Number(rateVal);
+      }
+      // Strictly 0 if owner has not assigned a buy rate for this company & product
+      return 0;
     }
-    return Number(prod.base_price || prod.purchase_price || 0);
+    return 0;
   };
 
   const handleQtyChange = (id, val) => {
@@ -211,8 +216,12 @@ export const StockReceiveModal = ({ onClose }) => {
                         </span>
                         <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono mt-0.5">
                           <span>Stock: {prod.warehouse_stock_units || 0} {prod.selling_unit}</span>
-                          <span className="text-blue-700 font-bold bg-blue-100/70 px-1.5 py-0.2 rounded">
-                            Buy Rate: ₹{rate.toFixed(2)}
+                          <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
+                            rate > 0 
+                              ? 'text-blue-800 bg-blue-100 border border-blue-200' 
+                              : 'text-slate-400 bg-slate-100 border border-slate-200'
+                          }`}>
+                            Buy Rate: ₹{rate.toFixed(2)} {rate === 0 && '(Not Set)'}
                           </span>
                         </div>
                       </div>
