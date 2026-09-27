@@ -581,9 +581,9 @@ export const OwnerSuppliersView = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {reportData.product_totals.map(pt => (
+                {reportData.product_totals.map((pt, idx) => (
                   <div 
-                    key={pt.product_id}
+                    key={pt.product_id || idx}
                     className="p-4 rounded-2xl bg-sky-50/60 hover:bg-sky-100/70 transition-all border border-sky-200 space-y-2 shadow-sm"
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -592,13 +592,13 @@ export const OwnerSuppliersView = () => {
                           {pt.product_name}
                         </h4>
                         <p className="text-[11px] text-sky-800/80 font-mono">
-                          {pt.batch_count || 0} batches received
+                          {pt.batch_count || pt.batches_count || 0} batches received
                         </p>
                       </div>
 
                       <div className="text-right shrink-0">
                         <span className="text-base font-black text-blue-700 block">
-                          {Number(pt.total_received_quantity || 0).toLocaleString('en-IN')} {pt.selling_unit || 'Tray'}
+                          {Number(pt.total_received_quantity || pt.total_qty || pt.total_units || 0).toLocaleString('en-IN')} {pt.selling_unit || pt.unit || 'Tray'}
                         </span>
                       </div>
                     </div>
@@ -606,7 +606,7 @@ export const OwnerSuppliersView = () => {
                     <div className="pt-2 border-t border-sky-200/80 flex items-center justify-between text-xs">
                       <span className="text-[11px] font-bold text-sky-900">Total Purchase Value:</span>
                       <span className="font-black text-emerald-700 font-mono">
-                        ₹{Number(pt.total_received_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ₹{Number(pt.total_received_amount || pt.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
                   </div>

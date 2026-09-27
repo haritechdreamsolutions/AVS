@@ -6859,37 +6859,44 @@ export async function deleteSupplier(cid, id, actorUserId) {
 }
 
 export async function getSupplierInwardStockReport(cid, filters = {}) {
-  let where = ["im.company_id = $1", "im.movement_type = 'INWARD'"];
-  const params = [cid];
+  const companyId = cid || 1;
+  let where = ["(im.company_id = $1 OR im.company_id = 1 OR im.company_id IS NULL)", "im.movement_type = 'INWARD'"];
+  const params = [companyId];
 
   if (filters.supplier_id && filters.supplier_id !== 'ALL') {
     params.push(Number(filters.supplier_id));
-    where.push(`im.supplier_id = $${params.length}`);
+    where.push(`(im.supplier_id = $${params.length} OR im.supplier_name = (SELECT name FROM suppliers WHERE id = $${params.length} LIMIT 1))`);
   }
 
   if (filters.supplier_name && filters.supplier_name !== 'ALL') {
     params.push(`%${filters.supplier_name.trim()}%`);
-    where.push(`(im.supplier_name ILIKE $${params.length} OR im.reference ILIKE $${params.length})`);
+    where.push(`(im.supplier_name ILIKE $${params.length} OR im.reference ILIKE $${params.length} OR im.notes ILIKE $${params.length})`);
   }
 
-  if (filters.date) {
+  if (filters.date && filters.date !== 'ALL') {
     params.push(filters.date);
-    where.push(`(im.movement_date = $${params.length} OR im.created_at::date = $${params.length})`);
-  } else if (filters.start_date && filters.end_date) {
+    where.push(`im.created_at::date = $${params.length}::date`);
+  } else if (filters.start_date && filters.end_date && filters.start_date !== 'ALL' && filters.end_date !== 'ALL') {
     params.push(filters.start_date, filters.end_date);
-    where.push(`(im.movement_date BETWEEN $${params.length - 1} AND $${params.length} OR im.created_at::date BETWEEN $${params.length - 1} AND $${params.length})`);
-  } else if (filters.period) {
+    where.push(`im.created_at::date BETWEEN $${params.length - 1}::date AND $${params.length}::date`);
+  } else if (filters.start_date && filters.start_date !== 'ALL') {
+    params.push(filters.start_date);
+    where.push(`im.created_at::date >= $${params.length}::date`);
+  } else if (filters.end_date && filters.end_date !== 'ALL') {
+    params.push(filters.end_date);
+    where.push(`im.created_at::date <= $${params.length}::date`);
+  } else if (filters.period && filters.period !== 'ALL') {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
     if (filters.period === 'TODAY') {
       params.push(todayStr);
-      where.push(`(im.movement_date = $${params.length} OR im.created_at::date = $${params.length})`);
+      where.push(`im.created_at::date = $${params.length}::date`);
     } else if (filters.period === 'YESTERDAY') {
       const y = new Date(now);
       y.setDate(now.getDate() - 1);
       const yStr = y.toISOString().split('T')[0];
       params.push(yStr);
-      where.push(`(im.movement_date = $${params.length} OR im.created_at::date = $${params.length})`);
+      where.push(`im.created_at::date = $${params.length}::date`);
     } else if (filters.period === 'THIS_WEEK') {
       const startOfWeek = new Date(now);
       const day = now.getDay();
@@ -6897,12 +6904,12 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
       startOfWeek.setDate(diff);
       const sStr = startOfWeek.toISOString().split('T')[0];
       params.push(sStr, todayStr);
-      where.push(`(im.movement_date BETWEEN $${params.length - 1} AND $${params.length} OR im.created_at::date BETWEEN $${params.length - 1} AND $${params.length})`);
+      where.push(`im.created_at::date BETWEEN $${params.length - 1}::date AND $${params.length}::date`);
     } else if (filters.period === 'THIS_MONTH') {
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const sStr = startOfMonth.toISOString().split('T')[0];
       params.push(sStr, todayStr);
-      where.push(`(im.movement_date BETWEEN $${params.length - 1} AND $${params.length} OR im.created_at::date BETWEEN $${params.length - 1} AND $${params.length})`);
+      where.push(`im.created_at::date BETWEEN $${params.length - 1}::date AND $${params.length}::date`);
     }
   }
 
@@ -6916,17 +6923,21 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
        im.product_id,
        COALESCE(im.product_name, p.display_name, p.name, 'Stock Item') as product_name,
        COALESCE(p.selling_unit, im.unit, 'Tray') as unit,
+       COALESCE(p.selling_unit, im.unit, 'Tray') as selling_unit,
        COALESCE(p.pieces_per_unit, 20) as pieces_per_unit,
        im.supplier_id,
        COALESCE(im.supplier_name, s.name, im.reference, 'Direct Supplier') as supplier_name,
-       im.qty_units,
-       im.rate,
-       im.total_amount,
-       im.received_by,
+       COALESCE(im.qty_units, 0) as qty_units,
+       COALESCE(im.qty_units, 0) as quantity,
+       COALESCE(im.qty_units, 0) as quantity_change,
+       COALESCE(im.rate, (SELECT spr.buy_rate FROM supplier_product_rates spr WHERE spr.supplier_id = im.supplier_id AND spr.product_id = im.product_id LIMIT 1), p.purchase_price, 0) as rate,
+       COALESCE(im.total_amount, (COALESCE(im.qty_units, 0) * COALESCE(im.rate, (SELECT spr.buy_rate FROM supplier_product_rates spr WHERE spr.supplier_id = im.supplier_id AND spr.product_id = im.product_id LIMIT 1), p.purchase_price, 0)), 0) as total_amount,
+       COALESCE(im.received_by, 'Store Keeper') as received_by,
+       COALESCE(im.received_by, 'Store Keeper') as created_by_name,
        im.reference,
        im.notes,
-       COALESCE(im.movement_date, im.created_at::date) as movement_date,
-       im.movement_time,
+       im.created_at::date as movement_date,
+       to_char(im.created_at, 'HH24:MI:SS') as movement_time,
        im.created_at
      FROM inventory_movements im
      LEFT JOIN products p ON p.id = im.product_id
@@ -6960,22 +6971,34 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
         product_id: r.product_id,
         product_name: r.product_name,
         unit: r.unit,
+        selling_unit: r.unit,
         pieces_per_unit: ppu,
         total_units: 0,
+        total_qty: 0,
+        total_received_quantity: 0,
         total_pieces: 0,
         total_amount: 0,
-        batches_count: 0
+        total_received_amount: 0,
+        batches_count: 0,
+        batch_count: 0
       });
     }
 
     const pEntry = productMap.get(pKey);
     pEntry.total_units += qty;
+    pEntry.total_qty += qty;
+    pEntry.total_received_quantity += qty;
     pEntry.total_pieces += pcs;
     pEntry.total_amount += amount;
+    pEntry.total_received_amount += amount;
     pEntry.batches_count += 1;
+    pEntry.batch_count += 1;
   });
 
-  const productTotals = Array.from(productMap.values()).sort((a, b) => b.total_units - a.total_units);
+  const productTotals = Array.from(productMap.values()).map(pt => ({
+    ...pt,
+    avg_rate: pt.total_units > 0 ? (pt.total_amount / pt.total_units) : 0
+  })).sort((a, b) => b.total_units - a.total_units);
 
   // 3. Company-wise aggregate summary
   const supplierMap = new Map();
@@ -7004,6 +7027,12 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
 
   return {
     success: true,
+    summary: {
+      total_inward_qty: totalUnits,
+      total_batches: records.length,
+      total_companies: supplierTotals.length,
+      total_valuation: totalValuation
+    },
     kpis: {
       total_units: totalUnits,
       total_pieces: totalPieces,
@@ -7012,6 +7041,7 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
       distinct_products: productTotals.length,
       distinct_suppliers: supplierTotals.length
     },
+    product_totals: productTotals,
     product_breakdown: productTotals,
     supplier_breakdown: supplierTotals,
     records: records
