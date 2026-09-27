@@ -37,14 +37,7 @@ export const AppProvider = ({ children }) => {
   const [users, setUsers] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [drivers, setDrivers] = useState([]);
-  const DEFAULT_SUPPLIERS = [
-    { id: 1, name: "Arokya Dairy", code: "AROKYA", contact_person: "Regional Depot Manager", phone: "9876543210", product_rates: {}, is_active: true },
-    { id: 2, name: "Cavin's (Cavinkare)", code: "CAVINS", contact_person: "Supply Coordinator", phone: "9876543211", product_rates: {}, is_active: true },
-    { id: 3, name: "Dodla Dairy", code: "DODLA", contact_person: "Area Incharge", phone: "9876543212", product_rates: {}, is_active: true },
-    { id: 4, name: "Thirumala Milk", code: "THIRUMALA", contact_person: "Logistics Hub", phone: "9876543213", product_rates: {}, is_active: true },
-    { id: 5, name: "Heritage Foods", code: "HERITAGE", contact_person: "Distribution Center", phone: "9876543214", product_rates: {}, is_active: true },
-    { id: 6, name: "Nandini (KMF)", code: "NANDINI", contact_person: "Depot Supervisor", phone: "9876543215", product_rates: {}, is_active: true }
-  ];
+  const DEFAULT_SUPPLIERS = [];
 
   const [routes, setRoutes] = useState([]);
   const [suppliers, setSuppliers] = useState(() => {
@@ -52,11 +45,14 @@ export const AppProvider = ({ children }) => {
       const saved = localStorage.getItem('avs_suppliers_cache');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const clean = parsed.filter(s => !['9876543210', '9876543211', '9876543212', '9876543213', '9876543214', '9876543215'].includes(s.phone));
+          return clean;
+        }
       }
-      return DEFAULT_SUPPLIERS;
+      return [];
     } catch (e) {
-      return DEFAULT_SUPPLIERS;
+      return [];
     }
   });
 
@@ -168,20 +164,19 @@ export const AppProvider = ({ children }) => {
       // Merge remote suppliers with local/cached suppliers safely so user created/edited suppliers NEVER disappear!
       setSuppliers(prev => {
         const remote = Array.isArray(suppliersRes) ? suppliersRes : (Array.isArray(suppliersRes?.suppliers) ? suppliersRes.suppliers : []);
-        if (remote.length === 0) {
-          if (prev && prev.length > 0) return prev;
-          try {
-            const cached = JSON.parse(localStorage.getItem('avs_suppliers_cache') || '[]');
-            if (cached.length > 0) return cached;
-          } catch (e) {}
-          return DEFAULT_SUPPLIERS;
+        const cleanRemote = remote.filter(s => !['9876543210', '9876543211', '9876543212', '9876543213', '9876543214', '9876543215'].includes(s.phone));
+        if (cleanRemote.length === 0) {
+          if (prev && prev.length > 0) {
+            return prev.filter(s => !['9876543210', '9876543211', '9876543212', '9876543213', '9876543214', '9876543215'].includes(s.phone));
+          }
+          return [];
         }
 
-        const merged = [...remote];
-        const seenIds = new Set(remote.map(r => String(r.id)));
-        const seenNames = new Set(remote.map(r => (r.name || '').trim().toLowerCase()));
+        const merged = [...cleanRemote];
+        const seenIds = new Set(cleanRemote.map(r => String(r.id)));
+        const seenNames = new Set(cleanRemote.map(r => (r.name || '').trim().toLowerCase()));
 
-        (prev || []).forEach(localItem => {
+        (prev || []).filter(s => !['9876543210', '9876543211', '9876543212', '9876543213', '9876543214', '9876543215'].includes(s.phone)).forEach(localItem => {
           const lName = (localItem.name || '').trim().toLowerCase();
           const lId = String(localItem.id);
           if (!seenIds.has(lId) && !seenNames.has(lName)) {

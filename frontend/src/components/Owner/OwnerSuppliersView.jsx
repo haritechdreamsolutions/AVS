@@ -197,17 +197,19 @@ export const OwnerSuppliersView = () => {
       };
     });
 
-    const productTotals = Array.from(prodMap.values()).map(pt => ({
-      ...pt,
-      avg_rate: pt.total_units > 0 ? (pt.total_amount / pt.total_units) : 0
-    })).sort((a, b) => b.total_units - a.total_units);
+    const productTotals = Array.from(prodMap.values())
+      .filter(pt => (pt.total_units > 0 || pt.total_qty > 0))
+      .map(pt => ({
+        ...pt,
+        avg_rate: pt.total_units > 0 ? (pt.total_amount / pt.total_units) : 0
+      })).sort((a, b) => b.total_units - a.total_units);
 
     return {
       records: formattedRecords,
       summary: {
         total_inward_qty: totalUnits,
         total_batches: formattedRecords.length,
-        total_companies: suppSet.size || (selectedSupplierId === 'ALL' ? suppliers.length : 1),
+        total_companies: suppSet.size || (selectedSupplierId === 'ALL' ? suppliers.filter(s => s.is_active !== false).length : (currentSupplier ? 1 : 0)),
         total_valuation: totalValuation
       },
       product_totals: productTotals
