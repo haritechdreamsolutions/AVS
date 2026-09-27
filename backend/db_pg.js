@@ -4795,6 +4795,40 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
     }))
   };
 
+  // 3.6 Authoritative Shop Visit Statistics
+  let assignedShops = [];
+  try {
+    assignedShops = await getEmployeeAssignedShops(cid, empId, todayStr);
+  } catch (e) {
+    assignedShops = [];
+  }
+  if (assignedShops.length === 0 && driverRes.route_id) {
+    assignedShops = await queryAll(
+      `SELECT s.* FROM shops s WHERE s.company_id = $1 AND s.route_id = $2 AND s.is_active = TRUE`,
+      [cid, driverRes.route_id]
+    );
+  }
+
+  const visitedShopsRes = await queryOne(
+    `SELECT COUNT(DISTINCT shop_id) as count FROM sales 
+     WHERE company_id = $1 AND employee_id = $2 
+       AND (sale_date = $3::date OR created_at::date = $3::date) 
+       AND (status IS NULL OR status = 'ACTIVE' OR status != 'CANCELLED')`,
+    [cid, empId, todayStr]
+  );
+
+  const totalShopsCount = assignedShops.length;
+  const visitedShopsCount = Number(visitedShopsRes?.count || 0);
+  const withoutVisitShopsCount = Math.max(0, totalShopsCount - visitedShopsCount);
+
+  const shopsSummary = {
+    total_shops: totalShopsCount,
+    visited_shops: visitedShopsCount,
+    billed_shops: visitedShopsCount,
+    without_visit_shops: withoutVisitShopsCount,
+    unvisited_shops: withoutVisitShopsCount
+  };
+
   return {
     driver: {
       id: driverRes.id,
@@ -4802,7 +4836,8 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
       employee_code: driverRes.employee_code,
       phone: driverRes.phone,
       vehicle_number: driverRes.vehicle_number,
-      route_name: session?.route_name || driverRes.route_name || 'Assigned Route'
+      route_name: session?.route_name || driverRes.route_name || 'Assigned Route',
+      route_id: driverRes.route_id
     },
     session: {
       id: session?.id,
@@ -4811,6 +4846,7 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
       opened_at: session?.opened_at
     },
     sales_summary: salesSummary,
+    shops_summary: shopsSummary,
     expenses: formattedExpenses,
     total_expenses: totalExpenses,
     damages: detailedDamages,

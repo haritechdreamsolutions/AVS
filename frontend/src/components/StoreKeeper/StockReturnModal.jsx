@@ -13,6 +13,8 @@ import { toast } from 'sonner';
 
 export const StockReturnModal = ({ onClose }) => {
   const { 
+    shops = [],
+    sales = [],
     fetchEligibleDriversForReturn, 
     fetchDriverExpectedReturn,
     verifyAndAcceptDriverReturnDirect,
@@ -148,6 +150,40 @@ export const StockReturnModal = ({ onClose }) => {
       : expensesList.reduce((sum, e) => sum + Number(e.amount || 0), 0)
   );
   const netAmount = Number((totalSales - totalExpenses).toFixed(2));
+
+  // Shop Visit & Route Allocation Statistics
+  const shopStats = useMemo(() => {
+    if (driverData?.shops_summary) {
+      return driverData.shops_summary;
+    }
+    const driverRouteId = driverInfo.route_id;
+    const driverEmpId = driverInfo.id || selectedDriverId;
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const driverShops = (shops || []).filter(s => 
+      s.is_active !== false && 
+      (driverRouteId ? (s.route_id === driverRouteId || s.effective_route_id === driverRouteId) : true)
+    );
+
+    const todayDriverSales = (sales || []).filter(s => 
+      String(s.employee_id) === String(driverEmpId) &&
+      ((s.sale_date && s.sale_date.startsWith(todayStr)) || (s.created_at && s.created_at.startsWith(todayStr))) &&
+      s.status !== 'CANCELLED'
+    );
+
+    const visitedShopIds = new Set(todayDriverSales.map(s => String(s.shop_id)).filter(Boolean));
+    const total = driverShops.length;
+    const visited = visitedShopIds.size;
+    const withoutVisit = Math.max(0, total - visited);
+
+    return {
+      total_shops: total,
+      visited_shops: visited,
+      billed_shops: visited,
+      without_visit_shops: withoutVisit,
+      unvisited_shops: withoutVisit
+    };
+  }, [driverData, driverInfo, shops, sales, selectedDriverId]);
 
   // Reconciliation Calculations & Validations (Phase 5)
   const reconciliationData = useMemo(() => {
@@ -848,68 +884,91 @@ export const StockReturnModal = ({ onClose }) => {
                 </span>
               </div>
 
-              {/* 3 Key Financial Highlights */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              {/* 3 Key Financial Highlights - EVEN BALANCED ALIGNMENT */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
                 {/* 1. Sales Amount */}
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
                   <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">
-                    1. Sales Amount
+                    1. Sales Amount (விற்பனை)
                   </span>
-                  <p className="font-mono font-black text-sm sm:text-base text-slate-900 mt-0.5">
+                  <p className="font-mono font-black text-base sm:text-lg text-slate-900 mt-1">
                     ₹{totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </p>
-                  <span className="text-[8px] text-slate-400 block">From Bills/Invoices</span>
+                  <span className="text-[9px] text-slate-400 block mt-0.5">From Bills/Invoices</span>
                 </div>
 
                 {/* 2. Total Expenses */}
-                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200 flex flex-col justify-between">
                   <span className="text-[9px] font-bold text-amber-800 uppercase tracking-wider block">
-                    2. Total Expenses
+                    2. Total Expenses (செலவுகள்)
                   </span>
-                  <p className="font-mono font-black text-sm sm:text-base text-amber-700 mt-0.5">
+                  <p className="font-mono font-black text-base sm:text-lg text-amber-700 mt-1">
                     - ₹{totalExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </p>
-                  <span className="text-[8px] text-amber-600 block">{expensesList.length} Entries</span>
+                  <span className="text-[9px] text-amber-600 font-medium block mt-0.5">{expensesList.length} Entries Recorded</span>
                 </div>
 
                 {/* 3. Net Amount Due */}
-                <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-xs col-span-2 sm:col-span-2">
+                <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-xs flex flex-col justify-between">
                   <span className="text-[9px] font-extrabold text-emerald-100 uppercase tracking-wider flex items-center justify-between">
-                    <span>3. Net Amount Due (நிகர தொகை)</span>
-                    <span className="text-[8px] font-mono bg-white/20 px-1 py-0.2 rounded">Sales - Exp</span>
+                    <span>3. Net Due (நிகர தொகை)</span>
+                    <span className="text-[8px] font-mono bg-white/20 px-1.5 py-0.5 rounded">Sales - Exp</span>
                   </span>
-                  <p className="font-mono font-black text-base sm:text-lg text-white mt-0.5">
+                  <p className="font-mono font-black text-base sm:text-lg text-white mt-1">
                     ₹{netAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </p>
-                  <span className="text-[8px] text-emerald-100 block">Net Collection Cash / Due</span>
+                  <span className="text-[9px] text-emerald-100 block mt-0.5">Net Collection Cash / Due</span>
                 </div>
               </div>
 
-              {/* 4 Stock Totals Overview */}
-              <div className="grid grid-cols-4 gap-2 pt-1 font-mono text-center text-xs">
-                <div className="p-2 rounded-xl bg-slate-100 border border-slate-200">
-                  <span className="text-[8px] font-bold text-slate-500 uppercase block">Allocated</span>
-                  <span className="font-black text-xs text-slate-800 block mt-0.5">
-                    {reconciliationData.totalAllocated} Units
-                  </span>
+              {/* 3 Shop Status Metrics (Replaced 4 Stock Boxes) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 font-mono text-xs pt-1">
+                {/* 1. Total Allocated Shops */}
+                <div className="p-3 rounded-xl bg-sky-50/70 border border-sky-200 flex flex-col justify-between shadow-2xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[9px] font-bold text-sky-800 uppercase tracking-wider">
+                      மொத்த கடைகள் (Total Shops)
+                    </span>
+                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-sky-200/70 text-sky-900">
+                      Route Allocated
+                    </span>
+                  </div>
+                  <p className="font-mono font-black text-base sm:text-lg text-sky-950 mt-0.5">
+                    {shopStats.total_shops || 0} <span className="text-xs font-semibold text-sky-700">Shops</span>
+                  </p>
+                  <span className="text-[9px] text-sky-700 font-sans block mt-0.5">ரூட் ஒதுக்கப்பட்ட மொத்த கடைகள்</span>
                 </div>
-                <div className="p-2 rounded-xl bg-blue-50 border border-blue-100">
-                  <span className="text-[8px] font-bold text-blue-700 uppercase block">Sold</span>
-                  <span className="font-black text-xs text-blue-800 block mt-0.5">
-                    {reconciliationData.totalSold} Units
-                  </span>
+
+                {/* 2. Visited / Billed Shops */}
+                <div className="p-3 rounded-xl bg-emerald-50/80 border border-emerald-200 flex flex-col justify-between shadow-2xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[9px] font-bold text-emerald-800 uppercase tracking-wider">
+                      பில் போட்ட கடைகள் (Visited)
+                    </span>
+                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-emerald-200/70 text-emerald-900">
+                      Billed Today
+                    </span>
+                  </div>
+                  <p className="font-mono font-black text-base sm:text-lg text-emerald-700 mt-0.5">
+                    {shopStats.visited_shops || 0} <span className="text-xs font-semibold text-emerald-600">Shops</span>
+                  </p>
+                  <span className="text-[9px] text-emerald-700 font-sans block mt-0.5">வருகை தந்து பில் போட்ட கடைகள்</span>
                 </div>
-                <div className="p-2 rounded-xl bg-rose-50 border border-rose-100">
-                  <span className="text-[8px] font-bold text-rose-700 uppercase block">Damaged</span>
-                  <span className="font-black text-xs text-rose-800 block mt-0.5">
-                    {reconciliationData.totalDamaged} Units
-                  </span>
-                </div>
-                <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200">
-                  <span className="text-[8px] font-bold text-emerald-800 uppercase block">Available Return</span>
-                  <span className="font-black text-xs text-emerald-700 block mt-0.5">
-                    {reconciliationData.totalReturn} Units
-                  </span>
+
+                {/* 3. Without Visit Shops */}
+                <div className="p-3 rounded-xl bg-rose-50/80 border border-rose-200 flex flex-col justify-between shadow-2xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[9px] font-bold text-rose-800 uppercase tracking-wider">
+                      வருகை தராத கடைகள் (Pending)
+                    </span>
+                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-rose-200/70 text-rose-900">
+                      Without Visit
+                    </span>
+                  </div>
+                  <p className="font-mono font-black text-base sm:text-lg text-rose-700 mt-0.5">
+                    {shopStats.without_visit_shops || 0} <span className="text-xs font-semibold text-rose-600">Shops</span>
+                  </p>
+                  <span className="text-[9px] text-rose-700 font-sans block mt-0.5">இன்று பில் போடாத மீதமுள்ள கடைகள்</span>
                 </div>
               </div>
             </div>
