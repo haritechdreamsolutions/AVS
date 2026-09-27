@@ -850,33 +850,19 @@ export const OwnerSuppliersView = () => {
                   1. Company Details (கம்பெனி விபரம்)
                 </h4>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-extrabold text-slate-600 uppercase">
-                      Company Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Arokya Dairy"
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                      className="w-full bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-extrabold text-slate-600 uppercase">
-                      Company Code / Short
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. ARKY"
-                      value={companyCode}
-                      onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
-                      className="w-full bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none uppercase"
-                    />
-                  </div>
+                {/* Company Name Full Width (Code removed) */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
+                    Company Name / தயாரிப்பு கம்பெனி பெயர் *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Arokya Dairy / Cavin's / Dodla"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    className="w-full bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none shadow-xs"
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -941,7 +927,7 @@ export const OwnerSuppliersView = () => {
                               <span className="font-extrabold text-xs text-slate-900 block truncate">
                                 {prod.display_name}
                               </span>
-                              <span className="text-[10px] text-slate-400 font-mono">
+                              <span className="text-[11px] font-extrabold text-slate-700 tracking-wide block">
                                 Unit: {prod.selling_unit || 'Tray'}
                               </span>
                             </div>
@@ -953,7 +939,7 @@ export const OwnerSuppliersView = () => {
                               type="number"
                               step="0.01"
                               min="0"
-                              placeholder="0.00"
+                              placeholder="0"
                               value={productRates[prod.id] !== undefined ? productRates[prod.id] : ''}
                               onChange={(e) => handleRateChange(prod.id, e.target.value)}
                               className="w-20 bg-blue-50/40 border border-blue-200 focus:border-blue-500 rounded-lg px-2 py-1 text-right text-xs font-black text-blue-900 focus:outline-none"
@@ -1046,7 +1032,7 @@ export const OwnerSuppliersView = () => {
                         <span className="font-extrabold text-xs text-slate-900 block truncate">
                           {prod.display_name}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
+                        <span className="text-[11px] font-extrabold text-slate-700 tracking-wide block">
                           Unit: {prod.selling_unit || 'Tray'}
                         </span>
                       </div>
@@ -1058,7 +1044,7 @@ export const OwnerSuppliersView = () => {
                         type="number"
                         step="0.01"
                         min="0"
-                        placeholder="0.00"
+                        placeholder="0"
                         value={quickRates[prod.id] !== undefined ? quickRates[prod.id] : ''}
                         onChange={(e) => handleQuickRateChange(prod.id, e.target.value)}
                         className="w-24 bg-white border border-slate-300 focus:border-blue-500 rounded-lg px-2 py-1.5 text-right text-xs font-black text-blue-900 focus:outline-none shadow-xs"
