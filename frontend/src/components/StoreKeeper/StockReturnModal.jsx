@@ -1015,23 +1015,11 @@ export const StockReturnModal = ({ onClose }) => {
                     <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                       4. PRODUCT STOCK & RECONCILIATION (சரக்கு சரிபார்ப்பு)
                     </h4>
-                    <p className="text-[10px] text-slate-500 font-medium">
-                      Physically check returned stock and type the exact Manual Return quantity
-                    </p>
                   </div>
                 </div>
                 <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
                   {reconciliationData.items.length} Products
                 </span>
-              </div>
-
-              {/* Live Stock Notice */}
-              <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-blue-900 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                <p className="leading-snug">
-                  <strong>Available Physical Stock:</strong> Sales and Damages are already deducted from vehicle stock. 
-                  <strong>Available Stock</strong> represents the system-calculated return quantity (Allocated - Sold - Damage).
-                </p>
               </div>
 
               {/* Reconciliation Status Banner */}
@@ -1091,6 +1079,13 @@ export const StockReturnModal = ({ onClose }) => {
                     const isMissing = p.physicalStatus === 'MISSING';
                     const isExcess = p.physicalStatus === 'EXCESS';
 
+                    const unitPrice = Number(p.unit_selling_price || 0);
+                    const ppu = Math.max(1, Number(p.pieces_per_unit || p.ppu || 1));
+                    const effectiveRate = p.isPieceBased ? (ppu > 0 ? unitPrice / ppu : unitPrice) : unitPrice;
+                    const soldAmt = p.sold_amount !== undefined && p.sold_amount !== null
+                      ? Number(p.sold_amount)
+                      : (Number(p.sold || 0) * effectiveRate);
+
                     return (
                       <div 
                         key={p.product_id}
@@ -1149,26 +1144,37 @@ export const StockReturnModal = ({ onClose }) => {
                           </div>
                         </div>
 
-                        {/* 2. Stock Values: Allocated, Sold, Available / Current Stock */}
-                        <div className="grid grid-cols-3 gap-2 pt-2.5 text-center text-xs font-mono">
-                          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
-                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Allocated</span>
+                        {/* 2. Stock Values: 1. Allocated, 2. Available, 3. Sold, 4. Sold Amount */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5 text-center text-xs font-mono">
+                          {/* Box 1: Allocated */}
+                          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-center">
+                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Allocated (ஒதுக்கியது)</span>
                             <span className="font-black text-slate-900 text-xs sm:text-sm block mt-0.5">
                               {p.alloc} <span className="text-[9px] font-medium text-slate-400">{unit}</span>
                             </span>
                           </div>
 
-                          <div className="p-2 rounded-xl bg-blue-50 border border-blue-100">
-                            <span className="text-[9px] font-bold text-blue-700 uppercase block">Sold</span>
+                          {/* Box 2: Available / Current */}
+                          <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col justify-center">
+                            <span className="text-[9px] font-bold text-emerald-800 uppercase block">Available (இருப்பு)</span>
+                            <span className="font-black text-emerald-700 text-xs sm:text-sm block mt-0.5">
+                              {p.expectedReturn} <span className="text-[9px] font-medium text-emerald-500">{unit}</span>
+                            </span>
+                          </div>
+
+                          {/* Box 3: Sold */}
+                          <div className="p-2 rounded-xl bg-blue-50 border border-blue-100 flex flex-col justify-center">
+                            <span className="text-[9px] font-bold text-blue-700 uppercase block">Sold (விற்பனை)</span>
                             <span className="font-black text-blue-800 text-xs sm:text-sm block mt-0.5">
                               {p.sold} <span className="text-[9px] font-medium text-blue-400">{unit}</span>
                             </span>
                           </div>
 
-                          <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200">
-                            <span className="text-[9px] font-bold text-emerald-800 uppercase block">Available / Current</span>
-                            <span className="font-black text-emerald-700 text-xs sm:text-sm block mt-0.5">
-                              {p.expectedReturn} <span className="text-[9px] font-medium text-emerald-500">{unit}</span>
+                          {/* Box 4: Sold Amount */}
+                          <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 flex flex-col justify-center">
+                            <span className="text-[9px] font-bold text-amber-800 uppercase block">Sold Amount (தொகை)</span>
+                            <span className="font-black text-amber-900 text-xs sm:text-sm block mt-0.5">
+                              ₹{soldAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                           </div>
                         </div>
