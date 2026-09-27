@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { ArrowDownLeft, X, Save, Building2, Tag, DollarSign, Calculator } from 'lucide-react';
+import { ArrowDownLeft, X, Save, Building2, Tag, DollarSign, Calculator, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const StockReceiveModal = ({ onClose }) => {
@@ -53,24 +53,32 @@ export const StockReceiveModal = ({ onClose }) => {
 
   const handleQtyChange = (id, val) => {
     const num = Math.max(0, parseInt(val || 0, 10));
+    const prod = activeProducts.find(p => p.id === Number(id));
+    if (num > 0 && prod && getProductBuyRate(prod) <= 0) {
+      toast.warning(`Buy Rate is not assigned for "${prod.display_name}". Please set rate in Owner Login.`, { id: `rate-warn-${id}`, duration: 4000 });
+    }
     setProductQuantities(prev => ({ ...prev, [id]: num }));
   };
 
   // Totals calculations
-  const { totalItemsCount, totalPurchaseAmount } = useMemo(() => {
+  const { totalItemsCount, totalPurchaseAmount, hasMissingRates } = useMemo(() => {
     let count = 0;
     let amount = 0;
+    let missing = false;
 
     activeProducts.forEach(prod => {
       const q = Number(productQuantities[prod.id] || 0);
       if (q > 0) {
         count += q;
         const r = getProductBuyRate(prod);
+        if (r <= 0) {
+          missing = true;
+        }
         amount += (q * r);
       }
     });
 
-    return { totalItemsCount: count, totalPurchaseAmount: amount };
+    return { totalItemsCount: count, totalPurchaseAmount: amount, hasMissingRates: missing };
   }, [activeProducts, productQuantities, currentSupplier, customRates]);
 
   const handleSave = async () => {
@@ -95,6 +103,7 @@ export const StockReceiveModal = ({ onClose }) => {
         const rate = prod ? getProductBuyRate(prod) : 0;
         return {
           product_id: Number(pid),
+          product_name: prod ? prod.display_name : `Product #${pid}`,
           quantity: q,
           unit: prod ? prod.selling_unit : 'Tray',
           rate: rate,
@@ -104,6 +113,14 @@ export const StockReceiveModal = ({ onClose }) => {
 
     if (items.length === 0) {
       toast.error('Please enter at least 1 product quantity to receive.');
+      return;
+    }
+
+    // STRICT VALIDATION: Block submission if any product with quantity > 0 has no buy rate assigned
+    const unratedItems = items.filter(i => !i.rate || Number(i.rate) <= 0);
+    if (unratedItems.length > 0) {
+      const names = unratedItems.map(i => i.product_name).join(', ');
+      toast.error(`Cannot receive stock! Buy Rate is not assigned for: "${names}". Please assign Buy Rate in Owner Login.`, { duration: 6000 });
       return;
     }
 
@@ -201,11 +218,17 @@ export const StockReceiveModal = ({ onClose }) => {
                 const qty = Number(productQuantities[prod.id] || 0);
                 const itemTotal = qty * rate;
 
+                const isUnassignedWithQty = qty > 0 && rate <= 0;
+
                 return (
                   <div 
                     key={prod.id} 
                     className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-2xl border transition-all gap-2.5 ${
-                      qty > 0 ? 'bg-blue-50/60 border-blue-300 shadow-xs' : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200'
+                      isUnassignedWithQty
+                        ? 'bg-rose-50/90 border-rose-300 ring-1 ring-rose-300 shadow-xs'
+                        : qty > 0 
+                          ? 'bg-blue-50/60 border-blue-300 shadow-xs' 
+                          : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -219,9 +242,11 @@ export const StockReceiveModal = ({ onClose }) => {
                           <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
                             rate > 0 
                               ? 'text-blue-800 bg-blue-100 border border-blue-200' 
-                              : 'text-slate-400 bg-slate-100 border border-slate-200'
+                              : isUnassignedWithQty
+                                ? 'text-rose-700 bg-rose-100 border border-rose-300 font-black'
+                                : 'text-slate-400 bg-slate-100 border border-slate-200'
                           }`}>
-                            Buy Rate: ₹{rate.toFixed(2)} {rate === 0 && '(Not Set)'}
+                            {rate > 0 ? `Buy Rate: ₹${rate.toFixed(2)}` : '⚠️ Buy Rate Not Set (₹0.00)'}
                           </span>
                         </div>
                       </div>
@@ -232,8 +257,8 @@ export const StockReceiveModal = ({ onClose }) => {
                       {qty > 0 && (
                         <div className="text-right">
                           <span className="text-[10px] font-bold text-slate-400 block">Total:</span>
-                          <span className="text-xs font-black text-blue-900 font-mono">
-                            ₹{itemTotal.toFixed(2)}
+                          <span className={`text-xs font-black font-mono ${rate > 0 ? 'text-blue-900' : 'text-rose-600'}`}>
+                            {rate > 0 ? `₹${itemTotal.toFixed(2)}` : 'Rate Required'}
                           </span>
                         </div>
                       )}
@@ -246,7 +271,11 @@ export const StockReceiveModal = ({ onClose }) => {
                           value={productQuantities[prod.id] || ''}
                           placeholder="0"
                           onChange={(e) => handleQtyChange(prod.id, e.target.value)}
-                          className="w-16 bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-2.5 py-1.5 text-right text-slate-900 font-black text-sm shadow-sm focus:outline-none"
+                          className={`w-16 bg-white border rounded-xl px-2.5 py-1.5 text-right font-black text-sm shadow-sm focus:outline-none ${
+                            isUnassignedWithQty 
+                              ? 'border-rose-400 text-rose-800 focus:border-rose-600 ring-1 ring-rose-200' 
+                              : 'border-slate-300 text-slate-900 focus:border-blue-500'
+                          }`}
                         />
                         <span className="text-slate-600 font-bold text-[11px] w-9 text-left">
                           {prod.selling_unit || 'Tray'}
@@ -259,6 +288,14 @@ export const StockReceiveModal = ({ onClose }) => {
             )}
           </div>
         </div>
+
+        {/* MISSING BUY RATE WARNING ALERT BANNER */}
+        {hasMissingRates && (
+          <div className="bg-rose-50 border border-rose-300 text-rose-800 px-3.5 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-2xs animate-shake">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>விலை நிர்ணயிக்கப்படாத பொருட்களுக்கு Stock Receive செய்ய முடியாது. Owner Login-ல் Buy Rate பதிவு செய்யவும்!</span>
+          </div>
+        )}
 
         {/* REAL-TIME TOTAL SUMMARY BANNER */}
         <div className="bg-slate-900 text-white p-3.5 rounded-2xl flex items-center justify-between shadow-md">
@@ -284,11 +321,11 @@ export const StockReceiveModal = ({ onClose }) => {
         {/* Submit Button */}
         <button
           onClick={handleSave}
-          disabled={saving || activeProducts.length === 0 || totalItemsCount === 0}
+          disabled={saving || activeProducts.length === 0 || totalItemsCount === 0 || hasMissingRates}
           className="touch-btn touch-btn-primary w-full text-sm font-extrabold flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 shadow-lg shadow-blue-500/20 py-3 rounded-2xl"
         >
           <Save className="w-4 h-4" />
-          {saving ? 'SAVING STOCK...' : 'CONFIRM STOCK RECEIVE'}
+          {saving ? 'SAVING STOCK...' : (hasMissingRates ? 'SET BUY RATE IN OWNER LOGIN TO RECEIVE' : 'CONFIRM STOCK RECEIVE')}
         </button>
       </div>
     </div>

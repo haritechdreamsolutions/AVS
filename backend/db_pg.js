@@ -1019,6 +1019,9 @@ export async function receiveStock(cid, data, actorUserId) {
         throw new Error('Cannot receive stock for an inactive product.');
       }
       const itemRate = (item.rate !== undefined && item.rate !== null && !isNaN(Number(item.rate))) ? Number(item.rate) : Number(prod.purchase_price || 0);
+      if (supplier_id && itemRate <= 0) {
+        throw new Error(`Buy Rate is not configured for "${prod.display_name}". Please set product buy rate in Owner Login first.`);
+      }
       const itemTotal = itemRate * qty;
       const uRes = await client.query('UPDATE products SET warehouse_stock_units=warehouse_stock_units+$1, updated_at=NOW() WHERE id=$2 RETURNING *', [qty, pid]);
       const movNo = 'MOV-IN-' + Date.now() + '-' + Math.floor(Math.random()*1000);
