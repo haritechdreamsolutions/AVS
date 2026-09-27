@@ -255,12 +255,12 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
             ) : paymentMode === 'CASH' ? (
               <div className="flex justify-between text-slate-700 font-bold">
                 <span>Cash Received:</span>
-                <span className="font-mono text-emerald-700 font-black">₹{totalAmount.toFixed(2)}</span>
+                <span className="font-mono text-emerald-700 font-black">₹{(cashPaid > 0 ? cashPaid : (totalAmount + oldCreditPaid)).toFixed(2)}</span>
               </div>
             ) : paymentMode === 'GPAY' ? (
               <div className="flex justify-between text-slate-700 font-bold">
                 <span>GPay / UPI Received:</span>
-                <span className="font-mono text-blue-700 font-black">₹{totalAmount.toFixed(2)}</span>
+                <span className="font-mono text-blue-700 font-black">₹{(gpayPaid > 0 ? gpayPaid : (totalAmount + oldCreditPaid)).toFixed(2)}</span>
               </div>
             ) : (
               <div className="flex justify-between text-amber-700 font-bold">
