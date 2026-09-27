@@ -684,3 +684,143 @@ export const generateInventoryPDFReport = async ({
   doc.save(filename);
   return filename;
 };
+
+/**
+ * 6. SUPPLIER / PRODUCTION COMPANY INWARD STOCK PDF REPORT
+ */
+export const generateSupplierInwardPDFReport = async ({
+  supplierName = 'All Companies',
+  period = 'ALL',
+  dateRangeText = '',
+  kpis = {},
+  productTotals = [],
+  records = [],
+  companyInfo = {}
+}) => {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const periodLabel = dateRangeText || (period === 'ALL' ? 'All Time' : period.replace(/_/g, ' '));
+
+  let currentY = addReportHeader(
+    doc,
+    `Inward Stock: ${supplierName}`,
+    periodLabel,
+    companyInfo
+  );
+
+  // --- SECTION 1: INWARD SUMMARY KPI CARDS ---
+  const totalQty = Number(kpis.total_inward_qty || 0);
+  const totalBatches = Number(kpis.total_batches || 0);
+  const totalValuation = Number(kpis.total_valuation || 0);
+  const totalCompanies = Number(kpis.total_companies || 1);
+
+  const cardWidth = (pageWidth - 28 - (3 * 3)) / 4;
+  const cards = [
+    { label: 'TOTAL INWARD QTY', val: `${totalQty.toLocaleString('en-IN')} Units`, bg: [238, 242, 255], border: [99, 102, 241], text: [67, 56, 202] },
+    { label: 'TOTAL BATCHES', val: `${totalBatches} Received`, bg: [236, 253, 245], border: [16, 185, 129], text: [4, 120, 87] },
+    { label: 'TOTAL VALUATION', val: formatINR(totalValuation), bg: [254, 243, 199], border: [245, 158, 11], text: [180, 83, 9] },
+    { label: 'COMPANIES', val: `${totalCompanies} Active`, bg: [241, 245, 249], border: [100, 116, 139], text: [51, 65, 85] }
+  ];
+
+  cards.forEach((c, idx) => {
+    const x = 14 + idx * (cardWidth + 3);
+    doc.setFillColor(...c.bg);
+    doc.setDrawColor(...c.border);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(x, currentY, cardWidth, 14, 2, 2, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...c.text);
+    doc.text(c.label, x + cardWidth / 2, currentY + 4.5, { align: 'center' });
+
+    doc.setFontSize(9);
+    doc.text(c.val, x + cardWidth / 2, currentY + 11, { align: 'center' });
+  });
+
+  currentY += 19;
+
+  // --- SECTION 2: PRODUCT-WISE QUANTITY RECEIVED BREAKDOWN ---
+  if (productTotals && productTotals.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Product-wise Received Breakdown (${productTotals.length} Products)`, 14, currentY);
+    currentY += 3;
+
+    const prodRows = productTotals.map(p => [
+      p.product_name || 'Product',
+      p.product_code || '-',
+      p.selling_unit || 'Tray',
+      `${Number(p.total_received_quantity || 0).toLocaleString('en-IN')} ${p.selling_unit || 'Trays'}`,
+      `${p.batch_count || 0} times`,
+      formatINR(p.total_received_amount || 0)
+    ]);
+
+    autoTable(doc, {
+      startY: currentY,
+      theme: 'grid',
+      head: [['Product Name', 'Code / SKU', 'Unit', 'Total Quantity Received', 'Batch Count', 'Total Valuation']],
+      body: prodRows,
+      headStyles: { fillColor: [30, 41, 59], textColor: 255, fontSize: 8 },
+      bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
+      columnStyles: {
+        0: { fontStyle: 'bold' },
+        3: { halign: 'right', fontStyle: 'bold', textColor: [67, 56, 202] },
+        4: { halign: 'center' },
+        5: { halign: 'right', fontStyle: 'bold' }
+      },
+      margin: { left: 14, right: 14 }
+    });
+
+    currentY = doc.lastAutoTable.finalY + 8;
+  }
+
+  // Check page overflow
+  if (currentY > 230) {
+    doc.addPage();
+    currentY = 20;
+  }
+
+  // --- SECTION 3: INWARD TRANSACTION DETAILS TABLE ---
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Detailed Inward Stock Transactions (${records.length} Records)`, 14, currentY);
+  currentY += 3;
+
+  const recordRows = records.map(r => {
+    const dateStr = r.created_at ? new Date(r.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+    return [
+      dateStr,
+      r.supplier_name || r.notes?.replace('Dealer Inward: ', '') || 'Direct Supplier',
+      r.product_name || 'Product',
+      `${Number(r.quantity_change || r.quantity || 0)} ${r.unit || 'Tray'}`,
+      r.created_by_name || 'Store Keeper',
+      r.notes || 'Inward Stock'
+    ];
+  });
+
+  autoTable(doc, {
+    startY: currentY,
+    theme: 'grid',
+    head: [['Date & Time', 'Company / Supplier', 'Product Name', 'Received Qty', 'Received By', 'Reference Notes']],
+    body: recordRows.length > 0 ? recordRows : [['No records found for selected period', '', '', '', '', '']],
+    headStyles: { fillColor: [79, 70, 229], textColor: 255, fontSize: 8 },
+    bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
+    columnStyles: {
+      0: { fontStyle: 'bold', fontSize: 7 },
+      1: { fontStyle: 'bold', textColor: [30, 64, 175] },
+      3: { halign: 'right', fontStyle: 'bold', textColor: [4, 120, 87] }
+    },
+    margin: { left: 14, right: 14 }
+  });
+
+  addPageFooters(doc);
+  const safeName = supplierName.replace(/[^a-zA-Z0-9]/g, '_');
+  const dateSlug = new Date().toISOString().split('T')[0];
+  const filename = `AVS_Inward_Report_${safeName}_${dateSlug}.pdf`;
+  doc.save(filename);
+  return filename;
+};
+

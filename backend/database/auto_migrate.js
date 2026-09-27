@@ -585,10 +585,14 @@ export async function runAutoMigrations() {
         movement_type VARCHAR(30) NOT NULL,
         product_id INTEGER,
         product_name VARCHAR(150),
+        supplier_id INTEGER,
+        supplier_name VARCHAR(150),
         employee_id INTEGER,
         employee_name VARCHAR(150),
         qty_units NUMERIC(12,4) NOT NULL DEFAULT 0,
         unit VARCHAR(20) DEFAULT 'Piece',
+        rate NUMERIC(10,2) DEFAULT 0.00,
+        total_amount NUMERIC(12,2) DEFAULT 0.00,
         notes TEXT,
         reference VARCHAR(255),
         received_by VARCHAR(255),
@@ -599,6 +603,10 @@ export async function runAutoMigrations() {
     `, [], 'create inventory_movements');
     await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'inventory_movements.company_id');
     await safeQuery(client, 'ALTER TABLE inventory_movements ALTER COLUMN product_id DROP NOT NULL;', [], 'inventory_movements.product_id drop not null');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS supplier_id INTEGER;', [], 'inventory_movements.supplier_id');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS supplier_name VARCHAR(150);', [], 'inventory_movements.supplier_name');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS rate NUMERIC(10,2) DEFAULT 0.00;', [], 'inventory_movements.rate');
+    await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS total_amount NUMERIC(12,2) DEFAULT 0.00;', [], 'inventory_movements.total_amount');
     await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS reference VARCHAR(255);', [], 'inventory_movements.reference');
     await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS received_by VARCHAR(255);', [], 'inventory_movements.received_by');
     await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS employee_id INTEGER;', [], 'inventory_movements.employee_id');
@@ -608,6 +616,48 @@ export async function runAutoMigrations() {
     await safeQuery(client, "ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS unit VARCHAR(20) DEFAULT 'Piece';", [], 'inventory_movements.unit');
     await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS movement_date DATE DEFAULT CURRENT_DATE;', [], 'inventory_movements.movement_date');
     await safeQuery(client, 'ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS movement_time VARCHAR(30);', [], 'inventory_movements.movement_time');
+
+    // 18b. Suppliers / Production Companies Table
+    await safeQuery(client, `
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER NOT NULL DEFAULT 1,
+        name VARCHAR(150) NOT NULL,
+        code VARCHAR(50),
+        contact_person VARCHAR(100),
+        phone VARCHAR(30),
+        email VARCHAR(100),
+        address TEXT,
+        gstin VARCHAR(30),
+        notes TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `, [], 'create suppliers');
+    await safeQuery(client, 'ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'suppliers.company_id');
+    await safeQuery(client, 'ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'suppliers.is_active');
+    await safeQuery(client, 'ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();', [], 'suppliers.updated_at');
+
+    // Seed default suppliers if none exist
+    const supCount = await safeQuery(client, 'SELECT COUNT(*)::int as cnt FROM suppliers WHERE company_id = 1;', []);
+    if (supCount && supCount.rows && supCount.rows[0].cnt === 0) {
+      const defaultSuppliers = [
+        { name: 'Arokya Milk (Hatsun Agro)', code: 'SUP-AROKYA', contact_person: 'Plant Dispatch Manager', phone: '9840012345' },
+        { name: "Cavin's (Cavinkare Dairy)", code: 'SUP-CAVINS', contact_person: 'Dairy Area Executive', phone: '9840023456' },
+        { name: 'Dodla Dairy Plant', code: 'SUP-DODLA', contact_person: 'Logistics Supervisor', phone: '9840034567' },
+        { name: 'Thirumala Milk', code: 'SUP-THIRUMALA', contact_person: 'Sales Depot Head', phone: '9840045678' },
+        { name: 'Heritage Foods Depot', code: 'SUP-HERITAGE', contact_person: 'Supply Incharge', phone: '9840056789' },
+        { name: 'Nandini Dairy Plant', code: 'SUP-NANDINI', contact_person: 'Route Incharge', phone: '9840067890' }
+      ];
+      for (const s of defaultSuppliers) {
+        await safeQuery(client, 
+          'INSERT INTO suppliers (company_id, name, code, contact_person, phone, is_active) VALUES ($1, $2, $3, $4, $5, TRUE)',
+          [1, s.name, s.code, s.contact_person, s.phone],
+          `seed supplier ${s.name}`
+        );
+      }
+    }
 
     // 19. Settlements & Audit Logs
     await safeQuery(client, `

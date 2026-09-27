@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { 
   LayoutDashboard, ShoppingBag, Package, Users, Store, 
   Printer, Grid, LogOut, ShieldCheck, ChevronRight, Menu, X, Snowflake, TrendingUp, Tag, MapPin, Scale, RotateCcw,
-  DollarSign, AlertOctagon, AlertTriangle
+  DollarSign, AlertOctagon, AlertTriangle, Building2
 } from 'lucide-react';
 
 // Lazy loading heavy Admin & Owner views to reduce initial bundle size & optimize LCP
@@ -22,6 +22,7 @@ const OwnerDriverReconciliationView = lazy(() => import('./OwnerDriverReconcilia
 const OwnerDriverExpensesView = lazy(() => import('./OwnerDriverExpensesView').then(m => ({ default: m.OwnerDriverExpensesView })));
 const OwnerDamagePiecesView = lazy(() => import('./OwnerDamagePiecesView').then(m => ({ default: m.OwnerDamagePiecesView })));
 const OwnerMissingPiecesView = lazy(() => import('./OwnerMissingPiecesView').then(m => ({ default: m.OwnerMissingPiecesView })));
+const OwnerSuppliersView = lazy(() => import('./OwnerSuppliersView').then(m => ({ default: m.OwnerSuppliersView })));
 
 const TabLoadingFallback = () => (
   <div className="h-64 w-full flex flex-col items-center justify-center gap-2 bg-white rounded-xl shadow-sm border border-slate-200 p-8">
@@ -38,6 +39,7 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
     { id: 'users', label: 'Users Master', icon: <ShieldCheck className="w-5 h-5 text-indigo-400" /> },
+    { id: 'suppliers', label: 'Companies & Inward 🏭', icon: <Building2 className="w-5 h-5 text-sky-400" /> },
     { id: 'villages', label: 'Villages Master 📍', icon: <MapPin className="w-5 h-5 text-amber-400" /> },
     { id: 'shops', label: 'Shops & Dues', icon: <Store className="w-5 h-5" /> },
     { id: 'products', label: 'Products & Rates 📦', icon: <Package className="w-5 h-5 text-emerald-400" /> },
@@ -167,6 +169,11 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
           {/* USERS MASTER TAB */}
           {activeTab === 'users' && (
             <UsersMaster />
+          )}
+
+          {/* COMPANIES & INWARD MASTER TAB */}
+          {activeTab === 'suppliers' && (
+            <OwnerSuppliersView />
           )}
 
           {/* PRODUCTS & RATES MASTER TAB */}

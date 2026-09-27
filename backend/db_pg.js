@@ -985,15 +985,27 @@ export async function receiveStock(cid, data, actorUserId) {
   const client = await pool.connect();
   try {
     await client.query(`
+      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS supplier_id INTEGER;
+      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS supplier_name VARCHAR(150);
+      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS rate NUMERIC(10,2) DEFAULT 0.00;
+      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS total_amount NUMERIC(12,2) DEFAULT 0.00;
       ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS reference VARCHAR(255);
       ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS received_by VARCHAR(255);
       ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS notes TEXT;
     `).catch(() => {});
     await client.query('BEGIN');
     const items = data.items || [{ product_id: data.product_id, quantity: data.quantity, unit: data.unit }];
-    const reference = data.reference || data.dealer_name || null;
-    const received_by = data.received_by || data.dealer_name || 'Store Keeper';
-    const notes = data.notes || (data.dealer_name ? `Supplier: ${data.dealer_name}` : null);
+    const supplier_id = data.supplier_id ? Number(data.supplier_id) : null;
+    let supplier_name = data.supplier_name || data.dealer_name || null;
+
+    if (supplier_id && !supplier_name) {
+      const sRes = await client.query('SELECT name FROM suppliers WHERE id=$1 AND company_id=$2', [supplier_id, cid]);
+      if (sRes.rows.length > 0) supplier_name = sRes.rows[0].name;
+    }
+
+    const reference = data.reference || supplier_name || data.dealer_name || null;
+    const received_by = data.received_by || 'Store Keeper';
+    const notes = data.notes || (supplier_name ? `Supplier: ${supplier_name}` : null);
     const results = [];
     for (const item of items) {
       const qty = Number(item.quantity || item.qty_units);
@@ -1006,24 +1018,26 @@ export async function receiveStock(cid, data, actorUserId) {
       if (prod.is_active === false || prod.is_active === 0) {
         throw new Error('Cannot receive stock for an inactive product.');
       }
+      const itemRate = Number(item.rate || prod.purchase_price || 0);
+      const itemTotal = itemRate * qty;
       const uRes = await client.query('UPDATE products SET warehouse_stock_units=warehouse_stock_units+$1, updated_at=NOW() WHERE id=$2 RETURNING *', [qty, pid]);
       const movNo = 'MOV-IN-' + Date.now() + '-' + Math.floor(Math.random()*1000);
       let movRes;
       try {
         movRes = await client.query(
-          'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, qty_units, unit, reference, received_by, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-          [cid, movNo, 'INWARD', pid, prod.display_name, qty, item.unit || prod.selling_unit, reference, received_by, notes]
+          'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, supplier_id, supplier_name, qty_units, unit, rate, total_amount, reference, received_by, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
+          [cid, movNo, 'INWARD', pid, prod.display_name, supplier_id, supplier_name, qty, item.unit || prod.selling_unit, itemRate, itemTotal, reference, received_by, notes]
         );
       } catch (colErr) {
         movRes = await client.query(
-          'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, qty_units, unit, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-          [cid, movNo, 'INWARD', pid, prod.display_name, qty, item.unit || prod.selling_unit, notes || reference]
+          'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, qty_units, unit, reference, received_by, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+          [cid, movNo, 'INWARD', pid, prod.display_name, qty, item.unit || prod.selling_unit, reference, received_by, notes]
         );
       }
       results.push({ product: uRes.rows[0], movement: movRes.rows[0] });
     }
     await client.query('COMMIT');
-    await auditLog({ companyId: cid, actorUserId, action: 'STOCK_RECEIVED', entityType: 'inventory_movements', metadata: { itemsCount: items.length, reference } });
+    await auditLog({ companyId: cid, actorUserId, action: 'STOCK_RECEIVED', entityType: 'inventory_movements', metadata: { itemsCount: items.length, supplier_id, supplier_name, reference } });
     return { success: true, message: 'Stock received successfully', results };
   } catch (err) {
     await client.query('ROLLBACK');
@@ -6690,4 +6704,275 @@ export async function getExportData(cid, exportType, filters = {}) {
   }
 
   throw new Error(`Unsupported export type: "${exportType}". Supported types: sales, inventory, damages, reconciliation, expenses, driver_performance, route_performance, shop_performance.`);
+}
+
+// ============================================================
+// SUPPLIERS & PRODUCTION COMPANIES MODULE
+// ============================================================
+
+export async function getSuppliers(cid, query = {}) {
+  let sql = 'SELECT * FROM suppliers WHERE company_id = $1';
+  const params = [cid];
+
+  if (query.active_only === 'true' || query.active_only === true) {
+    sql += ' AND is_active = TRUE';
+  }
+  if (query.search) {
+    params.push(`%${query.search.trim()}%`);
+    sql += ` AND (name ILIKE $${params.length} OR code ILIKE $${params.length} OR contact_person ILIKE $${params.length} OR phone ILIKE $${params.length})`;
+  }
+
+  sql += ' ORDER BY name ASC';
+  const res = await pool.query(sql, params);
+  return res.rows;
+}
+
+export async function createSupplier(cid, data, actorUserId) {
+  if (!data.name || !data.name.trim()) {
+    throw new Error('Company/Supplier name is required');
+  }
+
+  const name = data.name.trim();
+  const code = data.code ? data.code.trim().toUpperCase() : `SUP-${Date.now().toString().slice(-4)}`;
+  const contact_person = data.contact_person ? data.contact_person.trim() : null;
+  const phone = data.phone ? data.phone.trim() : null;
+  const email = data.email ? data.email.trim() : null;
+  const address = data.address ? data.address.trim() : null;
+  const gstin = data.gstin ? data.gstin.trim().toUpperCase() : null;
+  const notes = data.notes ? data.notes.trim() : null;
+
+  const res = await pool.query(
+    `INSERT INTO suppliers (company_id, name, code, contact_person, phone, email, address, gstin, notes, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE)
+     RETURNING *`,
+    [cid, name, code, contact_person, phone, email, address, gstin, notes]
+  );
+
+  const supplier = res.rows[0];
+  await auditLog({ companyId: cid, actorUserId, action: 'SUPPLIER_CREATED', entityType: 'suppliers', entityId: supplier.id, metadata: { name, code } });
+  return { success: true, message: 'Production Company/Supplier added successfully', supplier };
+}
+
+export async function updateSupplier(cid, id, data, actorUserId) {
+  const sRes = await pool.query('SELECT * FROM suppliers WHERE id = $1 AND company_id = $2', [id, cid]);
+  if (sRes.rows.length === 0) throw new Error('Supplier not found');
+
+  const fields = [];
+  const params = [id, cid];
+
+  if (data.name !== undefined) {
+    params.push(data.name.trim());
+    fields.push(`name = $${params.length}`);
+  }
+  if (data.code !== undefined) {
+    params.push(data.code.trim().toUpperCase());
+    fields.push(`code = $${params.length}`);
+  }
+  if (data.contact_person !== undefined) {
+    params.push(data.contact_person ? data.contact_person.trim() : null);
+    fields.push(`contact_person = $${params.length}`);
+  }
+  if (data.phone !== undefined) {
+    params.push(data.phone ? data.phone.trim() : null);
+    fields.push(`phone = $${params.length}`);
+  }
+  if (data.email !== undefined) {
+    params.push(data.email ? data.email.trim() : null);
+    fields.push(`email = $${params.length}`);
+  }
+  if (data.address !== undefined) {
+    params.push(data.address ? data.address.trim() : null);
+    fields.push(`address = $${params.length}`);
+  }
+  if (data.gstin !== undefined) {
+    params.push(data.gstin ? data.gstin.trim().toUpperCase() : null);
+    fields.push(`gstin = $${params.length}`);
+  }
+  if (data.notes !== undefined) {
+    params.push(data.notes ? data.notes.trim() : null);
+    fields.push(`notes = $${params.length}`);
+  }
+  if (data.is_active !== undefined) {
+    params.push(Boolean(data.is_active));
+    fields.push(`is_active = $${params.length}`);
+  }
+
+  fields.push('updated_at = NOW()');
+
+  const sql = `UPDATE suppliers SET ${fields.join(', ')} WHERE id = $1 AND company_id = $2 RETURNING *`;
+  const res = await pool.query(sql, params);
+  const supplier = res.rows[0];
+
+  await auditLog({ companyId: cid, actorUserId, action: 'SUPPLIER_UPDATED', entityType: 'suppliers', entityId: id, metadata: data });
+  return { success: true, message: 'Supplier updated successfully', supplier };
+}
+
+export async function deleteSupplier(cid, id, actorUserId) {
+  const sRes = await pool.query('SELECT * FROM suppliers WHERE id = $1 AND company_id = $2', [id, cid]);
+  if (sRes.rows.length === 0) throw new Error('Supplier not found');
+
+  // Soft delete / toggle active
+  await pool.query('UPDATE suppliers SET is_active = FALSE, updated_at = NOW() WHERE id = $1 AND company_id = $2', [id, cid]);
+  await auditLog({ companyId: cid, actorUserId, action: 'SUPPLIER_DEACTIVATED', entityType: 'suppliers', entityId: id });
+  return { success: true, message: 'Supplier deactivated successfully' };
+}
+
+export async function getSupplierInwardStockReport(cid, filters = {}) {
+  let where = ["im.company_id = $1", "im.movement_type = 'INWARD'"];
+  const params = [cid];
+
+  if (filters.supplier_id && filters.supplier_id !== 'ALL') {
+    params.push(Number(filters.supplier_id));
+    where.push(`im.supplier_id = $${params.length}`);
+  }
+
+  if (filters.supplier_name && filters.supplier_name !== 'ALL') {
+    params.push(`%${filters.supplier_name.trim()}%`);
+    where.push(`(im.supplier_name ILIKE $${params.length} OR im.reference ILIKE $${params.length})`);
+  }
+
+  if (filters.date) {
+    params.push(filters.date);
+    where.push(`(im.movement_date = $${params.length} OR im.created_at::date = $${params.length})`);
+  } else if (filters.start_date && filters.end_date) {
+    params.push(filters.start_date, filters.end_date);
+    where.push(`(im.movement_date BETWEEN $${params.length - 1} AND $${params.length} OR im.created_at::date BETWEEN $${params.length - 1} AND $${params.length})`);
+  } else if (filters.period) {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    if (filters.period === 'TODAY') {
+      params.push(todayStr);
+      where.push(`(im.movement_date = $${params.length} OR im.created_at::date = $${params.length})`);
+    } else if (filters.period === 'YESTERDAY') {
+      const y = new Date(now);
+      y.setDate(now.getDate() - 1);
+      const yStr = y.toISOString().split('T')[0];
+      params.push(yStr);
+      where.push(`(im.movement_date = $${params.length} OR im.created_at::date = $${params.length})`);
+    } else if (filters.period === 'THIS_WEEK') {
+      const startOfWeek = new Date(now);
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      startOfWeek.setDate(diff);
+      const sStr = startOfWeek.toISOString().split('T')[0];
+      params.push(sStr, todayStr);
+      where.push(`(im.movement_date BETWEEN $${params.length - 1} AND $${params.length} OR im.created_at::date BETWEEN $${params.length - 1} AND $${params.length})`);
+    } else if (filters.period === 'THIS_MONTH') {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const sStr = startOfMonth.toISOString().split('T')[0];
+      params.push(sStr, todayStr);
+      where.push(`(im.movement_date BETWEEN $${params.length - 1} AND $${params.length} OR im.created_at::date BETWEEN $${params.length - 1} AND $${params.length})`);
+    }
+  }
+
+  const whereClause = where.join(' AND ');
+
+  // 1. Raw Inward Movement Records
+  const recordsRes = await pool.query(
+    `SELECT 
+       im.id,
+       im.movement_no,
+       im.product_id,
+       COALESCE(im.product_name, p.display_name, p.name, 'Stock Item') as product_name,
+       COALESCE(p.selling_unit, im.unit, 'Tray') as unit,
+       COALESCE(p.pieces_per_unit, 20) as pieces_per_unit,
+       im.supplier_id,
+       COALESCE(im.supplier_name, s.name, im.reference, 'Direct Supplier') as supplier_name,
+       im.qty_units,
+       im.rate,
+       im.total_amount,
+       im.received_by,
+       im.reference,
+       im.notes,
+       COALESCE(im.movement_date, im.created_at::date) as movement_date,
+       im.movement_time,
+       im.created_at
+     FROM inventory_movements im
+     LEFT JOIN products p ON p.id = im.product_id
+     LEFT JOIN suppliers s ON s.id = im.supplier_id
+     WHERE ${whereClause}
+     ORDER BY im.created_at DESC`,
+    params
+  );
+
+  const records = recordsRes.rows;
+
+  // 2. Aggregate Product-wise Totals
+  const productMap = new Map();
+  let totalUnits = 0;
+  let totalPieces = 0;
+  let totalValuation = 0;
+
+  records.forEach(r => {
+    const qty = Number(r.qty_units || 0);
+    const ppu = Number(r.pieces_per_unit || 1);
+    const pcs = qty * ppu;
+    const amount = Number(r.total_amount || 0);
+
+    totalUnits += qty;
+    totalPieces += pcs;
+    totalValuation += amount;
+
+    const pKey = r.product_id ? `p_${r.product_id}` : `name_${r.product_name}`;
+    if (!productMap.has(pKey)) {
+      productMap.set(pKey, {
+        product_id: r.product_id,
+        product_name: r.product_name,
+        unit: r.unit,
+        pieces_per_unit: ppu,
+        total_units: 0,
+        total_pieces: 0,
+        total_amount: 0,
+        batches_count: 0
+      });
+    }
+
+    const pEntry = productMap.get(pKey);
+    pEntry.total_units += qty;
+    pEntry.total_pieces += pcs;
+    pEntry.total_amount += amount;
+    pEntry.batches_count += 1;
+  });
+
+  const productTotals = Array.from(productMap.values()).sort((a, b) => b.total_units - a.total_units);
+
+  // 3. Company-wise aggregate summary
+  const supplierMap = new Map();
+  records.forEach(r => {
+    const sName = r.supplier_name || 'Direct Supplier';
+    if (!supplierMap.has(sName)) {
+      supplierMap.set(sName, {
+        supplier_id: r.supplier_id,
+        supplier_name: sName,
+        total_units: 0,
+        total_pieces: 0,
+        total_amount: 0,
+        receipts_count: 0
+      });
+    }
+    const sEntry = supplierMap.get(sName);
+    const qty = Number(r.qty_units || 0);
+    const ppu = Number(r.pieces_per_unit || 1);
+    sEntry.total_units += qty;
+    sEntry.total_pieces += qty * ppu;
+    sEntry.total_amount += Number(r.total_amount || 0);
+    sEntry.receipts_count += 1;
+  });
+
+  const supplierTotals = Array.from(supplierMap.values()).sort((a, b) => b.total_units - a.total_units);
+
+  return {
+    success: true,
+    kpis: {
+      total_units: totalUnits,
+      total_pieces: totalPieces,
+      total_valuation: totalValuation,
+      total_receipts: records.length,
+      distinct_products: productTotals.length,
+      distinct_suppliers: supplierTotals.length
+    },
+    product_breakdown: productTotals,
+    supplier_breakdown: supplierTotals,
+    records: records
+  };
 }

@@ -38,6 +38,7 @@ export const AppProvider = ({ children }) => {
   const [employees, setEmployees] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [routes, setRoutes] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [freezers, setFreezers] = useState(() => {
     try {
       const saved = localStorage.getItem('avs_freezers_cache');
@@ -100,7 +101,7 @@ export const AppProvider = ({ children }) => {
       setLoading(true);
       const stockEmpId = currentUser?.employee_id || currentUser?.id;
       const isOwner = (currentUser?.role || '').toUpperCase() === 'OWNER' || (activeRole || '').toUpperCase() === 'OWNER';
-      const [shopsRes, villagesRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes, empRes, driversRes, freezerModelsRes, freezersRes] = await Promise.all([
+      const [shopsRes, villagesRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes, empRes, driversRes, freezerModelsRes, freezersRes, suppliersRes] = await Promise.all([
         apiFetch(`${API_URL}/shops`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/villages`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/products`).then(r => r.ok ? r.json() : []).catch(() => []),
@@ -115,7 +116,8 @@ export const AppProvider = ({ children }) => {
         apiFetch(`${API_URL}/employees`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/drivers`).then(r => r.ok ? r.json() : []).catch(() => []),
         apiFetch(`${API_URL}/freezer-models`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/freezers`).then(r => r.ok ? r.json() : []).catch(() => [])
+        apiFetch(`${API_URL}/freezers`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/suppliers`).then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
 
       setShops(Array.isArray(shopsRes) ? shopsRes : []);
@@ -132,6 +134,7 @@ export const AppProvider = ({ children }) => {
       setEmployees(Array.isArray(empRes) ? empRes : []);
       setDrivers(Array.isArray(driversRes) ? driversRes : []);
       setFreezerModels(Array.isArray(freezerModelsRes) ? freezerModelsRes : []);
+      setSuppliers(Array.isArray(suppliersRes) ? suppliersRes : []);
       
       // Merge remote freezers with local freezers safely
       setFreezers(prev => {
@@ -794,6 +797,93 @@ export const AppProvider = ({ children }) => {
       }
     } catch (err) {
       return { success: false, message: "Error saving settlement" };
+    }
+  };
+
+  const fetchSuppliers = async () => {
+    try {
+      const res = await apiFetch(`${API_URL}/suppliers`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setSuppliers(data);
+        return data;
+      }
+      return [];
+    } catch (err) {
+      console.error("Error fetching suppliers:", err);
+      return [];
+    }
+  };
+
+  const addSupplier = async (supplierData) => {
+    try {
+      const res = await apiFetch(`${API_URL}/suppliers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(supplierData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchData();
+        return { success: true, supplier: data.supplier, message: data.message };
+      }
+      return { success: false, message: data.message || "Failed to add company" };
+    } catch (err) {
+      return { success: false, message: err.message || "Network error" };
+    }
+  };
+
+  const updateSupplier = async (supplierId, supplierData) => {
+    try {
+      const res = await apiFetch(`${API_URL}/suppliers/${supplierId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(supplierData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchData();
+        return { success: true, supplier: data.supplier, message: data.message };
+      }
+      return { success: false, message: data.message || "Failed to update company" };
+    } catch (err) {
+      return { success: false, message: err.message || "Network error" };
+    }
+  };
+
+  const deleteSupplier = async (supplierId) => {
+    try {
+      const res = await apiFetch(`${API_URL}/suppliers/${supplierId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchData();
+        return { success: true, message: data.message };
+      }
+      return { success: false, message: data.message || "Failed to delete company" };
+    } catch (err) {
+      return { success: false, message: err.message || "Network error" };
+    }
+  };
+
+  const fetchSupplierInwardReport = async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.supplier_id && filters.supplier_id !== 'ALL') params.append('supplier_id', filters.supplier_id);
+      if (filters.supplier_name && filters.supplier_name !== 'ALL') params.append('supplier_name', filters.supplier_name);
+      if (filters.start_date && filters.start_date !== 'ALL') params.append('start_date', filters.start_date);
+      if (filters.end_date && filters.end_date !== 'ALL') params.append('end_date', filters.end_date);
+      if (filters.date && filters.date !== 'ALL') params.append('date', filters.date);
+
+      const res = await apiFetch(`${API_URL}/suppliers/inward-report?${params.toString()}`);
+      if (res.ok) {
+        return await res.json();
+      }
+      return { records: [], summary: {}, product_totals: [] };
+    } catch (err) {
+      console.error("Error fetching supplier inward report:", err);
+      return { records: [], summary: {}, product_totals: [] };
     }
   };
 
@@ -1698,6 +1788,13 @@ export const AppProvider = ({ children }) => {
       setEmployees,
       drivers,
       setDrivers,
+      suppliers,
+      setSuppliers,
+      fetchSuppliers,
+      addSupplier,
+      updateSupplier,
+      deleteSupplier,
+      fetchSupplierInwardReport,
       stockMovements,
       apiFetch,
       API_URL,
