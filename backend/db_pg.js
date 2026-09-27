@@ -6711,8 +6711,9 @@ export async function getExportData(cid, exportType, filters = {}) {
 // ============================================================
 
 export async function getSuppliers(cid, query = {}) {
-  let sql = 'SELECT * FROM suppliers WHERE company_id = $1';
-  const params = [cid];
+  const companyId = cid || 1;
+  let sql = 'SELECT * FROM suppliers WHERE (company_id = $1 OR company_id = 1 OR company_id IS NULL)';
+  const params = [companyId];
 
   if (query.active_only === 'true' || query.active_only === true) {
     sql += ' AND is_active = TRUE';
