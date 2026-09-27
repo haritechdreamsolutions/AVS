@@ -12,6 +12,7 @@ export const OwnerSuppliersView = () => {
   const { 
     suppliers = [], 
     products = [], 
+    stockMovements = [],
     companyInfo, 
     addSupplier, 
     updateSupplier, 
@@ -98,7 +99,122 @@ export const OwnerSuppliersView = () => {
     }
   };
 
-  // Load Inward Report from API
+  // Selected supplier object
+  const currentSupplier = useMemo(() => {
+    if (selectedSupplierId === 'ALL') return null;
+    return suppliers.find(s => String(s.id) === String(selectedSupplierId));
+  }, [suppliers, selectedSupplierId]);
+
+  // Helper to compute inward data from client-side stockMovements in real-time
+  const computeInwardFromMovements = () => {
+    const inwardMovs = (stockMovements || []).filter(m => {
+      const type = (m.movement_type || m.type || '').toUpperCase();
+      if (type !== 'INWARD') return false;
+
+      // Match supplier if not ALL
+      if (selectedSupplierId && selectedSupplierId !== 'ALL') {
+        const matchesId = String(m.supplier_id) === String(selectedSupplierId);
+        const suppObj = suppliers.find(s => String(s.id) === String(selectedSupplierId));
+        const matchesName = suppObj && (
+          (m.supplier_name && m.supplier_name.toLowerCase() === suppObj.name.toLowerCase()) ||
+          (m.reference && m.reference.toLowerCase().includes(suppObj.name.toLowerCase())) ||
+          (m.notes && m.notes.toLowerCase().includes(suppObj.name.toLowerCase()))
+        );
+        if (!matchesId && !matchesName) return false;
+      }
+
+      // Date range filter
+      const movDate = (m.movement_date || m.created_at || '').split('T')[0];
+      if (startDate && movDate && movDate < startDate) return false;
+      if (endDate && movDate && movDate > endDate) return false;
+
+      return true;
+    });
+
+    let totalUnits = 0;
+    let totalValuation = 0;
+    const prodMap = new Map();
+    const suppSet = new Set();
+
+    const formattedRecords = inwardMovs.map(m => {
+      const prod = products.find(p => p.id === Number(m.product_id) || p.name === m.product_name || p.display_name === m.product_name);
+      const supp = suppliers.find(s => String(s.id) === String(m.supplier_id) || s.name === m.supplier_name);
+      const qty = Number(m.qty_units || m.quantity || m.quantity_change || 0);
+      const rate = Number(m.rate || (supp?.product_rates?.[m.product_id]) || (prod ? (supp?.product_rates?.[prod.id]) : 0) || prod?.purchase_price || 0);
+      const total = Number(m.total_amount || (qty * rate));
+      const sName = m.supplier_name || supp?.name || m.reference || m.notes?.replace('Supplier: ', '')?.replace('Dealer Inward: ', '') || 'Direct Supplier';
+      const pName = m.product_name || prod?.display_name || prod?.name || 'Stock Item';
+      const unit = m.unit || prod?.selling_unit || 'Tray';
+
+      totalUnits += qty;
+      totalValuation += total;
+      suppSet.add(sName);
+
+      const pKey = m.product_id ? `p_${m.product_id}` : `name_${pName}`;
+      if (!prodMap.has(pKey)) {
+        prodMap.set(pKey, {
+          product_id: m.product_id || prod?.id,
+          product_name: pName,
+          unit: unit,
+          selling_unit: unit,
+          total_units: 0,
+          total_qty: 0,
+          total_received_quantity: 0,
+          total_amount: 0,
+          total_received_amount: 0,
+          batches_count: 0,
+          batch_count: 0
+        });
+      }
+      const pEntry = prodMap.get(pKey);
+      pEntry.total_units += qty;
+      pEntry.total_qty += qty;
+      pEntry.total_received_quantity += qty;
+      pEntry.total_amount += total;
+      pEntry.total_received_amount += total;
+      pEntry.batches_count += 1;
+      pEntry.batch_count += 1;
+
+      return {
+        id: m.id,
+        movement_no: m.movement_no,
+        product_id: m.product_id || prod?.id,
+        product_name: pName,
+        unit: unit,
+        selling_unit: unit,
+        supplier_id: m.supplier_id || supp?.id,
+        supplier_name: sName,
+        qty_units: qty,
+        quantity: qty,
+        quantity_change: qty,
+        rate: rate,
+        total_amount: total,
+        received_by: m.received_by || m.created_by_name || 'Store Keeper',
+        created_by_name: m.received_by || m.created_by_name || 'Store Keeper',
+        reference: m.reference,
+        notes: m.notes,
+        created_at: m.created_at || new Date().toISOString()
+      };
+    });
+
+    const productTotals = Array.from(prodMap.values()).map(pt => ({
+      ...pt,
+      avg_rate: pt.total_units > 0 ? (pt.total_amount / pt.total_units) : 0
+    })).sort((a, b) => b.total_units - a.total_units);
+
+    return {
+      records: formattedRecords,
+      summary: {
+        total_inward_qty: totalUnits,
+        total_batches: formattedRecords.length,
+        total_companies: suppSet.size || (selectedSupplierId === 'ALL' ? suppliers.length : 1),
+        total_valuation: totalValuation
+      },
+      product_totals: productTotals
+    };
+  };
+
+  // Load Inward Report from API or Local Movement Cache
   const loadInwardReport = async () => {
     setLoadingReport(true);
     try {
@@ -108,15 +224,21 @@ export const OwnerSuppliersView = () => {
         end_date: endDate || undefined
       };
       const data = await fetchSupplierInwardReport(filters);
-      if (data) {
+      if (data && Array.isArray(data.records) && data.records.length > 0) {
         setReportData({
-          records: data.records || [],
+          records: data.records,
           summary: data.summary || { total_inward_qty: 0, total_batches: 0, total_companies: 0, total_valuation: 0 },
           product_totals: data.product_totals || []
         });
+      } else {
+        // Compute from client-side stock movements
+        const localData = computeInwardFromMovements();
+        setReportData(localData);
       }
     } catch (err) {
       console.error('Failed to load supplier inward report', err);
+      const localData = computeInwardFromMovements();
+      setReportData(localData);
     } finally {
       setLoadingReport(false);
     }
@@ -124,13 +246,7 @@ export const OwnerSuppliersView = () => {
 
   useEffect(() => {
     loadInwardReport();
-  }, [selectedSupplierId, startDate, endDate]);
-
-  // Selected supplier object
-  const currentSupplier = useMemo(() => {
-    if (selectedSupplierId === 'ALL') return null;
-    return suppliers.find(s => String(s.id) === String(selectedSupplierId));
-  }, [suppliers, selectedSupplierId]);
+  }, [selectedSupplierId, startDate, endDate, stockMovements]);
 
   // Filtered inward records by search term
   const filteredRecords = useMemo(() => {

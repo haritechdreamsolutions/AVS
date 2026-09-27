@@ -999,7 +999,7 @@ export async function receiveStock(cid, data, actorUserId) {
     let supplier_name = data.supplier_name || data.dealer_name || null;
 
     if (supplier_id && !supplier_name) {
-      const sRes = await client.query('SELECT name FROM suppliers WHERE id=$1 AND company_id=$2', [supplier_id, cid]);
+      const sRes = await client.query('SELECT name FROM suppliers WHERE id=$1 AND (company_id=$2 OR company_id=1 OR company_id IS NULL)', [supplier_id, cid]);
       if (sRes.rows.length > 0) supplier_name = sRes.rows[0].name;
     }
 
@@ -1012,7 +1012,7 @@ export async function receiveStock(cid, data, actorUserId) {
       const pid = Number(item.product_id);
       if (!qty || qty <= 0) throw new Error('Quantity must be greater than 0');
       if (!pid) throw new Error('Valid product_id is required');
-      const pRes = await client.query('SELECT * FROM products WHERE id=$1 AND company_id=$2 FOR UPDATE', [pid, cid]);
+      const pRes = await client.query('SELECT * FROM products WHERE id=$1 AND (company_id=$2 OR company_id=1 OR company_id IS NULL) FOR UPDATE', [pid, cid]);
       if (pRes.rows.length === 0) throw new Error('Product not found');
       const prod = pRes.rows[0];
       if (prod.is_active === false || prod.is_active === 0) {
@@ -3239,12 +3239,12 @@ export async function saveSettlement(cid, d) {
 // ====== INVENTORY MOVEMENTS ======
 export async function getStockMovements(cid,f) {
   if(!f) f={};
-  let sql = 'SELECT * FROM inventory_movements WHERE company_id=$1';
-  const params = [cid]; let idx = 2;
+  let sql = 'SELECT * FROM inventory_movements WHERE (company_id=$1 OR company_id=1 OR company_id IS NULL)';
+  const params = [cid || 1]; let idx = 2;
   if(f.movement_type) { sql += ' AND movement_type=$'+idx++; params.push(f.movement_type); }
   if(f.employee_id) { sql += ' AND employee_id=$'+idx++; params.push(f.employee_id); }
   if(f.product_id) { sql += ' AND product_id=$'+idx++; params.push(f.product_id); }
-  sql += ' ORDER BY created_at DESC LIMIT 200';
+  sql += ' ORDER BY created_at DESC LIMIT 500';
   return await queryAll(sql, params);
 }
 
