@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#0f172a" />
+    <meta name="theme-color" content="#0b2545" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -22,6 +22,21 @@
       tailwind.config = {
         theme: {
           extend: {
+            colors: {
+              milk: {
+                50: '#f8fcff',
+                100: '#eef7ff',
+                200: '#dbeefe',
+                300: '#bae6fd',
+                400: '#7dd3fc',
+                500: '#38bdf8',
+                600: '#0284c7',
+                700: '#0369a1',
+                800: '#075985',
+                900: '#0c4a6e',
+                950: '#0b2545'
+              }
+            },
             fontFamily: {
               sans: ['Outfit', 'Inter', 'sans-serif'],
               mono: ['Space Mono', 'monospace'],
@@ -33,7 +48,7 @@
     
     <title>AVS AGENCIES - AVS Management System</title>
   </head>
-  <body class="bg-slate-50 text-slate-900 antialiased selection:bg-blue-600 selection:text-white">
+  <body style="background: linear-gradient(135deg, #bfe0fb 0%, #daf0ff 30%, #f0f7ff 60%, #b8defc 100%) !important; color: #002244;" class="milk-bg-gradient antialiased selection:bg-sky-600 selection:text-white">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

@@ -18,10 +18,10 @@ const DamageEntryModal = lazy(() => import('./components/Employee/DamageEntryMod
 const EndOfDayModal = lazy(() => import('./components/Employee/EndOfDayModal').then(m => ({ default: m.EndOfDayModal })));
 
 const LoadingFallback = () => (
-  <div className="h-full w-full flex items-center justify-center p-8 bg-slate-50">
+  <div className="h-full w-full flex items-center justify-center p-8 bg-transparent">
     <div className="flex flex-col items-center gap-3">
-      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
-      <span className="text-sm font-medium text-slate-600">Loading module...</span>
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-sky-600"></div>
+      <span className="text-sm font-bold text-sky-900">Loading module...</span>
     </div>
   </div>
 );
@@ -89,7 +89,11 @@ export default function App() {
   };
 
   if (isAuthChecking) {
-    return <div className="h-screen w-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
+    return (
+      <div className="h-screen w-screen flex items-center justify-center milk-bg-gradient">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600"></div>
+      </div>
+    );
   }
 
   if (!currentUser) {
@@ -102,7 +106,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden flex flex-col bg-slate-50 text-slate-800">
+    <div className="h-[100dvh] min-h-[100dvh] w-full overflow-hidden flex flex-col milk-bg-gradient text-[#002244]">
       
       <Toaster position="top-right" richColors />
 
@@ -173,14 +177,14 @@ export default function App() {
 
             {/* Employee / Driver Bottom Nav */}
             {(activeRole === 'EMPLOYEE' || activeRole === 'DRIVER') && (
-              <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/80 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] px-4 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+              <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-sky-200/80 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] px-4 shadow-[0_-4px_20px_rgba(2,132,199,0.08)]">
                 <div className="max-w-md mx-auto flex items-center justify-around">
                   <button
                     onClick={() => setEmpScreen('home')}
                     className={`flex flex-col items-center justify-center gap-1 font-extrabold text-[11px] py-1 px-3 rounded-2xl transition-all cursor-pointer min-w-[60px] min-h-[46px] ${
                       empScreen === 'home'
-                        ? 'text-blue-600 bg-blue-50/80 scale-105' 
-                        : 'text-slate-500 hover:text-slate-800'
+                        ? 'text-sky-700 bg-sky-100/90 shadow-xs scale-105' 
+                        : 'text-slate-500 hover:text-sky-900'
                     }`}
                   >
                     <Home className="w-5 h-5" />
@@ -191,8 +195,8 @@ export default function App() {
                     onClick={() => handleStartBilling()}
                     className={`flex flex-col items-center justify-center gap-1 font-extrabold text-[11px] py-1 px-3 rounded-2xl transition-all cursor-pointer min-w-[60px] min-h-[46px] ${
                       empScreen === 'billing' || empScreen === 'payment'
-                        ? 'text-blue-600 bg-blue-50/80 scale-105' 
-                        : 'text-slate-500 hover:text-slate-800'
+                        ? 'text-sky-700 bg-sky-100/90 shadow-xs scale-105' 
+                        : 'text-slate-500 hover:text-sky-900'
                     }`}
                   >
                     <Receipt className="w-5 h-5" />
@@ -203,8 +207,8 @@ export default function App() {
                     onClick={() => setEmpScreen('shop_select')}
                     className={`flex flex-col items-center justify-center gap-1 font-extrabold text-[11px] py-1 px-3 rounded-2xl transition-all cursor-pointer min-w-[60px] min-h-[46px] ${
                       empScreen === 'shop_select'
-                        ? 'text-blue-600 bg-blue-50/80 scale-105' 
-                        : 'text-slate-500 hover:text-slate-800'
+                        ? 'text-sky-700 bg-sky-100/90 shadow-xs scale-105' 
+                        : 'text-slate-500 hover:text-sky-900'
                     }`}
                   >
                     <Store className="w-5 h-5" />

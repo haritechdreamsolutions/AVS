@@ -65,29 +65,29 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
 
   return (
     <div 
-      className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans text-slate-900 focus:outline-none"
+      className="min-h-screen milk-bg-gradient flex items-center justify-center p-4 font-sans text-[#002244] focus:outline-none"
       onKeyDown={handleKeyDown}
       tabIndex={0}
     >
-      <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-6">
+      <div className="max-w-md w-full bg-white/95 backdrop-blur-xl border border-sky-200 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-6">
 
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 mx-auto flex items-center justify-center text-white font-black text-3xl shadow-xl">
+          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-sky-500 via-blue-600 to-indigo-600 mx-auto flex items-center justify-center text-white font-black text-3xl shadow-lg glow-blue">
             A
           </div>
-          <h1 className="text-2xl font-black tracking-wide text-slate-900 uppercase">
+          <h1 className="text-2xl font-black tracking-wide text-[#0b2545] uppercase">
             AVS AGENCIES
           </h1>
-          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">
+          <p className="text-xs text-sky-800 font-bold uppercase tracking-wider">
             AVS MANAGEMENT SYSTEM
           </p>
         </div>
 
         {/* Login ID Field */}
         <div className="space-y-1">
-          <label className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-            <User className="w-3 h-3" /> Login ID
+          <label className="text-xs font-extrabold text-sky-900 uppercase tracking-wider flex items-center gap-1">
+            <User className="w-3.5 h-3.5 text-sky-600" /> Login ID
           </label>
           <input
             type="text"
@@ -95,7 +95,7 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
             onChange={e => { setLoginId(e.target.value); setErrorMsg(''); }}
             onKeyDown={e => { if (e.key === 'Enter') handleLoginSubmit(); }}
             placeholder="Enter your Login ID (e.g. owner)"
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className="w-full bg-[#f0f8ff] border border-sky-200 rounded-xl px-4 py-3 text-sm font-bold text-[#0b2545] focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 placeholder:text-sky-400"
             autoFocus
             autoComplete="off"
           />
@@ -104,8 +104,8 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
         {/* PIN Entry */}
         <div className="space-y-3">
           <div className="text-center">
-            <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center justify-center gap-1">
-              <KeyRound className="w-3 h-3" /> Security PIN (4 Digits)
+            <span className="text-xs font-extrabold text-sky-900 uppercase tracking-wider flex items-center justify-center gap-1">
+              <KeyRound className="w-3.5 h-3.5 text-sky-600" /> Security PIN (4 Digits)
             </span>
             <div className="flex justify-center gap-3 mt-2">
               {[0, 1, 2, 3].map((idx) => (
@@ -113,8 +113,8 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
                   key={idx}
                   className={"w-12 h-12 rounded-2xl border-2 flex items-center justify-center text-xl font-black font-mono transition " + (
                     pin[idx]
-                      ? 'border-blue-600 bg-blue-50 text-blue-700 shadow-sm scale-105'
-                      : 'border-slate-200 bg-slate-50 text-slate-300'
+                      ? 'border-sky-600 bg-sky-100 text-sky-900 shadow-sm scale-105'
+                      : 'border-sky-200 bg-[#f0f8ff] text-sky-300'
                   )}
                 >
                   {pin[idx] ? '●' : ''}
@@ -136,7 +136,7 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
                 key={num}
                 type="button"
                 onClick={() => handlePinKey(String(num))}
-                className="w-full py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-black text-lg shadow-sm active:scale-95 transition"
+                className="w-full py-3 rounded-2xl bg-[#f0f7fc] hover:bg-sky-100 border border-sky-100 text-[#0b2545] font-black text-lg shadow-2xs active:scale-95 transition"
               >
                 {num}
               </button>
@@ -144,14 +144,14 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
             <button
               type="button"
               onClick={handleClearPin}
-              className="w-full py-3 rounded-2xl bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold text-xs shadow-sm active:scale-95 transition"
+              className="w-full py-3 rounded-2xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs shadow-2xs active:scale-95 transition"
             >
               Clear
             </button>
             <button
               type="button"
               onClick={() => handlePinKey('0')}
-              className="w-full py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-black text-lg shadow-sm active:scale-95 transition"
+              className="w-full py-3 rounded-2xl bg-[#f0f7fc] hover:bg-sky-100 border border-sky-100 text-[#0b2545] font-black text-lg shadow-2xs active:scale-95 transition"
             >
               0
             </button>
@@ -159,7 +159,7 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
               type="button"
               onClick={handleLoginSubmit}
               disabled={isLoading || pin.length !== 4}
-              className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-black text-xs shadow-sm active:scale-95 transition"
+              className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60 text-white font-black text-xs shadow-md active:scale-95 transition"
             >
               {isLoading ? '...' : 'Enter'}
             </button>
@@ -167,8 +167,8 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
         </div>
 
         {/* Hint */}
-        <p className="text-center text-xs text-slate-400 font-medium">
-          Owner login: ID = <span className="font-bold text-slate-600">owner</span> &nbsp;|&nbsp; PIN = <span className="font-bold text-slate-600">1234</span>
+        <p className="text-center text-xs text-sky-700 font-medium">
+          Owner login: ID = <span className="font-bold text-[#0b2545]">owner</span> &nbsp;|&nbsp; PIN = <span className="font-bold text-[#0b2545]">1234</span>
         </p>
 
       </div>

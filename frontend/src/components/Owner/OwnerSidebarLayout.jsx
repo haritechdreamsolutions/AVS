@@ -51,18 +51,18 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
   ];
 
   return (
-    <div className="h-full overflow-hidden bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900 w-full max-w-full">
+    <div className="h-full overflow-hidden milk-bg-gradient flex flex-col md:flex-row font-sans text-[#002244] w-full max-w-full">
       
       {/* Mobile Backdrop Overlay when Drawer is Open */}
       {sidebarOpen && (
         <div 
           onClick={() => setSidebarOpen(false)} 
-          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-30 md:hidden"
+          className="fixed inset-0 bg-[#0a192f]/60 backdrop-blur-sm z-30 md:hidden"
         />
       )}
 
       {/* Mobile Top Header Navigation */}
-      <header className="md:hidden bg-slate-900 text-white p-3 pt-[max(0.75rem,env(safe-area-inset-top))] px-4 flex items-center justify-between z-40 border-b border-slate-800 shadow-md">
+      <header className="md:hidden bg-[#0a192f] text-white p-3 pt-[max(0.75rem,env(safe-area-inset-top))] px-4 flex items-center justify-between z-40 border-b border-sky-950 shadow-md">
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -70,7 +70,7 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
           >
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
-          <span className="font-extrabold text-sm tracking-wide bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">
+          <span className="font-extrabold text-sm tracking-wide bg-gradient-to-r from-sky-400 via-cyan-300 to-indigo-300 bg-clip-text text-transparent">
             AVS AGENCIES
           </span>
         </div>
@@ -86,18 +86,18 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
 
       {/* Sidebar Component */}
       <aside className={`
-        fixed md:static inset-y-0 left-0 z-40 w-64 h-screen md:h-full max-h-screen bg-slate-900 text-slate-300 flex flex-col flex-shrink-0 transition-transform duration-300 ease-in-out shadow-2xl md:shadow-none select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]
+        fixed md:static inset-y-0 left-0 z-40 w-64 h-screen md:h-full max-h-screen bg-[#0a192f] text-slate-300 flex flex-col flex-shrink-0 transition-transform duration-300 ease-in-out shadow-2xl md:shadow-none select-none pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] border-r border-[#152e4d]
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
         {/* Top: Brand Logo & Company Title (Fixed) */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
+        <div className="p-4 border-b border-[#152e4d] flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center font-black text-white shadow-lg text-lg">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 via-blue-600 to-indigo-600 flex items-center justify-center font-black text-white shadow-lg text-lg glow-blue">
               AVS
             </div>
             <div>
               <h1 className="font-black text-[0.95rem] text-white tracking-wide leading-tight">AVS AGENCIES</h1>
-              <p className="text-[0.68rem] text-slate-400 font-extrabold uppercase tracking-wider">AVS MANAGEMENT SYSTEM</p>
+              <p className="text-[0.68rem] text-sky-400 font-extrabold uppercase tracking-wider">AVS MANAGEMENT SYSTEM</p>
             </div>
           </div>
           <button 
@@ -122,7 +122,7 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
                 className={`
                   w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs sm:text-[0.85rem] font-bold transition duration-200 cursor-pointer
                   ${isActive 
-                    ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md shadow-indigo-600/30' 
+                    ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-md shadow-sky-600/30' 
                     : 'hover:bg-slate-800/80 hover:text-white text-slate-300'}
                 `}
               >
@@ -137,13 +137,13 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
         </nav>
 
         {/* Bottom: Footer User Info & Logout (Always Pinned & Visible) */}
-        <div className="p-3 border-t border-slate-800 bg-slate-950/80 flex-shrink-0 space-y-2">
+        <div className="p-3 border-t border-[#152e4d] bg-[#071324] flex-shrink-0 space-y-2">
           <div className="flex items-center justify-between px-1">
             <div className="truncate">
               <p className="text-xs font-black text-white truncate">OWNER PORTAL</p>
-              <p className="text-[10px] text-slate-400 font-medium">Admin Control Panel</p>
+              <p className="text-[10px] text-sky-400/80 font-medium">Admin Control Panel</p>
             </div>
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
           </div>
 
           <button

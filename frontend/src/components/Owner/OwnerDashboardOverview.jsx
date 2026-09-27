@@ -237,62 +237,62 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
 
       {/* KPI Stat Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-        <div className="glass-card p-4 sm:p-5 rounded-2xl bg-white border-l-4 border-l-emerald-500 border border-slate-200 shadow-sm hover:border-emerald-300 transition flex flex-col justify-between min-h-[95px]">
-          <span className="text-[11px] sm:text-xs text-slate-500 font-extrabold uppercase tracking-wider block">
+        <div className="glass-card p-4 sm:p-5 rounded-2xl border-l-4 border-l-emerald-500 border border-sky-200 shadow-sm hover:border-emerald-400 transition flex flex-col justify-between min-h-[95px]">
+          <span className="text-[11px] sm:text-xs text-sky-900 font-extrabold uppercase tracking-wider block">
             {selectedPeriod.replace('_', ' ')} Sales
           </span>
-          <div className="font-mono font-black text-2xl sm:text-3xl text-slate-900 mt-1 leading-tight">
+          <div className="font-mono font-black text-2xl sm:text-3xl text-[#002244] mt-1 leading-tight">
             ₹{Number(kpis.gross_sales || 0).toLocaleString()}
           </div>
         </div>
 
-        <div className="glass-card p-4 sm:p-5 rounded-2xl bg-white border-l-4 border-l-blue-500 border border-slate-200 shadow-sm hover:border-blue-300 transition flex flex-col justify-between min-h-[95px]">
-          <span className="text-[11px] sm:text-xs text-slate-500 font-extrabold uppercase tracking-wider block">
+        <div className="glass-card p-4 sm:p-5 rounded-2xl border-l-4 border-l-sky-500 border border-sky-200 shadow-sm hover:border-sky-400 transition flex flex-col justify-between min-h-[95px]">
+          <span className="text-[11px] sm:text-xs text-sky-900 font-extrabold uppercase tracking-wider block">
             Cash Collection
           </span>
-          <div className="font-mono font-black text-2xl sm:text-3xl text-blue-600 mt-1 leading-tight">
+          <div className="font-mono font-black text-2xl sm:text-3xl text-sky-700 mt-1 leading-tight">
             ₹{Number(kpis.cash_collected || 0).toLocaleString()}
           </div>
         </div>
 
-        <div className="glass-card p-4 sm:p-5 rounded-2xl bg-white border-l-4 border-l-indigo-500 border border-slate-200 shadow-sm hover:border-indigo-300 transition flex flex-col justify-between min-h-[95px]">
-          <span className="text-[11px] sm:text-xs text-slate-500 font-extrabold uppercase tracking-wider block">
+        <div className="glass-card p-4 sm:p-5 rounded-2xl border-l-4 border-l-indigo-500 border border-sky-200 shadow-sm hover:border-indigo-400 transition flex flex-col justify-between min-h-[95px]">
+          <span className="text-[11px] sm:text-xs text-sky-900 font-extrabold uppercase tracking-wider block">
             GPay Collection
           </span>
-          <div className="font-mono font-black text-2xl sm:text-3xl text-indigo-600 mt-1 leading-tight">
+          <div className="font-mono font-black text-2xl sm:text-3xl text-indigo-700 mt-1 leading-tight">
             ₹{Number(kpis.gpay_collected || 0).toLocaleString()}
           </div>
         </div>
 
-        <div className="glass-card p-4 sm:p-5 rounded-2xl bg-white border-l-4 border-l-amber-500 border border-slate-200 shadow-sm hover:border-amber-300 transition flex flex-col justify-between min-h-[95px]">
-          <span className="text-[11px] sm:text-xs text-slate-500 font-extrabold uppercase tracking-wider block">
+        <div className="glass-card p-4 sm:p-5 rounded-2xl border-l-4 border-l-amber-500 border border-sky-200 shadow-sm hover:border-amber-400 transition flex flex-col justify-between min-h-[95px]">
+          <span className="text-[11px] sm:text-xs text-sky-900 font-extrabold uppercase tracking-wider block">
             Credit / Dues
           </span>
-          <div className="font-mono font-black text-2xl sm:text-3xl text-amber-600 mt-1 leading-tight">
+          <div className="font-mono font-black text-2xl sm:text-3xl text-amber-700 mt-1 leading-tight">
             ₹{Number(kpis.credit_issued || 0).toLocaleString()}
           </div>
         </div>
       </div>
 
       {/* Real Operating Profit & Loss Summary Card (Phase 4) */}
-      <div className="glass-panel p-4 sm:p-5 rounded-3xl bg-white border border-slate-200 space-y-3.5 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
+      <div className="glass-panel p-4 sm:p-5 rounded-3xl border border-sky-200 space-y-3.5 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-sky-100 pb-3 gap-2">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-emerald-600" />
-            <h3 className="font-black text-sm sm:text-base text-slate-900 tracking-tight">
+            <h3 className="font-black text-sm sm:text-base text-[#002244] tracking-tight">
               Executive Profit & Loss Statement ({selectedPeriod.replace('_', ' ')})
             </h3>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {kpis.cost_data_incomplete && (
-              <span className="text-[11px] text-amber-800 font-bold bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300 flex items-center gap-1">
+              <span className="text-[11px] text-amber-900 font-bold bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300 flex items-center gap-1">
                 ⚠️ Cost Data Incomplete on Historical Items
               </span>
             )}
             <span className={`text-xs font-extrabold px-3 py-1 rounded-full border ${
               kpis.net_profit >= 0 
-                ? 'text-emerald-800 bg-emerald-100 border-emerald-300' 
-                : 'text-rose-800 bg-rose-100 border-rose-300'
+                ? 'text-emerald-900 bg-emerald-100 border-emerald-300' 
+                : 'text-rose-900 bg-rose-100 border-rose-300'
             }`}>
               {kpis.net_profit >= 0 ? `Net Margin: ${kpis.profit_margin_pct}% 📈` : `Deficit: ${kpis.profit_margin_pct}% 📉`}
             </span>
@@ -300,30 +300,30 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 font-mono">
-          <div className="bg-slate-50 p-3 sm:p-3.5 rounded-2xl border border-slate-200 flex flex-col justify-between h-full min-h-[85px]">
-            <span className="text-slate-500 block font-extrabold text-[11px] uppercase font-sans tracking-wide">Gross Sales</span>
-            <span className="font-black text-base sm:text-xl text-slate-900 mt-1">₹{Number(kpis.gross_sales || 0).toLocaleString()}</span>
+          <div className="bg-[#f0f7fd] p-3 sm:p-3.5 rounded-2xl border border-sky-200 flex flex-col justify-between h-full min-h-[85px]">
+            <span className="text-sky-900 block font-extrabold text-[11px] uppercase font-sans tracking-wide">Gross Sales</span>
+            <span className="font-black text-base sm:text-xl text-[#002244] mt-1">₹{Number(kpis.gross_sales || 0).toLocaleString()}</span>
           </div>
 
-          <div className="bg-slate-50 p-3 sm:p-3.5 rounded-2xl border border-slate-200 flex flex-col justify-between h-full min-h-[85px]">
-            <span className="text-slate-500 block font-extrabold text-[11px] uppercase font-sans tracking-wide">COGS (Stock Cost)</span>
+          <div className="bg-[#f0f7fd] p-3 sm:p-3.5 rounded-2xl border border-sky-200 flex flex-col justify-between h-full min-h-[85px]">
+            <span className="text-sky-900 block font-extrabold text-[11px] uppercase font-sans tracking-wide">COGS (Stock Cost)</span>
             <span className="font-black text-base sm:text-xl text-slate-800 mt-1">-₹{Number(kpis.cogs || 0).toLocaleString()}</span>
           </div>
 
-          <div className="bg-slate-50 p-3 sm:p-3.5 rounded-2xl border border-slate-200 flex flex-col justify-between h-full min-h-[85px]">
-            <span className="text-slate-500 block font-extrabold text-[11px] uppercase font-sans tracking-wide">Operating Expenses</span>
-            <span className="font-black text-base sm:text-xl text-amber-600 mt-1">-₹{Number(kpis.expenses || 0).toLocaleString()}</span>
+          <div className="bg-[#f0f7fd] p-3 sm:p-3.5 rounded-2xl border border-sky-200 flex flex-col justify-between h-full min-h-[85px]">
+            <span className="text-sky-900 block font-extrabold text-[11px] uppercase font-sans tracking-wide">Operating Expenses</span>
+            <span className="font-black text-base sm:text-xl text-amber-700 mt-1">-₹{Number(kpis.expenses || 0).toLocaleString()}</span>
           </div>
 
-          <div className="bg-slate-50 p-3 sm:p-3.5 rounded-2xl border border-slate-200 flex flex-col justify-between h-full min-h-[85px]">
-            <span className="text-slate-500 block font-extrabold text-[11px] uppercase font-sans tracking-wide">Damage Loss</span>
-            <span className="font-black text-base sm:text-xl text-rose-600 mt-1">-₹{Number(kpis.damage_loss || 0).toLocaleString()}</span>
+          <div className="bg-[#f0f7fd] p-3 sm:p-3.5 rounded-2xl border border-sky-200 flex flex-col justify-between h-full min-h-[85px]">
+            <span className="text-sky-900 block font-extrabold text-[11px] uppercase font-sans tracking-wide">Damage Loss</span>
+            <span className="font-black text-base sm:text-xl text-rose-700 mt-1">-₹{Number(kpis.damage_loss || 0).toLocaleString()}</span>
           </div>
 
           <div className={`col-span-2 sm:col-span-1 p-3 sm:p-3.5 rounded-2xl border flex flex-col justify-between h-full min-h-[85px] ${
             kpis.net_profit >= 0 
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-              : 'bg-rose-50 border-rose-200 text-rose-800'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
+              : 'bg-rose-50 border-rose-200 text-rose-900'
           }`}>
             <span className="block font-extrabold text-[11px] uppercase font-sans tracking-wide">Net Operating Profit</span>
             <span className="font-black text-base sm:text-xl mt-1">₹{Number(kpis.net_profit || 0).toLocaleString()}</span>
@@ -335,43 +335,43 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
       {dashboardData && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
           {/* Payment Modes */}
-          <div className="glass-panel p-5 rounded-3xl bg-white border border-slate-200 space-y-3.5 shadow-sm flex flex-col justify-between h-full">
-            <h4 className="font-black text-[1.05rem] text-slate-900 uppercase tracking-wider flex items-center gap-2">
+          <div className="glass-panel p-5 rounded-3xl border border-sky-200 space-y-3.5 shadow-sm flex flex-col justify-between h-full">
+            <h4 className="font-black text-[1.05rem] text-[#002244] uppercase tracking-wider flex items-center gap-2">
               💳 Payment Modes Breakdown
             </h4>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono">
               <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex flex-col justify-between min-h-[72px]">
-                <span className="text-[0.82rem] font-sans font-bold text-emerald-800 block">CASH</span>
-                <span className="font-black text-[1.05rem] text-slate-900 mt-1">₹{Number(dashboardData.payment_modes?.cash || 0).toLocaleString()}</span>
+                <span className="text-[0.82rem] font-sans font-bold text-emerald-900 block">CASH</span>
+                <span className="font-black text-[1.05rem] text-[#002244] mt-1">₹{Number(dashboardData.payment_modes?.cash || 0).toLocaleString()}</span>
               </div>
-              <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200 flex flex-col justify-between min-h-[72px]">
-                <span className="text-[0.82rem] font-sans font-bold text-blue-800 block">GPAY</span>
-                <span className="font-black text-[1.05rem] text-slate-900 mt-1">₹{Number(dashboardData.payment_modes?.gpay || 0).toLocaleString()}</span>
+              <div className="p-3 rounded-2xl bg-sky-50 border border-sky-200 flex flex-col justify-between min-h-[72px]">
+                <span className="text-[0.82rem] font-sans font-bold text-sky-900 block">GPAY</span>
+                <span className="font-black text-[1.05rem] text-[#002244] mt-1">₹{Number(dashboardData.payment_modes?.gpay || 0).toLocaleString()}</span>
               </div>
               <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col justify-between min-h-[72px]">
-                <span className="text-[0.82rem] font-sans font-bold text-amber-800 block">CREDIT</span>
-                <span className="font-black text-[1.05rem] text-slate-900 mt-1">₹{Number(dashboardData.payment_modes?.credit || 0).toLocaleString()}</span>
+                <span className="text-[0.82rem] font-sans font-bold text-amber-900 block">CREDIT</span>
+                <span className="font-black text-[1.05rem] text-[#002244] mt-1">₹{Number(dashboardData.payment_modes?.credit || 0).toLocaleString()}</span>
               </div>
               <div className="p-3 rounded-2xl bg-purple-50 border border-purple-200 flex flex-col justify-between min-h-[72px]">
-                <span className="text-[0.82rem] font-sans font-bold text-purple-800 block">SPLIT BILLS</span>
-                <span className="font-black text-[1.05rem] text-slate-900 mt-1">{dashboardData.payment_modes?.split_bills_count || 0} Bills</span>
+                <span className="text-[0.82rem] font-sans font-bold text-purple-900 block">SPLIT BILLS</span>
+                <span className="font-black text-[1.05rem] text-[#002244] mt-1">{dashboardData.payment_modes?.split_bills_count || 0} Bills</span>
               </div>
             </div>
           </div>
 
           {/* Expense Categories */}
-          <div className="glass-panel p-5 rounded-3xl bg-white border border-slate-200 space-y-3.5 shadow-sm flex flex-col justify-between h-full">
-            <h4 className="font-black text-[1.05rem] text-slate-900 uppercase tracking-wider flex items-center gap-2">
+          <div className="glass-panel p-5 rounded-3xl border border-sky-200 space-y-3.5 shadow-sm flex flex-col justify-between h-full">
+            <h4 className="font-black text-[1.05rem] text-[#002244] uppercase tracking-wider flex items-center gap-2">
               ⛽ Operating Expense Breakdown
             </h4>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 font-mono">
               {Object.entries(dashboardData.expense_breakdown || {}).length === 0 ? (
-                <div className="col-span-2 sm:col-span-3 text-center py-4 text-slate-400 font-sans text-xs">No expenses recorded for period.</div>
+                <div className="col-span-2 sm:col-span-3 text-center py-4 text-sky-700 font-sans text-xs">No expenses recorded for period.</div>
               ) : (
                 Object.entries(dashboardData.expense_breakdown || {}).map(([cat, amt]) => (
-                  <div key={cat} className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between min-h-[72px]">
-                    <span className="text-[0.82rem] font-sans font-bold text-slate-600 block uppercase">{cat}</span>
-                    <span className="font-black text-[1.05rem] text-slate-900 mt-1">₹{Number(amt || 0).toLocaleString()}</span>
+                  <div key={cat} className="p-3 rounded-2xl bg-[#f0f7fd] border border-sky-200 flex flex-col justify-between min-h-[72px]">
+                    <span className="text-[0.82rem] font-sans font-bold text-sky-900 block uppercase">{cat}</span>
+                    <span className="font-black text-[1.05rem] text-[#002244] mt-1">₹{Number(amt || 0).toLocaleString()}</span>
                   </div>
                 ))
               )}
@@ -381,35 +381,35 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
       )}
 
       {/* Live Sales & Billing Feed Ticker Widget */}
-      <div className="glass-panel p-5 rounded-3xl bg-white border border-slate-200 space-y-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+      <div className="glass-panel p-5 rounded-3xl border border-sky-200 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-sky-100 pb-3">
           <div>
-            <h3 className="font-black text-[clamp(1.15rem,1.4vw,1.3rem)] text-slate-900 flex items-center gap-2 tracking-tight">
+            <h3 className="font-black text-[clamp(1.15rem,1.4vw,1.3rem)] text-[#002244] flex items-center gap-2 tracking-tight">
               <span className="relative flex h-3 w-3">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
               </span>
               REAL-TIME BILLING FEED & RECENT INVOICES
             </h3>
-            <p className="text-[0.88rem] text-slate-500 font-semibold mt-0.5">Live feed of bills generated by Store Keeper & Delivery Drivers</p>
+            <p className="text-[0.88rem] text-sky-800/80 font-bold mt-0.5">Live feed of bills generated by Store Keeper & Delivery Drivers</p>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <div className="flex items-center gap-1.5 bg-sky-100/70 p-1 rounded-xl border border-sky-200">
             <button
               onClick={() => setFilterSellerType('ALL')}
-              className={`px-3.5 py-1.5 rounded-lg text-[0.85rem] font-extrabold transition cursor-pointer ${filterSellerType === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`px-3.5 py-1.5 rounded-lg text-[0.85rem] font-extrabold transition cursor-pointer ${filterSellerType === 'ALL' ? 'bg-white text-[#002244] shadow-xs' : 'text-sky-800 hover:text-[#002244]'}`}
             >
               All Bills ({sales.length})
             </button>
             <button
               onClick={() => setFilterSellerType('STORE')}
-              className={`px-3.5 py-1.5 rounded-lg text-[0.85rem] font-extrabold transition cursor-pointer ${filterSellerType === 'STORE' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`px-3.5 py-1.5 rounded-lg text-[0.85rem] font-extrabold transition cursor-pointer ${filterSellerType === 'STORE' ? 'bg-purple-600 text-white shadow-xs' : 'text-sky-800 hover:text-[#002244]'}`}
             >
               🏬 Store Counter
             </button>
             <button
               onClick={() => setFilterSellerType('DRIVER')}
-              className={`px-3.5 py-1.5 rounded-lg text-[0.85rem] font-extrabold transition cursor-pointer ${filterSellerType === 'DRIVER' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+              className={`px-3.5 py-1.5 rounded-lg text-[0.85rem] font-extrabold transition cursor-pointer ${filterSellerType === 'DRIVER' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-[#002244]'}`}
             >
               🚚 Driver Route
             </button>
@@ -424,11 +424,11 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
             return (
               <div 
                 key={sale.bill_no || sale.id} 
-                className="bg-slate-50/90 hover:bg-white p-4 rounded-2xl border border-slate-200 hover:border-blue-300 shadow-2xs hover:shadow-md transition-all duration-300 flex flex-col justify-between"
+                className="bg-white/85 hover:bg-white p-4 rounded-2xl border border-sky-200 hover:border-sky-400 shadow-2xs hover:shadow-md transition-all duration-300 flex flex-col justify-between"
               >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-black text-[0.95rem] text-slate-900">{sale.bill_no}</span>
+                    <span className="font-mono font-black text-[0.95rem] text-[#002244]">{sale.bill_no}</span>
                     {renderPaymentBadge(sale.payment_mode)}
                   </div>
 
@@ -439,32 +439,32 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
                         <Store className="w-3.5 h-3.5 text-purple-700" /> 🏬 Store Keeper (Counter)
                       </span>
                     ) : (
-                      <span className="px-2.5 py-0.5 bg-blue-100 text-blue-900 font-extrabold text-[0.78rem] rounded-md border border-blue-200 flex items-center gap-1 w-max">
-                        <Truck className="w-3.5 h-3.5 text-blue-700" /> 🚚 {sale.employee_name || 'Driver'}
+                      <span className="px-2.5 py-0.5 bg-sky-100 text-sky-900 font-extrabold text-[0.78rem] rounded-md border border-sky-200 flex items-center gap-1 w-max">
+                        <Truck className="w-3.5 h-3.5 text-sky-700" /> 🚚 {sale.employee_name || 'Driver'}
                       </span>
                     )}
                   </div>
 
                   <div className="text-[0.88rem] text-slate-700 space-y-0.5">
-                    <span className="font-bold text-slate-900 block truncate">
+                    <span className="font-bold text-[#002244] block truncate">
                       Customer: {sale.shop_name || sale.customer_name || 'Walk-in Customer'}
                     </span>
-                    <span className="text-[0.8rem] text-slate-400 font-mono block">
+                    <span className="text-[0.8rem] text-sky-700/80 font-mono block">
                       Time: {sale.date} at {sale.time}
                     </span>
                   </div>
                 </div>
 
-                <div className="mt-3.5 pt-2.5 border-t border-slate-200/70 flex items-center justify-between">
-                  <div className="font-mono font-black text-[1.15rem] text-slate-900">
+                <div className="mt-3.5 pt-2.5 border-t border-sky-100 flex items-center justify-between">
+                  <div className="font-mono font-black text-[1.15rem] text-[#002244]">
                     ₹{Number(sale.total_amount || 0).toLocaleString()}
                   </div>
 
                   <button
                     onClick={() => setSelectedSaleForDetails(sale)}
-                    className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-extrabold text-[0.85rem] border border-slate-200 shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-sky-50 text-sky-900 font-extrabold text-[0.85rem] border border-sky-200 shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
                   >
-                    <Eye className="w-3.5 h-3.5 text-blue-600" /> Receipt
+                    <Eye className="w-3.5 h-3.5 text-sky-600" /> Receipt
                   </button>
                 </div>
               </div>

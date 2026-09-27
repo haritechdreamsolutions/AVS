@@ -1,17 +1,21 @@
 :root {
-  --bg-light: #f8fafc;
-  --card-bg: #ffffff;
-  --card-border: #e2e8f0;
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --success: #10b981;
-  --danger: #ef4444;
-  --warning: #f59e0b;
+  --bg-light: #cbe5fc;
+  --bg-milk-gradient: linear-gradient(135deg, #bfe0fb 0%, #daf0ff 30%, #f0f7ff 60%, #b8defc 100%);
+  --card-bg: rgba(255, 255, 255, 0.92);
+  --card-border: #93c5fd;
+  --primary: #0284c7;
+  --primary-hover: #0369a1;
+  --success: #059669;
+  --danger: #e11d48;
+  --warning: #d97706;
+  --text-main: #002244;
+  --text-sub: #1e3a8a;
 }
 
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
+  background: linear-gradient(135deg, #bfe0fb 0%, #daf0ff 30%, #f0f7ff 60%, #b8defc 100%) !important;
 }
 
 html,
@@ -24,11 +28,12 @@ body {
 }
 
 body {
-  background-color: var(--bg-light);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #bfe0fb 0%, #daf0ff 30%, #f0f7ff 60%, #b8defc 100%) !important;
+  background-attachment: fixed !important;
+  font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 1rem;
   line-height: 1.5;
-  color: #0f172a;
+  color: #002244;
   margin: 0;
   padding: 0;
   -webkit-tap-highlight-color: transparent;
@@ -43,6 +48,11 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: transparent !important;
+}
+
+.milk-bg-gradient {
+  background: linear-gradient(135deg, #bfe0fb 0%, #daf0ff 30%, #f0f7ff 60%, #b8defc 100%) !important;
 }
 
 /* Safe area padding utilities for modern iPhone & iPad notch/Dynamic Island */
@@ -78,40 +88,42 @@ body {
   }
 }
 
-/* Custom Light Glassmorphism & Card Styles */
+/* Custom Milk Light Glassmorphism & Card Styles */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid #e2e8f0;
-  border-radius: 1rem;
-  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1.5px solid #93c5fd !important;
+  border-radius: 1.25rem;
+  box-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.12), 0 1px 4px rgba(56, 189, 248, 0.15) !important;
 }
 
 .glass-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.85rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.94) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1.5px solid #93c5fd !important;
+  border-radius: 1rem;
+  box-shadow: 0 3px 10px rgba(2, 132, 199, 0.08), 0 1px 3px rgba(56, 189, 248, 0.1) !important;
   transition: all 0.2s ease-in-out;
 }
 
 .glass-card:hover {
-  border-color: #93c5fd;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+  border-color: #38bdf8 !important;
+  box-shadow: 0 8px 24px rgba(2, 132, 199, 0.2) !important;
   transform: translateY(-2px);
 }
 
 .glow-blue {
-  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 4px 20px rgba(2, 132, 199, 0.32);
 }
 
 .glow-green {
-  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.25);
+  box-shadow: 0 4px 20px rgba(5, 150, 105, 0.25);
 }
 
 .glow-red {
-  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.25);
+  box-shadow: 0 4px 20px rgba(225, 29, 72, 0.25);
 }
 
 /* Touch Buttons for Mobile POS */
@@ -120,8 +132,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
-  border-radius: 0.75rem;
+  font-weight: 800;
+  border-radius: 0.85rem;
   font-size: 1.05rem;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -133,62 +145,63 @@ body {
 }
 
 .touch-btn-primary {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, #0284c7 0%, #1d4ed8 100%);
   color: white;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
 }
 
 .touch-btn-success {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
   color: white;
-  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);
 }
 
 .touch-btn-danger {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  background: linear-gradient(135deg, #e11d48 0%, #be123c 100%);
   color: white;
-  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+  box-shadow: 0 4px 14px rgba(225, 29, 72, 0.35);
 }
 
 /* Numpad styling for Employee Login */
 .pin-pad-btn {
   height: 60px;
   width: 100%;
-  border-radius: 0.85rem;
-  background: #f1f5f9;
-  border: 1px solid #cbd5e1;
+  border-radius: 1rem;
+  background: #f0f7fc;
+  border: 1px solid #cbe3f7;
   font-size: 1.4rem;
-  font-weight: 700;
+  font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #0f172a;
+  color: #0b2545;
   transition: all 0.15s;
 }
 
 .pin-pad-btn:active {
-  background: #3b82f6;
+  background: #0284c7;
   color: white;
-  border-color: #2563eb;
+  border-color: #0369a1;
 }
 
 /* Unit Selector Pill Buttons */
 .unit-pill {
   padding: 6px 14px;
   border-radius: 9999px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.85rem;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  color: #475569;
+  border: 1px solid #bae6fd;
+  background: #f0f8ff;
+  color: #0369a1;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .unit-pill.active {
-  background: #2563eb;
+  background: linear-gradient(135deg, #0284c7 0%, #1d4ed8 100%);
   color: white;
-  border-color: #2563eb;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+  border-color: #0284c7;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);
 }
 
 /* 58mm Thermal Receipt Print CSS */
