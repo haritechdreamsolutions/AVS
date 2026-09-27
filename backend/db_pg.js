@@ -6740,15 +6740,32 @@ export async function createSupplier(cid, data, actorUserId) {
   const address = data.address ? data.address.trim() : null;
   const gstin = data.gstin ? data.gstin.trim().toUpperCase() : null;
   const notes = data.notes ? data.notes.trim() : null;
+  const product_rates = data.product_rates ? (typeof data.product_rates === 'string' ? data.product_rates : JSON.stringify(data.product_rates)) : '{}';
 
   const res = await pool.query(
-    `INSERT INTO suppliers (company_id, name, code, contact_person, phone, email, address, gstin, notes, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE)
+    `INSERT INTO suppliers (company_id, name, code, contact_person, phone, email, address, gstin, notes, product_rates, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, TRUE)
      RETURNING *`,
-    [cid, name, code, contact_person, phone, email, address, gstin, notes]
+    [cid, name, code, contact_person, phone, email, address, gstin, notes, product_rates]
   );
 
   const supplier = res.rows[0];
+
+  // Sync to supplier_product_rates table
+  if (data.product_rates && typeof data.product_rates === 'object') {
+    for (const [pid, rate] of Object.entries(data.product_rates)) {
+      if (pid && !isNaN(Number(pid))) {
+        await pool.query(
+          `INSERT INTO supplier_product_rates (company_id, supplier_id, product_id, buy_rate, updated_at)
+           VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (supplier_id, product_id)
+           DO UPDATE SET buy_rate = EXCLUDED.buy_rate, updated_at = NOW()`,
+          [cid, supplier.id, Number(pid), Number(rate || 0)]
+        ).catch(() => {});
+      }
+    }
+  }
+
   await auditLog({ companyId: cid, actorUserId, action: 'SUPPLIER_CREATED', entityType: 'suppliers', entityId: supplier.id, metadata: { name, code } });
   return { success: true, message: 'Production Company/Supplier added successfully', supplier };
 }
@@ -6792,6 +6809,11 @@ export async function updateSupplier(cid, id, data, actorUserId) {
     params.push(data.notes ? data.notes.trim() : null);
     fields.push(`notes = $${params.length}`);
   }
+  if (data.product_rates !== undefined) {
+    const prStr = typeof data.product_rates === 'string' ? data.product_rates : JSON.stringify(data.product_rates);
+    params.push(prStr);
+    fields.push(`product_rates = $${params.length}::jsonb`);
+  }
   if (data.is_active !== undefined) {
     params.push(Boolean(data.is_active));
     fields.push(`is_active = $${params.length}`);
@@ -6802,6 +6824,21 @@ export async function updateSupplier(cid, id, data, actorUserId) {
   const sql = `UPDATE suppliers SET ${fields.join(', ')} WHERE id = $1 AND company_id = $2 RETURNING *`;
   const res = await pool.query(sql, params);
   const supplier = res.rows[0];
+
+  // Sync to supplier_product_rates table
+  if (data.product_rates && typeof data.product_rates === 'object') {
+    for (const [pid, rate] of Object.entries(data.product_rates)) {
+      if (pid && !isNaN(Number(pid))) {
+        await pool.query(
+          `INSERT INTO supplier_product_rates (company_id, supplier_id, product_id, buy_rate, updated_at)
+           VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (supplier_id, product_id)
+           DO UPDATE SET buy_rate = EXCLUDED.buy_rate, updated_at = NOW()`,
+          [cid, id, Number(pid), Number(rate || 0)]
+        ).catch(() => {});
+      }
+    }
+  }
 
   await auditLog({ companyId: cid, actorUserId, action: 'SUPPLIER_UPDATED', entityType: 'suppliers', entityId: id, metadata: data });
   return { success: true, message: 'Supplier updated successfully', supplier };

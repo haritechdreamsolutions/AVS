@@ -638,6 +638,21 @@ export async function runAutoMigrations() {
     await safeQuery(client, 'ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS company_id INTEGER NOT NULL DEFAULT 1;', [], 'suppliers.company_id');
     await safeQuery(client, 'ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;', [], 'suppliers.is_active');
     await safeQuery(client, 'ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();', [], 'suppliers.updated_at');
+    await safeQuery(client, "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS product_rates JSONB DEFAULT '{}'::jsonb;", [], 'suppliers.product_rates');
+
+    // 18c. Supplier Product Rates Table
+    await safeQuery(client, `
+      CREATE TABLE IF NOT EXISTS supplier_product_rates (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER NOT NULL DEFAULT 1,
+        supplier_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        buy_rate NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `, [], 'create supplier_product_rates');
+    await safeQuery(client, 'CREATE UNIQUE INDEX IF NOT EXISTS uq_sup_prod_rate ON supplier_product_rates (supplier_id, product_id);', [], 'uq_sup_prod_rate');
 
     // Seed default suppliers if none exist
     const supCount = await safeQuery(client, 'SELECT COUNT(*)::int as cnt FROM suppliers WHERE company_id = 1;', []);

@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { 
   Building2, Plus, Download, Filter, Calendar, Search, 
   Layers, Package, CheckCircle2, RefreshCw, Edit3, Trash2,
-  X, Save, FileText, TrendingUp, DollarSign, Clock, User, Phone, MapPin
+  X, Save, FileText, TrendingUp, DollarSign, Clock, User, Phone, MapPin, Tag
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateSupplierInwardPDFReport } from '../../utils/pdfReportGenerator';
@@ -42,6 +42,11 @@ export const OwnerSuppliersView = () => {
     product_totals: []
   });
 
+  // Active products for rate configuration
+  const activeProducts = useMemo(() => {
+    return (products || []).filter(p => p.is_active !== false && p.is_active !== 0);
+  }, [products]);
+
   // Company Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
@@ -54,7 +59,13 @@ export const OwnerSuppliersView = () => {
   const [gstin, setGstin] = useState('');
   const [notes, setNotes] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [productRates, setProductRates] = useState({});
   const [savingSupplier, setSavingSupplier] = useState(false);
+
+  // Quick Rate Modal State (for quick rate update without editing full company)
+  const [rateModalSupplier, setRateModalSupplier] = useState(null);
+  const [quickRates, setQuickRates] = useState({});
+  const [savingQuickRates, setSavingQuickRates] = useState(false);
 
   // Date filter shortcuts
   const handleDateShortcut = (period) => {
@@ -146,6 +157,13 @@ export const OwnerSuppliersView = () => {
     setGstin('');
     setNotes('');
     setIsActive(true);
+
+    // Initialize product rates with default base prices
+    const initialRates = {};
+    activeProducts.forEach(p => {
+      initialRates[p.id] = p.base_price || p.purchase_price || '';
+    });
+    setProductRates(initialRates);
     setIsModalOpen(true);
   };
 
@@ -160,7 +178,58 @@ export const OwnerSuppliersView = () => {
     setGstin(supplier.gstin || '');
     setNotes(supplier.notes || '');
     setIsActive(supplier.is_active !== false);
+
+    // Load supplier's saved rates or fallback to product base price
+    const savedRates = supplier.product_rates || {};
+    const initialRates = {};
+    activeProducts.forEach(p => {
+      initialRates[p.id] = savedRates[p.id] !== undefined ? savedRates[p.id] : (p.base_price || p.purchase_price || '');
+    });
+    setProductRates(initialRates);
     setIsModalOpen(true);
+  };
+
+  const handleRateChange = (productId, val) => {
+    setProductRates(prev => ({
+      ...prev,
+      [productId]: val
+    }));
+  };
+
+  const handleQuickRateChange = (productId, val) => {
+    setQuickRates(prev => ({
+      ...prev,
+      [productId]: val
+    }));
+  };
+
+  const handleOpenQuickRates = (supplier) => {
+    setRateModalSupplier(supplier);
+    const savedRates = supplier.product_rates || {};
+    const initialRates = {};
+    activeProducts.forEach(p => {
+      initialRates[p.id] = savedRates[p.id] !== undefined ? savedRates[p.id] : (p.base_price || p.purchase_price || '');
+    });
+    setQuickRates(initialRates);
+  };
+
+  const handleSaveQuickRates = async (e) => {
+    e.preventDefault();
+    if (!rateModalSupplier) return;
+
+    setSavingQuickRates(true);
+    const res = await updateSupplier(rateModalSupplier.id, {
+      product_rates: quickRates
+    });
+    setSavingQuickRates(false);
+
+    if (res.success) {
+      toast.success(`Buy rates updated for ${rateModalSupplier.name}!`);
+      setRateModalSupplier(null);
+      refreshData();
+    } else {
+      toast.error(res.message || 'Failed to update rates.');
+    }
   };
 
   const handleSaveSupplier = async (e) => {
@@ -180,6 +249,7 @@ export const OwnerSuppliersView = () => {
       address: address.trim() || undefined,
       gstin: gstin.trim() || undefined,
       notes: notes.trim() || undefined,
+      product_rates: productRates,
       is_active: isActive
     };
 
@@ -193,7 +263,7 @@ export const OwnerSuppliersView = () => {
     setSavingSupplier(false);
 
     if (res.success) {
-      toast.success(editingSupplier ? 'Company updated successfully!' : 'New Production Company added!');
+      toast.success(editingSupplier ? 'Company & Buy Rates updated successfully!' : 'New Production Company added with Buy Rates!');
       setIsModalOpen(false);
       refreshData();
       loadInwardReport();
@@ -270,7 +340,7 @@ export const OwnerSuppliersView = () => {
                 </span>
               </h1>
               <p className="text-xs text-slate-600 font-medium">
-                Production supplier masters, inward batches calculation, and automated stock reports.
+                Production supplier masters, buy rates pricing, inward calculations, and audit reports.
               </p>
             </div>
           </div>
@@ -406,7 +476,7 @@ export const OwnerSuppliersView = () => {
               }`}
             >
               <Building2 className="w-4 h-4 text-blue-600" />
-              Company Directory ({suppliers.length})
+              Company Directory & Buy Rates ({suppliers.length})
             </button>
           </div>
 
@@ -458,7 +528,7 @@ export const OwnerSuppliersView = () => {
           <p className="text-xl sm:text-2xl font-black text-slate-900">
             ₹{Number(reportData.summary.total_valuation || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
           </p>
-          <span className="text-[10px] font-bold text-amber-600">Estimated Value</span>
+          <span className="text-[10px] font-bold text-amber-600">Purchase Amount (Qty × Buy Rate)</span>
         </div>
 
         <div className="bg-white/85 backdrop-blur-md p-4 rounded-3xl border border-blue-100 shadow-md">
@@ -483,10 +553,10 @@ export const OwnerSuppliersView = () => {
               <div>
                 <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
                   <Layers className="w-5 h-5 text-blue-600" />
-                  Product Quantity Calculation Summary (பொருட்கள் வாரியான கணக்கு)
+                  Product Quantity & Valuation Calculation (பொருட்கள் வாரியான கணக்கு)
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  {selectedSupplierId === 'ALL' ? 'Total quantity received across all companies' : `Received stock calculation for ${currentSupplier?.name || 'Selected Company'}`}
+                  {selectedSupplierId === 'ALL' ? 'Total quantity & purchase cost received across all companies' : `Received stock calculation for ${currentSupplier?.name || 'Selected Company'}`}
                 </p>
               </div>
               <span className="text-xs font-black bg-blue-50 text-blue-700 px-3 py-1 rounded-xl border border-blue-200">
@@ -504,27 +574,33 @@ export const OwnerSuppliersView = () => {
                 No inward stock recorded for this company and date range.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                 {reportData.product_totals.map(pt => (
                   <div 
                     key={pt.product_id}
-                    className="p-3.5 rounded-2xl bg-slate-50 hover:bg-blue-50/50 transition-all border border-slate-200 flex items-center justify-between gap-3"
+                    className="p-4 rounded-2xl bg-slate-50 hover:bg-blue-50/50 transition-all border border-slate-200 space-y-2 shadow-sm"
                   >
-                    <div className="min-w-0">
-                      <h4 className="font-extrabold text-sm text-slate-900 truncate">
-                        {pt.product_name}
-                      </h4>
-                      <p className="text-[11px] text-slate-500 font-mono">
-                        {pt.batch_count || 0} batches received
-                      </p>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h4 className="font-extrabold text-sm text-slate-900 truncate">
+                          {pt.product_name}
+                        </h4>
+                        <p className="text-[11px] text-slate-500 font-mono">
+                          {pt.batch_count || 0} batches received
+                        </p>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="text-base font-black text-blue-700 block">
+                          {Number(pt.total_received_quantity || 0).toLocaleString('en-IN')} {pt.selling_unit || 'Tray'}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="text-right shrink-0">
-                      <span className="text-lg font-black text-blue-700 block">
-                        {Number(pt.total_received_quantity || 0).toLocaleString('en-IN')}
-                      </span>
-                      <span className="text-[10px] font-bold text-slate-500 uppercase">
-                        {pt.selling_unit || 'Tray'}
+                    <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs">
+                      <span className="text-[11px] font-bold text-slate-500">Total Purchase Value:</span>
+                      <span className="font-black text-emerald-700 font-mono">
+                        ₹{Number(pt.total_received_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
                   </div>
@@ -542,7 +618,7 @@ export const OwnerSuppliersView = () => {
                   Detailed Inward Batch Transactions (வரவு பரிவர்த்தனை பட்டியல்)
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  Complete history of stock received into the warehouse by Store Keeper.
+                  Complete history of stock received into the warehouse with Qty × Buy Rate calculation.
                 </p>
               </div>
               <span className="text-xs font-bold text-slate-500">
@@ -558,6 +634,8 @@ export const OwnerSuppliersView = () => {
                     <th className="p-3">Company / Supplier</th>
                     <th className="p-3">Product Name</th>
                     <th className="p-3 text-right">Received Qty</th>
+                    <th className="p-3 text-right">Buy Rate (₹)</th>
+                    <th className="p-3 text-right">Total Amount (₹)</th>
                     <th className="p-3">Received By</th>
                     <th className="p-3">Reference / Notes</th>
                   </tr>
@@ -565,39 +643,50 @@ export const OwnerSuppliersView = () => {
                 <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-800">
                   {filteredRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-8 text-slate-400">
+                      <td colSpan={8} className="text-center py-8 text-slate-400">
                         No inward transactions match your filter criteria.
                       </td>
                     </tr>
                   ) : (
-                    filteredRecords.map((rec, idx) => (
-                      <tr key={rec.id || idx} className="hover:bg-blue-50/40 transition-colors">
-                        <td className="p-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
-                          {rec.created_at ? new Date(rec.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
-                        </td>
-                        <td className="p-3 font-bold text-blue-900">
-                          <div className="flex items-center gap-1.5">
-                            <Building2 className="w-3.5 h-3.5 text-blue-600" />
-                            <span>{rec.supplier_name || rec.notes?.replace('Dealer Inward: ', '') || 'Direct Supplier'}</span>
-                          </div>
-                        </td>
-                        <td className="p-3 font-extrabold text-slate-900">
-                          {rec.product_name}
-                        </td>
-                        <td className="p-3 text-right font-black text-emerald-700 text-sm">
-                          +{rec.quantity_change || rec.quantity} <span className="text-[10px] font-bold text-slate-500">{rec.unit || 'Tray'}</span>
-                        </td>
-                        <td className="p-3 text-slate-600">
-                          <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg text-[10px] font-bold">
-                            <User className="w-3 h-3" />
-                            {rec.created_by_name || 'Store Keeper'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-slate-500 text-[11px]">
-                          {rec.notes || '-'}
-                        </td>
-                      </tr>
-                    ))
+                    filteredRecords.map((rec, idx) => {
+                      const qty = Number(rec.quantity_change || rec.quantity || 0);
+                      const rate = Number(rec.rate || 0);
+                      const total = Number(rec.total_amount || (qty * rate));
+                      return (
+                        <tr key={rec.id || idx} className="hover:bg-blue-50/40 transition-colors">
+                          <td className="p-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                            {rec.created_at ? new Date(rec.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
+                          </td>
+                          <td className="p-3 font-bold text-blue-900">
+                            <div className="flex items-center gap-1.5">
+                              <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                              <span>{rec.supplier_name || rec.notes?.replace('Dealer Inward: ', '') || 'Direct Supplier'}</span>
+                            </div>
+                          </td>
+                          <td className="p-3 font-extrabold text-slate-900">
+                            {rec.product_name}
+                          </td>
+                          <td className="p-3 text-right font-black text-emerald-700 text-sm">
+                            +{qty} <span className="text-[10px] font-bold text-slate-500">{rec.unit || 'Tray'}</span>
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold text-slate-700">
+                            ₹{rate.toFixed(2)}
+                          </td>
+                          <td className="p-3 text-right font-mono font-black text-blue-800 text-sm">
+                            ₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3 text-slate-600">
+                            <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg text-[10px] font-bold">
+                              <User className="w-3 h-3" />
+                              {rec.created_by_name || 'Store Keeper'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-slate-500 text-[11px]">
+                            {rec.notes || '-'}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -606,17 +695,17 @@ export const OwnerSuppliersView = () => {
         </div>
       )}
 
-      {/* TAB CONTENT 2: COMPANY DIRECTORY */}
+      {/* TAB CONTENT 2: COMPANY DIRECTORY & BUY RATES */}
       {activeSubTab === 'directory' && (
         <div className="bg-white/90 backdrop-blur-md rounded-3xl border border-blue-200/60 p-5 shadow-lg space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-blue-600" />
-                Production Supplier Directory (பதிவு செய்யப்பட்ட கம்பெனிகள்)
+                Production Supplier Directory & Buy Rates (கம்பெனி & கொள்முதல் விலை)
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                Companies listed here are dynamically selectable by Store Keeper during stock receive.
+                Manage production suppliers and customize product buy rates per company.
               </p>
             </div>
 
@@ -630,91 +719,115 @@ export const OwnerSuppliersView = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
-            {suppliers.map(s => (
-              <div 
-                key={s.id}
-                className="p-4 rounded-2xl bg-slate-50 hover:bg-white transition-all border border-slate-200 shadow-sm space-y-3 relative group"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-black text-base text-slate-900">{s.name}</h4>
-                      {s.code && (
-                        <span className="text-[10px] font-black bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md font-mono">
-                          {s.code}
-                        </span>
-                      )}
+            {suppliers.map(s => {
+              const rates = s.product_rates || {};
+              const configuredRatesCount = Object.keys(rates).filter(k => Number(rates[k]) > 0).length;
+
+              return (
+                <div 
+                  key={s.id}
+                  className="p-4 rounded-2xl bg-slate-50 hover:bg-white transition-all border border-slate-200 shadow-sm space-y-3 relative group"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-black text-base text-slate-900">{s.name}</h4>
+                        {s.code && (
+                          <span className="text-[10px] font-black bg-blue-100 text-blue-800 px-2 py-0.5 rounded-md font-mono">
+                            {s.code}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 flex items-center gap-1 font-medium">
+                        <User className="w-3 h-3 text-slate-400" />
+                        Contact: {s.contact_person || 'Not specified'}
+                      </p>
                     </div>
-                    <p className="text-[11px] text-slate-500 flex items-center gap-1 font-medium">
-                      <User className="w-3 h-3 text-slate-400" />
-                      Contact: {s.contact_person || 'Not specified'}
-                    </p>
+
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.is_active !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                      {s.is_active !== false ? 'Active' : 'Inactive'}
+                    </span>
                   </div>
 
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.is_active !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
-                    {s.is_active !== false ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
+                  {/* Buy Rates Badge / Quick Action */}
+                  <div className="bg-blue-50/70 p-2.5 rounded-xl border border-blue-100 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs text-blue-900 font-bold">
+                      <Tag className="w-3.5 h-3.5 text-blue-600" />
+                      <span>{configuredRatesCount > 0 ? `${configuredRatesCount} Products Buy Rate Configured` : 'Default Product Rates'}</span>
+                    </div>
+                    <button
+                      onClick={() => handleOpenQuickRates(s)}
+                      className="text-[11px] font-black text-blue-600 hover:text-blue-800 bg-white px-2 py-1 rounded-lg border border-blue-200 shadow-xs"
+                    >
+                      Set Rates ✏️
+                    </button>
+                  </div>
 
-                <div className="text-xs space-y-1 text-slate-600 pt-1 border-t border-slate-200/60">
-                  {s.phone && (
-                    <div className="flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{s.phone}</span>
-                    </div>
-                  )}
-                  {s.address && (
-                    <div className="flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="truncate">{s.address}</span>
-                    </div>
-                  )}
-                  {s.gstin && (
-                    <div className="text-[10px] font-mono text-slate-500">
-                      GSTIN: {s.gstin}
-                    </div>
-                  )}
-                </div>
+                  <div className="text-xs space-y-1 text-slate-600 pt-1 border-t border-slate-200/60">
+                    {s.phone && (
+                      <div className="flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-slate-400" />
+                        <span>{s.phone}</span>
+                      </div>
+                    )}
+                    {s.address && (
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="truncate">{s.address}</span>
+                      </div>
+                    )}
+                  </div>
 
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/60">
-                  <button
-                    onClick={() => handleOpenEditModal(s)}
-                    className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="Edit Company"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteSupplier(s)}
-                    className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Delete Company"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
+                    <button
+                      onClick={() => handleOpenQuickRates(s)}
+                      className="text-xs font-extrabold text-blue-600 hover:underline flex items-center gap-1"
+                    >
+                      <DollarSign className="w-3.5 h-3.5" />
+                      Buy Rates Matrix
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEditModal(s)}
+                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Edit Company Details & Rates"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSupplier(s)}
+                        className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete Company"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* ADD / EDIT COMPANY MODAL */}
+      {/* ADD / EDIT COMPANY MODAL (WITH EMBEDDED PRODUCT BUY RATES) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-5 space-y-4 shadow-2xl my-auto animate-scale-in">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full p-4 sm:p-6 space-y-4 shadow-2xl my-auto max-h-[94dvh] overflow-y-auto animate-scale-in">
             
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center">
                   <Building2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-base text-slate-900">
-                    {editingSupplier ? 'Edit Production Company' : 'Add Production Company'}
+                  <h3 className="font-black text-base sm:text-lg text-slate-900">
+                    {editingSupplier ? 'Edit Company & Buy Rates' : 'Add Production Company & Buy Rates'}
                   </h3>
                   <p className="text-[11px] font-medium text-slate-500">
-                    சப்ளையர் / தயாரிப்பு கம்பெனி விபரம்
+                    சப்ளையர் விபரம் & பொருட்களின் வாங்கும் விலை (Buy Rate)
                   </p>
                 </div>
               </div>
@@ -728,116 +841,145 @@ export const OwnerSuppliersView = () => {
             </div>
 
             {/* Modal Form */}
-            <form onSubmit={handleSaveSupplier} className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-extrabold text-slate-600 uppercase">
-                    Company Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Arokya Dairy"
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none"
-                  />
+            <form onSubmit={handleSaveSupplier} className="space-y-4">
+              
+              {/* SECTION 1: COMPANY BASIC INFO */}
+              <div className="space-y-3 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                  1. Company Details (கம்பெனி விபரம்)
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-extrabold text-slate-600 uppercase">
+                      Company Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Arokya Dairy"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      className="w-full bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-extrabold text-slate-600 uppercase">
+                      Company Code / Short
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. ARKY"
+                      value={companyCode}
+                      onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
+                      className="w-full bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none uppercase"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[11px] font-extrabold text-slate-600 uppercase">
-                    Company Code / Short
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. ARKY"
-                    value={companyCode}
-                    onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none uppercase"
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-extrabold text-slate-600 uppercase">
+                      Contact Person
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Manager / Sales Rep"
+                      value={contactPerson}
+                      onChange={(e) => setContactPerson(e.target.value)}
+                      className="w-full bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-extrabold text-slate-600 uppercase">
-                    Contact Person
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Manager / Sales Rep"
-                    value={contactPerson}
-                    onChange={(e) => setContactPerson(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-extrabold text-slate-600 uppercase">
-                    Phone Number
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="+91 98765 43210"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-extrabold text-slate-600 uppercase">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="contact@company.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-extrabold text-slate-600 uppercase">
-                    GSTIN (Tax ID)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="33AAAAA0000A1Z5"
-                    value={gstin}
-                    onChange={(e) => setGstin(e.target.value.toUpperCase())}
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none uppercase"
-                  />
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-extrabold text-slate-600 uppercase">
+                      Phone Number
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="+91 98765 43210"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] font-extrabold text-slate-600 uppercase">
-                  Plant / Office Address
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Plant address, city, state..."
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none"
-                />
+              {/* SECTION 2: PRODUCT BUY RATES MATRIX */}
+              <div className="space-y-3 bg-blue-50/50 p-3.5 rounded-2xl border border-blue-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-black text-blue-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <DollarSign className="w-4 h-4 text-blue-600" />
+                      2. Product Buy Rates / கொள்முதல் விலை (₹ per Tray/Unit)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Store Keeper stock receive பண்ணும்போது இந்த விலை தானாக apply ஆகும்.
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-black bg-white text-blue-700 px-2.5 py-1 rounded-lg border border-blue-200 shadow-2xs">
+                    {activeProducts.length} Products
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {activeProducts.length === 0 ? (
+                    <p className="text-xs text-slate-400 text-center py-4">No active products available.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {activeProducts.map(prod => (
+                        <div 
+                          key={prod.id}
+                          className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-blue-100 shadow-xs gap-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-base shrink-0">{prod.icon || '🥛'}</span>
+                            <div className="truncate">
+                              <span className="font-extrabold text-xs text-slate-900 block truncate">
+                                {prod.display_name}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                Unit: {prod.selling_unit || 'Tray'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-xs font-bold text-slate-400">₹</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00"
+                              value={productRates[prod.id] !== undefined ? productRates[prod.id] : ''}
+                              onChange={(e) => handleRateChange(prod.id, e.target.value)}
+                              className="w-20 bg-blue-50/40 border border-blue-200 focus:border-blue-500 rounded-lg px-2 py-1 text-right text-xs font-black text-blue-900 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="active_check"
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-                />
-                <label htmlFor="active_check" className="text-xs font-bold text-slate-800 select-none">
-                  Active Supplier (Enabled in Store Keeper Stock Receive)
-                </label>
+              {/* SECTION 3: ADDITIONAL SETTINGS & ACTIVE STATUS */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="active_check"
+                    checked={isActive}
+                    onChange={(e) => setIsActive(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                  />
+                  <label htmlFor="active_check" className="text-xs font-bold text-slate-800 select-none">
+                    Active Supplier (Store Keeper Receive Stock Dropdown-ல் காண்பி)
+                  </label>
+                </div>
               </div>
 
               {/* Action Buttons */}
@@ -852,10 +994,95 @@ export const OwnerSuppliersView = () => {
                 <button
                   type="submit"
                   disabled={savingSupplier}
+                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-md disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  {savingSupplier ? 'Saving...' : (editingSupplier ? 'Update Company & Rates' : 'Save Company & Rates')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK RATES EDIT MODAL */}
+      {rateModalSupplier && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-5 space-y-4 shadow-2xl my-auto animate-scale-in">
+            
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center">
+                  <Tag className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-900">
+                    Product Buy Rates: {rateModalSupplier.name}
+                  </h3>
+                  <p className="text-[11px] font-medium text-slate-500">
+                    கம்பெனிக்கான வாங்கும் விலை (Buy Rate) மாற்றம்
+                  </p>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setRateModalSupplier(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveQuickRates} className="space-y-4">
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {activeProducts.map(prod => (
+                  <div 
+                    key={prod.id}
+                    className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200 gap-2"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-base">{prod.icon || '🥛'}</span>
+                      <div className="truncate">
+                        <span className="font-extrabold text-xs text-slate-900 block truncate">
+                          {prod.display_name}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          Unit: {prod.selling_unit || 'Tray'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-xs font-bold text-slate-400">₹</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={quickRates[prod.id] !== undefined ? quickRates[prod.id] : ''}
+                        onChange={(e) => handleQuickRateChange(prod.id, e.target.value)}
+                        className="w-24 bg-white border border-slate-300 focus:border-blue-500 rounded-lg px-2 py-1.5 text-right text-xs font-black text-blue-900 focus:outline-none shadow-xs"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setRateModalSupplier(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingQuickRates}
                   className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-md disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />
-                  {savingSupplier ? 'Saving...' : (editingSupplier ? 'Update Company' : 'Save Company')}
+                  {savingQuickRates ? 'Saving Rates...' : 'Save Buy Rates'}
                 </button>
               </div>
             </form>
