@@ -7,7 +7,8 @@ import {
   Phone, MapPin, Plus, Minus, Trash2, Pencil, Wallet,
   Fuel, Utensils, CreditCard, Wrench, ShieldAlert,
   HelpCircle, CheckCircle2, ArrowRight, AlertCircle,
-  Scale, Calculator, Check, FileCheck2, Printer, Lock
+  Scale, Calculator, Check, FileCheck2, Printer, Lock,
+  Wind
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -46,6 +47,13 @@ export const StockReturnModal = ({ onClose }) => {
     amount: '',
     notes: ''
   });
+  const [multiExpenseAmounts, setMultiExpenseAmounts] = useState({
+    Fuel: '',
+    Food: '',
+    Air: '',
+    Other: ''
+  });
+  const [otherNotes, setOtherNotes] = useState('');
   const [expenseFormError, setExpenseFormError] = useState('');
   const [savingExpense, setSavingExpense] = useState(false);
   const [deletingExpenseId, setDeletingExpenseId] = useState(null);
@@ -66,12 +74,10 @@ export const StockReturnModal = ({ onClose }) => {
   const [shortageFormError, setShortageFormError] = useState('');
 
   const EXPENSE_CATEGORIES = [
-    { value: 'Fuel', label: 'Fuel / Diesel (டீசல்)', icon: Fuel, color: 'text-amber-600 bg-amber-50 border-amber-200' },
-    { value: 'Food', label: 'Food & Tea (உணவு & டீ)', icon: Utensils, color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
-    { value: 'Toll', label: 'Toll Gate (டோல்கேட்)', icon: CreditCard, color: 'text-blue-600 bg-blue-50 border-blue-200' },
-    { value: 'Maintenance', label: 'Vehicle Maintenance / Repair (பராமரிப்பு)', icon: Wrench, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
-    { value: 'Fine', label: 'Police / Penalty / Fine (அபராதம்)', icon: ShieldAlert, color: 'text-rose-600 bg-rose-50 border-rose-200' },
-    { value: 'Other', label: 'Other Expense (இதர செலவு)', icon: HelpCircle, color: 'text-purple-600 bg-purple-50 border-purple-200' },
+    { value: 'Fuel', label: 'Fuel / Diesel', tamil: 'டீசல் / எரிபொருள்', icon: Fuel, color: 'text-amber-600 bg-amber-50 border-amber-200' },
+    { value: 'Food', label: 'Food & Tea', tamil: 'உணவு & டீ', icon: Utensils, color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
+    { value: 'Air', label: 'Tire Air', tamil: 'காற்று / டயர்', icon: Wind, color: 'text-sky-600 bg-sky-50 border-sky-200' },
+    { value: 'Other', label: 'Other Expense', tamil: 'இதர செலவு', icon: HelpCircle, color: 'text-purple-600 bg-purple-50 border-purple-200' },
   ];
 
   const DAMAGE_REASONS = [
@@ -380,6 +386,14 @@ export const StockReturnModal = ({ onClose }) => {
     };
   }, [reconciliationData.items, manualReturnQuantities]);
 
+  // Compute total of multi-category expense modal
+  const multiExpenseTotal = useMemo(() => {
+    return Object.values(multiExpenseAmounts).reduce((sum, val) => {
+      const num = parseFloat(val);
+      return !isNaN(num) && num > 0 ? sum + num : sum;
+    }, 0);
+  }, [multiExpenseAmounts]);
+
   // Handle Opening Expense Form
   const handleOpenAddExpense = () => {
     if (isSessionLocked) {
@@ -387,11 +401,13 @@ export const StockReturnModal = ({ onClose }) => {
       return;
     }
     setEditingExpense(null);
-    setExpenseForm({
-      category: 'Fuel',
-      amount: '',
-      notes: ''
+    setMultiExpenseAmounts({
+      Fuel: '',
+      Food: '',
+      Air: '',
+      Other: ''
     });
+    setOtherNotes('');
     setExpenseFormError('');
     setShowExpenseModal(true);
   };
@@ -419,9 +435,58 @@ export const StockReturnModal = ({ onClose }) => {
       return;
     }
 
-    const amountNum = parseFloat(expenseForm.amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      setExpenseFormError('Please enter a valid expense amount greater than 0.');
+    if (editingExpense) {
+      const amountNum = parseFloat(expenseForm.amount);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        setExpenseFormError('Please enter a valid expense amount greater than 0.');
+        return;
+      }
+
+      try {
+        setSavingExpense(true);
+        setExpenseFormError('');
+        await updateExpense(editingExpense.id, {
+          category: expenseForm.category,
+          amount: amountNum,
+          notes: expenseForm.notes
+        });
+        toast.success('Expense updated successfully');
+        setShowExpenseModal(false);
+        await loadSelectedDriverData(selectedDriverId);
+      } catch (err) {
+        console.error('Error updating expense:', err);
+        setExpenseFormError(err.message || 'Failed to update expense');
+        toast.error(err.message || 'Failed to update expense');
+      } finally {
+        setSavingExpense(false);
+      }
+      return;
+    }
+
+    // Multi-expense add mode (Fuel, Food, Air, Other)
+    const itemsToAdd = [];
+    const catConfigs = [
+      { key: 'Fuel', title: 'Fuel / Diesel (டீசல்)' },
+      { key: 'Food', title: 'Food & Tea (உணவு & டீ)' },
+      { key: 'Air', title: 'Tire Air (காற்று)' },
+      { key: 'Other', title: otherNotes.trim() ? `Other: ${otherNotes.trim()}` : 'Other Expense (இதர செலவு)' }
+    ];
+
+    for (const c of catConfigs) {
+      const val = parseFloat(multiExpenseAmounts[c.key]);
+      if (!isNaN(val) && val > 0) {
+        itemsToAdd.push({
+          employee_id: driverInfo.id || selectedDriverId,
+          category: c.key,
+          title: c.title,
+          amount: val,
+          notes: c.key === 'Other' ? (otherNotes.trim() || 'Other Expense') : c.title
+        });
+      }
+    }
+
+    if (itemsToAdd.length === 0) {
+      setExpenseFormError('Please enter an amount for at least one category (Fuel, Food, Air, Other).');
       return;
     }
 
@@ -429,27 +494,15 @@ export const StockReturnModal = ({ onClose }) => {
       setSavingExpense(true);
       setExpenseFormError('');
 
-      if (editingExpense) {
-        await updateExpense(editingExpense.id, {
-          category: expenseForm.category,
-          amount: amountNum,
-          notes: expenseForm.notes
-        });
-        toast.success('Expense updated successfully');
-      } else {
-        await addExpense({
-          employee_id: driverInfo.id || selectedDriverId,
-          category: expenseForm.category,
-          amount: amountNum,
-          notes: expenseForm.notes
-        });
-        toast.success('Expense added successfully');
+      for (const item of itemsToAdd) {
+        await addExpense(item);
       }
 
+      toast.success(`${itemsToAdd.length} expense(s) added successfully`);
       setShowExpenseModal(false);
       await loadSelectedDriverData(selectedDriverId);
     } catch (err) {
-      console.error('Error saving expense:', err);
+      console.error('Error saving expenses:', err);
       setExpenseFormError(err.message || 'Failed to save expense');
       toast.error(err.message || 'Failed to save expense');
     } finally {
@@ -1621,84 +1674,158 @@ export const StockReturnModal = ({ onClose }) => {
 
       {/* ADD / EDIT EXPENSE MODAL */}
       {showExpenseModal && (
-        <div className="fixed inset-0 z-60 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-60 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            
+            {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
-                  <Fuel className="w-4 h-4" />
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center border border-amber-200">
+                  <Fuel className="w-5 h-5" />
                 </div>
-                <h4 className="font-black text-sm text-slate-900">
-                  {editingExpense ? 'Edit Driver Expense' : 'Add Driver Expense'}
-                </h4>
+                <div>
+                  <h4 className="font-black text-sm sm:text-base text-slate-900">
+                    {editingExpense ? 'Edit Driver Expense' : 'Add Driver Expenses (டிரைவர் செலவுகள்)'}
+                  </h4>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {driverInfo.name || 'Driver'} • {editingExpense ? 'Modify expense' : 'Enter amount for expenses'}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowExpenseModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveExpense} className="space-y-3">
-              {/* Category */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase">
-                  Expense Category (வகை)
-                </label>
-                <select
-                  value={expenseForm.category}
-                  onChange={(e) => setExpenseForm(prev => ({ ...prev, category: e.target.value }))}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition cursor-pointer"
-                >
-                  {EXPENSE_CATEGORIES.map(cat => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <form onSubmit={handleSaveExpense} className="space-y-4">
+              {editingExpense ? (
+                // Single Edit View
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-700 uppercase">
+                      Expense Category (வகை)
+                    </label>
+                    <select
+                      value={expenseForm.category}
+                      onChange={(e) => setExpenseForm(prev => ({ ...prev, category: e.target.value }))}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition cursor-pointer"
+                    >
+                      {EXPENSE_CATEGORIES.map(cat => (
+                        <option key={cat.value} value={cat.value}>
+                          {cat.label} ({cat.tamil})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              {/* Amount */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase">
-                  Amount (தொகை ₹) *
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">
-                    ₹
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    required
-                    autoFocus
-                    value={expenseForm.amount}
-                    onChange={(e) => setExpenseForm(prev => ({ ...prev, amount: e.target.value }))}
-                    placeholder="e.g. 500.00"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-sm font-mono font-black text-slate-900 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition"
-                  />
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-700 uppercase">
+                      Amount (தொகை ₹) *
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">₹</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        required
+                        autoFocus
+                        value={expenseForm.amount}
+                        onChange={(e) => setExpenseForm(prev => ({ ...prev, amount: e.target.value }))}
+                        placeholder="0.00"
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-sm font-mono font-black text-slate-900 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-700 uppercase">
+                      Notes / Description (குறிப்பு)
+                    </label>
+                    <input
+                      type="text"
+                      value={expenseForm.notes}
+                      onChange={(e) => setExpenseForm(prev => ({ ...prev, notes: e.target.value }))}
+                      placeholder="e.g. Receipt info / note"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition"
+                    />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                // 4 Rows: Left Category (Fuel, Food, Air, Other) & Right Amount Input
+                <div className="space-y-2.5">
+                  {EXPENSE_CATEGORIES.map(cat => {
+                    const Icon = cat.icon;
+                    const isOther = cat.value === 'Other';
+                    const hasAmount = parseFloat(multiExpenseAmounts[cat.value] || 0) > 0;
 
-              {/* Notes */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase">
-                  Notes / Description (குறிப்பு)
-                </label>
-                <input
-                  type="text"
-                  value={expenseForm.notes}
-                  onChange={(e) => setExpenseForm(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="e.g. 5L Diesel / Toll receipt"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition"
-                />
-              </div>
+                    return (
+                      <div key={cat.value} className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200 transition-all hover:border-slate-300 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          {/* Left: Category Icon & Tamil Label */}
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center border shrink-0 ${cat.color}`}>
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <h5 className="font-black text-xs text-slate-900 truncate">
+                                {cat.label}
+                              </h5>
+                              <p className="text-[10px] text-slate-500 font-medium truncate">
+                                {cat.tamil}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Right: Amount Input Box */}
+                          <div className="w-32 sm:w-36 shrink-0 relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                              ₹
+                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={multiExpenseAmounts[cat.value] || ''}
+                              onChange={(e) => setMultiExpenseAmounts(prev => ({ ...prev, [cat.value]: e.target.value }))}
+                              placeholder="0.00"
+                              className="w-full bg-white border border-slate-300 rounded-xl pl-7 pr-3 py-2 text-sm font-mono font-black text-slate-900 text-right focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition shadow-2xs"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Optional Notes for Other category */}
+                        {isOther && hasAmount && (
+                          <div className="pt-1.5 border-t border-slate-200/60">
+                            <input
+                              type="text"
+                              value={otherNotes}
+                              onChange={(e) => setOtherNotes(e.target.value)}
+                              placeholder="Specify other expense description (குறிப்பு)..."
+                              className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Summary row */}
+                  {multiExpenseTotal > 0 && (
+                    <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center justify-between text-xs font-bold text-amber-900">
+                      <span>Total Expenses (மொத்த செலவு):</span>
+                      <span className="font-mono text-sm font-black text-amber-950">₹{multiExpenseTotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {expenseFormError && (
-                <p className="text-[11px] font-bold text-rose-600 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                <p className="text-[11px] font-bold text-rose-600 bg-rose-50 p-2.5 rounded-xl border border-rose-200">
                   {expenseFormError}
                 </p>
               )}
@@ -1707,14 +1834,14 @@ export const StockReturnModal = ({ onClose }) => {
                 <button
                   type="button"
                   onClick={() => setShowExpenseModal(false)}
-                  className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingExpense}
-                  className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs transition shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs transition shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   {savingExpense ? (
                     <>
@@ -1722,7 +1849,7 @@ export const StockReturnModal = ({ onClose }) => {
                       <span>Saving...</span>
                     </>
                   ) : (
-                    <span>{editingExpense ? 'Update Expense' : 'Save Expense'}</span>
+                    <span>{editingExpense ? 'Update Expense' : 'Save Expenses (சேமி)'}</span>
                   )}
                 </button>
               </div>
