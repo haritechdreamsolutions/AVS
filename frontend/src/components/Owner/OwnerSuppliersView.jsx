@@ -20,8 +20,8 @@ export const OwnerSuppliersView = () => {
     refreshData 
   } = useApp();
 
-  // Active view tab: 'inward' or 'directory'
-  const [activeSubTab, setActiveSubTab] = useState('inward');
+  // Active view tab: 'directory' (show companies & rates first) or 'inward'
+  const [activeSubTab, setActiveSubTab] = useState('directory');
 
   // Filter States
   const [selectedSupplierId, setSelectedSupplierId] = useState('ALL');
@@ -33,6 +33,7 @@ export const OwnerSuppliersView = () => {
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [directorySearch, setDirectorySearch] = useState('');
 
   // Report Data State
   const [loadingReport, setLoadingReport] = useState(false);
@@ -143,6 +144,19 @@ export const OwnerSuppliersView = () => {
       (r.notes && r.notes.toLowerCase().includes(q))
     );
   }, [reportData.records, searchTerm]);
+
+  // Filtered suppliers for directory
+  const filteredSuppliers = useMemo(() => {
+    const list = suppliers || [];
+    if (!directorySearch.trim()) return list;
+    const q = directorySearch.toLowerCase();
+    return list.filter(s => 
+      (s.name && s.name.toLowerCase().includes(q)) ||
+      (s.contact_person && s.contact_person.toLowerCase().includes(q)) ||
+      (s.phone && s.phone.includes(q)) ||
+      (s.code && s.code.toLowerCase().includes(q))
+    );
+  }, [suppliers, directorySearch]);
 
   // Modal Open Handlers
   const handleOpenAddModal = () => {
@@ -689,110 +703,264 @@ export const OwnerSuppliersView = () => {
 
       {/* TAB CONTENT 2: COMPANY DIRECTORY & BUY RATES */}
       {activeSubTab === 'directory' && (
-        <div className="bg-white/85 backdrop-blur-md rounded-3xl border border-sky-300/80 p-5 shadow-lg space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="space-y-6">
+
+          {/* Section Heading & Quick Add Bar */}
+          <div className="bg-white/85 backdrop-blur-md p-4 rounded-3xl border border-sky-300/80 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="font-black text-base text-[#002244] flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-sky-600" />
-                Production Supplier Directory & Buy Rates (கம்பெனி & கொள்முதல் விலை)
-              </h3>
-              <p className="text-xs text-sky-900/80 font-medium">
-                Manage production suppliers and customize product buy rates per company.
+              <h2 className="text-base font-black text-[#002244] flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-sky-600" />
+                Production Companies & Assigned Product Buy Rates (கம்பெனிகள் & கொள்முதல் விலை)
+              </h2>
+              <p className="text-xs text-sky-950 font-medium">
+                Here are all registered production companies. You can view, edit company details, or adjust product buy rates at any time.
               </p>
             </div>
 
-            <button
-              onClick={handleOpenAddModal}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              + Add New Company
-            </button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black bg-sky-100 text-sky-900 px-3 py-1 rounded-xl border border-sky-300">
+                {filteredSuppliers.length} Companies Registered
+              </span>
+              <button
+                onClick={handleOpenAddModal}
+                className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Add Company</span>
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
-            {suppliers.map(s => {
-              const rates = s.product_rates || {};
-              const configuredRatesCount = Object.keys(rates).filter(k => Number(rates[k]) > 0).length;
+          {/* COMPANY CARDS GRID WITH LIVE PRODUCT RATES */}
+          {filteredSuppliers.length === 0 ? (
+            <div className="bg-white/85 backdrop-blur-md rounded-3xl border border-sky-300/80 p-8 text-center space-y-3 shadow-md">
+              <Building2 className="w-12 h-12 text-sky-400 mx-auto" />
+              <h3 className="font-black text-sm text-[#002244]">No Production Companies Found</h3>
+              <p className="text-xs text-sky-800 max-w-md mx-auto font-medium">
+                Add your production suppliers (e.g., Arokya, Cavin's, Dodla) to configure product buy rates for inward stock calculations.
+              </p>
+              <button
+                onClick={handleOpenAddModal}
+                className="px-5 py-2 rounded-2xl bg-sky-600 text-white font-black text-xs inline-flex items-center gap-2 shadow-md"
+              >
+                <Plus className="w-4 h-4" />
+                Add First Company
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {filteredSuppliers.map(s => {
+                const rates = s.product_rates || {};
+                const configuredCount = Object.keys(rates).filter(k => Number(rates[k]) > 0).length;
 
-              return (
-                <div 
-                  key={s.id}
-                  className="p-4 rounded-2xl bg-sky-50/50 hover:bg-white transition-all border border-sky-200 shadow-sm space-y-3 relative group"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-0.5">
-                      <h4 className="font-black text-base text-[#002244]">{s.name}</h4>
-                      <p className="text-[11px] text-sky-800 flex items-center gap-1 font-medium">
-                        <User className="w-3 h-3 text-sky-600" />
-                        Contact: {s.contact_person || 'Not specified'}
-                      </p>
-                    </div>
-
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.is_active !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
-                      {s.is_active !== false ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-
-                  {/* Buy Rates Badge / Quick Action */}
-                  <div className="bg-sky-100/70 p-2.5 rounded-xl border border-sky-200 flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs text-sky-950 font-bold">
-                      <Tag className="w-3.5 h-3.5 text-sky-600" />
-                      <span>{configuredRatesCount > 0 ? `${configuredRatesCount} Products Buy Rate Configured` : 'Default Product Rates'}</span>
-                    </div>
-                    <button
-                      onClick={() => handleOpenQuickRates(s)}
-                      className="text-[11px] font-black text-sky-700 hover:text-sky-900 bg-white px-2 py-1 rounded-lg border border-sky-300 shadow-2xs"
-                    >
-                      Set Rates ✏️
-                    </button>
-                  </div>
-
-                  <div className="text-xs space-y-1 text-sky-900 pt-1 border-t border-sky-200/80">
-                    {s.phone && (
-                      <div className="flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-sky-600" />
-                        <span>{s.phone}</span>
+                return (
+                  <div 
+                    key={s.id}
+                    className="p-5 rounded-3xl bg-white/90 hover:bg-white transition-all border border-sky-300 shadow-md space-y-4 relative group"
+                  >
+                    {/* Card Header */}
+                    <div className="flex items-start justify-between gap-3 border-b border-sky-100 pb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-500 to-blue-600 text-white flex items-center justify-center font-black text-lg shadow-sm">
+                          {s.name ? s.name.charAt(0).toUpperCase() : 'C'}
+                        </div>
+                        <div>
+                          <h3 className="font-black text-base text-[#002244] leading-snug">
+                            {s.name}
+                          </h3>
+                          <div className="flex items-center gap-2 text-[11px] text-sky-900 font-bold">
+                            {s.code && <span className="bg-sky-100 px-1.5 py-0.5 rounded text-[10px] font-mono">{s.code}</span>}
+                            <span>Contact: {s.contact_person || 'Not specified'}</span>
+                          </div>
+                        </div>
                       </div>
-                    )}
-                    {s.address && (
+
                       <div className="flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-sky-600" />
-                        <span className="truncate">{s.address}</span>
+                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${s.is_active !== false ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-100 text-rose-800 border border-rose-300'}`}>
+                          {s.is_active !== false ? 'Active' : 'Inactive'}
+                        </span>
                       </div>
-                    )}
-                  </div>
+                    </div>
 
-                  <div className="flex items-center justify-between pt-2 border-t border-sky-200/80">
-                    <button
-                      onClick={() => handleOpenQuickRates(s)}
-                      className="text-xs font-extrabold text-sky-700 hover:underline flex items-center gap-1"
-                    >
-                      <DollarSign className="w-3.5 h-3.5" />
-                      Buy Rates Matrix
-                    </button>
+                    {/* Contact & Info Chips */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-sky-950 font-medium bg-sky-50/60 p-2.5 rounded-2xl border border-sky-200/80">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Phone className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                        <span className="font-bold text-sky-950 truncate">{s.phone || 'Phone not set'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 truncate">
+                        <MapPin className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                        <span className="truncate">{s.address || 'Address not set'}</span>
+                      </div>
+                      {s.gstin && (
+                        <div className="col-span-1 sm:col-span-2 flex items-center gap-1.5 text-[11px] font-mono text-sky-800">
+                          <Tag className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                          <span>GSTIN: <strong>{s.gstin}</strong></span>
+                        </div>
+                      )}
+                    </div>
 
-                    <div className="flex items-center gap-1">
+                    {/* PRODUCT BUY RATES SECTION (PROMINENTLY DISPLAYED) */}
+                    <div className="space-y-2 bg-sky-100/50 p-3.5 rounded-2xl border border-sky-300/90">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black text-[#002244] uppercase tracking-wider flex items-center gap-1.5">
+                          <DollarSign className="w-3.5 h-3.5 text-sky-700" />
+                          Configured Product Buy Rates ({configuredCount}/{activeProducts.length})
+                        </span>
+
+                        <button
+                          onClick={() => handleOpenQuickRates(s)}
+                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-sky-50 text-sky-800 border border-sky-300 text-[11px] font-black shadow-2xs flex items-center gap-1 transition-all hover:scale-[1.03]"
+                        >
+                          <Edit3 className="w-3 h-3 text-sky-600" />
+                          <span>Edit Rates ✏️</span>
+                        </button>
+                      </div>
+
+                      {activeProducts.length === 0 ? (
+                        <p className="text-xs text-sky-800">No active products.</p>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 max-h-48 overflow-y-auto pr-1">
+                          {activeProducts.map(prod => {
+                            const rateVal = rates[prod.id];
+                            const hasRate = rateVal !== undefined && rateVal !== null && rateVal !== '' && Number(rateVal) > 0;
+
+                            return (
+                              <div 
+                                key={prod.id}
+                                className={`p-2 rounded-xl border transition-all text-xs ${
+                                  hasRate 
+                                    ? 'bg-white border-sky-300 shadow-2xs' 
+                                    : 'bg-white/60 border-sky-200/70 text-sky-800/70'
+                                }`}
+                              >
+                                <div className="font-extrabold text-[#002244] truncate text-[11px]" title={prod.display_name}>
+                                  {prod.display_name}
+                                </div>
+                                <div className="flex items-center justify-between mt-1">
+                                  <span className="text-[10px] font-bold text-sky-700">{prod.selling_unit || 'Tray'}</span>
+                                  <span className={`font-black text-xs font-mono ${hasRate ? 'text-blue-800' : 'text-sky-700'}`}>
+                                    {hasRate ? `₹${Number(rateVal).toFixed(2)}` : '₹0.00'}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card Bottom Actions */}
+                    <div className="flex items-center justify-between pt-2 border-t border-sky-100">
                       <button
-                        onClick={() => handleOpenEditModal(s)}
-                        className="p-1.5 text-sky-700 hover:text-sky-900 hover:bg-sky-100 rounded-lg transition-colors"
-                        title="Edit Company Details & Rates"
+                        onClick={() => {
+                          setSelectedSupplierId(String(s.id));
+                          setActiveSubTab('inward');
+                        }}
+                        className="text-xs font-black text-sky-700 hover:text-sky-900 hover:underline flex items-center gap-1"
                       >
-                        <Edit3 className="w-4 h-4" />
+                        <TrendingUp className="w-3.5 h-3.5" />
+                        <span>View Inward History ➔</span>
                       </button>
-                      <button
-                        onClick={() => handleDeleteSupplier(s)}
-                        className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
-                        title="Delete Company"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenQuickRates(s)}
+                          className="px-3 py-1.5 rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-900 font-extrabold text-xs flex items-center gap-1 transition-colors"
+                        >
+                          <DollarSign className="w-3.5 h-3.5 text-sky-700" />
+                          <span>Rates</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleOpenEditModal(s)}
+                          className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs flex items-center gap-1 shadow-sm transition-colors"
+                          title="Edit Company Details & Rates"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteSupplier(s)}
+                          className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-xl transition-colors"
+                          title="Delete Company"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* COMPREHENSIVE PRODUCT BUY RATES COMPARISON MATRIX TABLE */}
+          {suppliers.length > 0 && activeProducts.length > 0 && (
+            <div className="bg-white/85 backdrop-blur-md rounded-3xl border border-sky-300/80 p-5 shadow-lg space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-black text-base text-[#002244] flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-sky-600" />
+                    Product Buy Rates Comparison Matrix (அனைத்து கம்பெனி விலை ஒப்பீடு)
+                  </h3>
+                  <p className="text-xs text-sky-950 font-medium">
+                    Side-by-side product purchase price comparison across all registered production suppliers.
+                  </p>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-sky-200 shadow-2xs">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-sky-100/90 text-[#002244] font-black border-b border-sky-200">
+                      <th className="p-3 sticky left-0 bg-sky-100 z-10">Product Name</th>
+                      <th className="p-3">Unit</th>
+                      {suppliers.map(s => (
+                        <th key={s.id} className="p-3 text-right">
+                          <div className="font-black text-[#002244]">{s.name}</div>
+                          <button
+                            onClick={() => handleOpenQuickRates(s)}
+                            className="text-[10px] text-sky-700 hover:underline font-bold"
+                          >
+                            Edit ✏️
+                          </button>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-sky-100 bg-white/70">
+                    {activeProducts.map(prod => (
+                      <tr key={prod.id} className="hover:bg-sky-50/70 transition-colors">
+                        <td className="p-3 font-black text-[#002244] sticky left-0 bg-white/90 z-10">
+                          {prod.display_name}
+                        </td>
+                        <td className="p-3 text-sky-800 font-bold">
+                          {prod.selling_unit || 'Tray'}
+                        </td>
+                        {suppliers.map(s => {
+                          const rateVal = s.product_rates?.[prod.id];
+                          const hasRate = rateVal !== undefined && rateVal !== null && rateVal !== '' && Number(rateVal) > 0;
+                          return (
+                            <td key={s.id} className="p-3 text-right font-mono font-bold">
+                              {hasRate ? (
+                                <span className="text-blue-900 font-black bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                                  ₹{Number(rateVal).toFixed(2)}
+                                </span>
+                              ) : (
+                                <span className="text-sky-700/60 font-medium">₹0.00</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

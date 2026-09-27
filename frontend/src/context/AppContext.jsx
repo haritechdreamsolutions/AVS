@@ -37,8 +37,38 @@ export const AppProvider = ({ children }) => {
   const [users, setUsers] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [drivers, setDrivers] = useState([]);
+  const DEFAULT_SUPPLIERS = [
+    { id: 1, name: "Arokya Dairy", code: "AROKYA", contact_person: "Regional Depot Manager", phone: "9876543210", product_rates: {}, is_active: true },
+    { id: 2, name: "Cavin's (Cavinkare)", code: "CAVINS", contact_person: "Supply Coordinator", phone: "9876543211", product_rates: {}, is_active: true },
+    { id: 3, name: "Dodla Dairy", code: "DODLA", contact_person: "Area Incharge", phone: "9876543212", product_rates: {}, is_active: true },
+    { id: 4, name: "Thirumala Milk", code: "THIRUMALA", contact_person: "Logistics Hub", phone: "9876543213", product_rates: {}, is_active: true },
+    { id: 5, name: "Heritage Foods", code: "HERITAGE", contact_person: "Distribution Center", phone: "9876543214", product_rates: {}, is_active: true },
+    { id: 6, name: "Nandini (KMF)", code: "NANDINI", contact_person: "Depot Supervisor", phone: "9876543215", product_rates: {}, is_active: true }
+  ];
+
   const [routes, setRoutes] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
+  const [suppliers, setSuppliers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('avs_suppliers_cache');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      return DEFAULT_SUPPLIERS;
+    } catch (e) {
+      return DEFAULT_SUPPLIERS;
+    }
+  });
+
+  // Sync suppliers to localStorage
+  useEffect(() => {
+    if (Array.isArray(suppliers) && suppliers.length > 0) {
+      try {
+        localStorage.setItem('avs_suppliers_cache', JSON.stringify(suppliers));
+      } catch (e) {}
+    }
+  }, [suppliers]);
+
   const [freezers, setFreezers] = useState(() => {
     try {
       const saved = localStorage.getItem('avs_freezers_cache');
