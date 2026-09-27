@@ -1180,18 +1180,17 @@ export const StockReturnModal = ({ onClose }) => {
                         </div>
 
                         {/* 3. Primary Storekeeper Input: MANUAL RETURN */}
-                        <div className={`mt-3 p-3 rounded-2xl border ${
+                        <div className={`mt-3 p-3 sm:p-3.5 rounded-2xl border text-center ${
                           isExcess 
                             ? 'bg-amber-100/70 border-amber-300' 
                             : isMissing
                               ? 'bg-rose-100/70 border-rose-300'
                               : 'bg-teal-50/80 border-teal-200'
                         }`}>
-                          <label className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-1.5 flex items-center justify-between">
-                            <span>MANUAL RETURN (உண்மையான சரக்கு வரவு)</span>
-                            <span className="text-[10px] font-mono text-slate-500 font-bold">Type Physical Count</span>
+                          <label className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-1.5 text-center">
+                            MANUAL RETURN (உண்மையான சரக்கு வரவு)
                           </label>
-                          <div className="w-full">
+                          <div className="max-w-xs mx-auto">
                             <input
                               type="number"
                               min="0"
@@ -1201,51 +1200,9 @@ export const StockReturnModal = ({ onClose }) => {
                               value={manualReturnQuantities[p.product_id] !== undefined ? manualReturnQuantities[p.product_id] : p.expectedReturn}
                               onChange={(e) => handleManualReturnChange(p.product_id, e.target.value, p.isPieceBased)}
                               placeholder="0"
-                              className="w-full h-12 rounded-xl border border-slate-300 bg-white px-3 text-center text-sm sm:text-base font-mono font-black text-slate-900 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 disabled:bg-slate-100 disabled:text-slate-500 transition shadow-xs"
+                              className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3 text-center text-base font-mono font-black text-slate-900 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 disabled:bg-slate-100 disabled:text-slate-500 transition shadow-xs"
                             />
                           </div>
-                        </div>
-
-                        {/* 4. Auto-Reconciliation Comparison: Expected vs Actual vs Missing */}
-                        <div className="grid grid-cols-3 gap-2 pt-2.5 text-center text-xs font-mono">
-                          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
-                            <span className="text-[9px] font-bold text-slate-500 uppercase block">Expected Return</span>
-                            <span className="font-black text-slate-800 text-xs sm:text-sm block mt-0.5">
-                              {p.expectedReturn} <span className="text-[9px] font-medium text-slate-400">{unit}</span>
-                            </span>
-                          </div>
-
-                          <div className="p-2 rounded-xl bg-teal-50 border border-teal-200">
-                            <span className="text-[9px] font-bold text-teal-800 uppercase block">Actual Return</span>
-                            <span className="font-black text-teal-700 text-xs sm:text-sm block mt-0.5">
-                              {p.actualReturn} <span className="text-[9px] font-medium text-teal-500">{unit}</span>
-                            </span>
-                          </div>
-
-                          <div className={`p-2 rounded-xl border ${
-                            isMissing 
-                              ? 'bg-rose-100 border-rose-300 text-rose-900' 
-                              : isExcess
-                                ? 'bg-amber-100 border-amber-300 text-amber-900'
-                                : 'bg-slate-50 border-slate-200 text-slate-700'
-                          }`}>
-                            <span className="text-[9px] font-bold uppercase block">Missing Qty</span>
-                            <span className={`font-black text-xs sm:text-sm block mt-0.5 ${
-                              isMissing ? 'text-rose-700' : isExcess ? 'text-amber-700' : 'text-slate-600'
-                            }`}>
-                              {isMissing ? `${p.missingQty} ${unit}` : isExcess ? `+${p.excessQty} (Excess)` : `0 ${unit}`}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Equation validation footer */}
-                        <div className="mt-2.5 px-3 py-2 bg-slate-50 rounded-xl text-[11px] font-mono text-slate-600 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 border border-slate-200/60">
-                          <span className="truncate">
-                            Formula: <strong>{p.alloc}</strong> = {p.sold} (Sold) + {p.dmg} (Damaged) + {p.actualReturn} (Return){p.missingQty > 0 ? ` + ${p.missingQty} (Missing)` : ''}{p.excessQty > 0 ? ` [Excess: +${p.excessQty}]` : ''}
-                          </span>
-                          <span className={isBalanced ? 'text-emerald-700 font-extrabold shrink-0' : isMissing ? 'text-rose-700 font-extrabold shrink-0' : 'text-amber-700 font-extrabold shrink-0'}>
-                            {isBalanced ? '✓ 100% Balanced' : isMissing ? `⚠️ Missing: ${p.missingQty} ${unit}` : `⚠️ Excess: +${p.excessQty} ${unit}`}
-                          </span>
                         </div>
 
                       </div>
