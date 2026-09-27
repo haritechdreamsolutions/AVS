@@ -1366,9 +1366,6 @@ export const StockReturnModal = ({ onClose }) => {
                     <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
                       6. DAMAGE ENTRIES (சேதம் பதிவு)
                     </h4>
-                    <p className="text-[10px] text-slate-500 font-medium">
-                      Damaged product quantities deducted from live vehicle stock
-                    </p>
                   </div>
                 </div>
 
@@ -1396,15 +1393,6 @@ export const StockReturnModal = ({ onClose }) => {
                 </button>
               </div>
 
-              {/* Damage notice */}
-              <div className="p-2.5 bg-rose-50/70 border border-rose-200 rounded-xl text-[11px] text-rose-900 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <p className="leading-snug">
-                  <strong>Zero Double Counting:</strong> Damages recorded here are deducted live from vehicle stock. 
-                  The final return transaction adds <strong>ONLY</strong> the actual physical return quantity to warehouse inventory.
-                </p>
-              </div>
-
               {/* Damage Entries List */}
               {damagesList.length === 0 ? (
                 <div className="py-3.5 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl space-y-1">
@@ -1424,7 +1412,7 @@ export const StockReturnModal = ({ onClose }) => {
                         <p className="font-bold text-slate-700 truncate">{dmg.product_name || `Product #${dmg.product_id}`}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 font-mono">
-                        <span className="font-black text-rose-700">{dmg.qty_units || dmg.quantity} Units</span>
+                        <span className="font-black text-rose-700">{dmg.qty_units || dmg.quantity}</span>
                         {dmg.damage_cost && (
                           <span className="text-slate-400 text-[10px]">(₹{Number(dmg.damage_cost).toFixed(2)})</span>
                         )}
@@ -1445,9 +1433,6 @@ export const StockReturnModal = ({ onClose }) => {
                     <FileCheck2 className="w-4 h-4 text-emerald-400" />
                     7. FINAL SUMMARY (இறுதிச் சுருக்கம்)
                   </h4>
-                  <p className="text-[11px] text-slate-400 font-medium">
-                    Financial collection balance & aggregate stock reconciliation summary
-                  </p>
                 </div>
 
                 <div className="text-right font-mono">
@@ -1482,33 +1467,33 @@ export const StockReturnModal = ({ onClose }) => {
                 </div>
               </div>
 
-              {/* Stock Totals 5-Box Grid */}
+              {/* Stock Totals 5-Box Grid (Numbers only) */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 font-mono text-center text-xs">
                 <div className="p-2 rounded-xl bg-slate-800 border border-slate-700">
                   <span className="text-[8px] font-bold text-slate-400 uppercase block">Allocated</span>
                   <span className="font-black text-xs text-slate-200 block mt-0.5">
-                    {reconciliationData.totalAllocated} Units
+                    {reconciliationData.totalAllocated}
                   </span>
                 </div>
 
                 <div className="p-2 rounded-xl bg-slate-800 border border-slate-700">
                   <span className="text-[8px] font-bold text-blue-400 uppercase block">Sold</span>
                   <span className="font-black text-xs text-blue-300 block mt-0.5">
-                    {reconciliationData.totalSold} Units
+                    {reconciliationData.totalSold}
                   </span>
                 </div>
 
                 <div className="p-2 rounded-xl bg-slate-800 border border-slate-700">
                   <span className="text-[8px] font-bold text-rose-400 uppercase block">Damaged</span>
                   <span className="font-black text-xs text-rose-300 block mt-0.5">
-                    {reconciliationData.totalDamaged} Units
+                    {reconciliationData.totalDamaged}
                   </span>
                 </div>
 
                 <div className="p-2 rounded-xl bg-teal-950/80 border border-teal-800">
                   <span className="text-[8px] font-bold text-teal-300 uppercase block">Actual Return</span>
                   <span className="font-black text-xs text-teal-400 block mt-0.5">
-                    {manualReturnReview.totalPhysicalReturn} Units
+                    {manualReturnReview.totalPhysicalReturn}
                   </span>
                 </div>
 
@@ -1521,16 +1506,9 @@ export const StockReturnModal = ({ onClose }) => {
                   <span className={`font-black text-xs block mt-0.5 ${
                     manualReturnReview.totalShortage > 0 ? 'text-rose-400' : 'text-slate-300'
                   }`}>
-                    {manualReturnReview.totalShortage} Units
+                    {manualReturnReview.totalShortage}
                   </span>
                 </div>
-              </div>
-
-              {/* Status Note */}
-              <div className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-[11px] text-slate-300">
-                <p>
-                  ✓ <strong>Warehouse Inventory Invariant:</strong> Only <strong>{manualReturnReview.totalPhysicalReturn} units</strong> of actual physical returned stock will be added to Warehouse Inventory. Driver vehicle stock will be zeroed and permanently locked.
-                </p>
               </div>
 
               {/* Shortage Reason Input Box */}
@@ -1541,7 +1519,7 @@ export const StockReturnModal = ({ onClose }) => {
                       <AlertTriangle className="w-4 h-4 text-amber-700" />
                       Shortage Reason Required (குறைவுக்கான காரணம்) *
                     </span>
-                    <span className="font-mono text-rose-800 font-extrabold">{manualReturnReview.totalShortage} Units Missing</span>
+                    <span className="font-mono text-rose-800 font-extrabold">{manualReturnReview.totalShortage} Missing</span>
                   </div>
                   <textarea
                     value={shortageReason}
