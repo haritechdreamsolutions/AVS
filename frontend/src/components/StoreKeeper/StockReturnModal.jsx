@@ -15,6 +15,9 @@ export const StockReturnModal = ({ onClose }) => {
   const { 
     shops = [],
     sales = [],
+    routes = [],
+    villages = [],
+    employees = [],
     fetchEligibleDriversForReturn, 
     fetchDriverExpectedReturn,
     verifyAndAcceptDriverReturnDirect,
@@ -151,20 +154,46 @@ export const StockReturnModal = ({ onClose }) => {
   );
   const netAmount = Number((totalSales - totalExpenses).toFixed(2));
 
-  // Shop Visit & Route Allocation Statistics
+  // Shop Visit & Route Allocation Statistics (Strictly Route-Specific)
   const shopStats = useMemo(() => {
-    if (driverData?.shops_summary) {
+    if (driverData?.shops_summary && Number(driverData.shops_summary.total_shops) > 0) {
       return driverData.shops_summary;
     }
-    const driverRouteId = driverInfo.route_id;
+
     const driverEmpId = driverInfo.id || selectedDriverId;
     const todayStr = new Date().toISOString().split('T')[0];
+    const matchedEmp = (employees || []).find(e => String(e.id) === String(driverEmpId));
 
-    const driverShops = (shops || []).filter(s => 
-      s.is_active !== false && 
-      (driverRouteId ? (s.route_id === driverRouteId || s.effective_route_id === driverRouteId) : true)
+    // Resolve target route ID and route name for the selected driver
+    const targetRouteId = driverInfo.route_id || matchedEmp?.route_id || (
+      (routes || []).find(r => r.name && driverInfo.route_name && r.name.trim().toLowerCase() === driverInfo.route_name.trim().toLowerCase())?.id
+    );
+    const targetRouteName = (driverInfo.route_name || matchedEmp?.route_name || '').trim().toLowerCase();
+
+    // Find all villages linked to this route
+    const linkedVillageIds = new Set(
+      (villages || [])
+        .filter(v => 
+          (targetRouteId && String(v.route_id) === String(targetRouteId)) ||
+          (targetRouteName && v.route_name && v.route_name.trim().toLowerCase() === targetRouteName) ||
+          (targetRouteName && v.name && v.name.trim().toLowerCase() === targetRouteName)
+        )
+        .map(v => Number(v.id))
     );
 
+    // Filter ONLY shops assigned to this driver's specific route
+    let routeShops = [];
+    if (targetRouteId || targetRouteName || linkedVillageIds.size > 0) {
+      routeShops = (shops || []).filter(s => {
+        if (s.is_active === false) return false;
+        if (targetRouteId && String(s.route_id) === String(targetRouteId)) return true;
+        if (s.village_id && linkedVillageIds.has(Number(s.village_id))) return true;
+        if (targetRouteName && s.route_name && s.route_name.trim().toLowerCase() === targetRouteName) return true;
+        return false;
+      });
+    }
+
+    // Today's sales bills created by this driver
     const todayDriverSales = (sales || []).filter(s => 
       String(s.employee_id) === String(driverEmpId) &&
       ((s.sale_date && s.sale_date.startsWith(todayStr)) || (s.created_at && s.created_at.startsWith(todayStr))) &&
@@ -172,8 +201,8 @@ export const StockReturnModal = ({ onClose }) => {
     );
 
     const visitedShopIds = new Set(todayDriverSales.map(s => String(s.shop_id)).filter(Boolean));
-    const total = driverShops.length;
-    const visited = visitedShopIds.size;
+    const total = routeShops.length;
+    const visited = visitedShopIds.size > 0 ? visitedShopIds.size : Number(salesSummary.total_bills || 0);
     const withoutVisit = Math.max(0, total - visited);
 
     return {
@@ -183,7 +212,7 @@ export const StockReturnModal = ({ onClose }) => {
       without_visit_shops: withoutVisit,
       unvisited_shops: withoutVisit
     };
-  }, [driverData, driverInfo, shops, sales, selectedDriverId]);
+  }, [driverData, driverInfo, shops, sales, routes, villages, employees, selectedDriverId, salesSummary.total_bills]);
 
   // Reconciliation Calculations & Validations (Phase 5)
   const reconciliationData = useMemo(() => {

@@ -1259,14 +1259,14 @@ export async function getEmployeeAccountSummary(cid, empId, date) {
 
 export async function getEmployeeAssignedShops(cid, empId, date) {
   const targetDate = date || new Date().toISOString().split('T')[0];
-  const emp = await queryOne('SELECT * FROM employees WHERE id=$1 AND company_id=$2', [empId, cid]);
+  const emp = await queryOne('SELECT * FROM employees WHERE id=$1 AND (company_id=$2 OR company_id=1 OR company_id IS NULL)', [empId, cid]);
   if (!emp) return [];
 
   let routeId = emp.route_id;
   if (!routeId) {
     const ra = await queryOne(
-      "SELECT route_id FROM route_assignments WHERE employee_id=$1 AND assigned_date=$2 AND status != 'COMPLETED' ORDER BY id DESC LIMIT 1",
-      [empId, targetDate]
+      "SELECT route_id FROM route_assignments WHERE employee_id=$1 AND (company_id=$2 OR company_id=1 OR company_id IS NULL) AND (assigned_date=$3 OR assigned_date::date=$3::date) AND (status IS NULL OR status != 'COMPLETED') ORDER BY id DESC LIMIT 1",
+      [empId, cid, targetDate]
     );
     if (ra) routeId = ra.route_id;
   }
@@ -1279,11 +1279,13 @@ export async function getEmployeeAssignedShops(cid, empId, date) {
     `SELECT s.*, 
        v.name as village_name, v.code as village_code, 
        r.name as route_name, r.code as route_code,
-       v.route_id as effective_route_id
+       COALESCE(s.route_id, v.route_id) as effective_route_id
      FROM shops s
-     JOIN villages v ON v.id = s.village_id AND v.status = 'ACTIVE'
-     JOIN routes r ON r.id = v.route_id AND r.is_active = TRUE
-     WHERE s.company_id = $1 AND s.is_active = TRUE AND v.route_id = $2
+     LEFT JOIN villages v ON v.id = s.village_id
+     LEFT JOIN routes r ON r.id = COALESCE(s.route_id, v.route_id)
+     WHERE (s.company_id = $1 OR s.company_id = 1 OR s.company_id IS NULL) 
+       AND s.is_active = TRUE 
+       AND (s.route_id = $2 OR v.route_id = $2)
      ORDER BY s.id ASC`,
     [cid, routeId]
   );
@@ -4511,10 +4513,10 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
 
   // 1. Fetch Driver info
   const driverRes = await queryOne(
-    `SELECT e.*, r.name as route_name, r.code as route_code 
+    `SELECT e.*, r.name as route_name, r.code as route_code, r.id as route_id
      FROM employees e 
      LEFT JOIN routes r ON r.id = e.route_id 
-     WHERE e.id = $1 AND e.company_id = $2`,
+     WHERE e.id = $1 AND (e.company_id = $2 OR e.company_id = 1 OR e.company_id IS NULL)`,
     [empId, cid]
   );
   if (!driverRes) throw new Error('Driver record not found');
