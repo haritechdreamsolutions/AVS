@@ -450,7 +450,7 @@ export const EmployeeHome = ({ onStartBilling }) => {
           </span>
         </div>
 
-        {(!employeeStock || employeeStock.length === 0) ? (
+        {(!employeeStock || employeeStock.filter(item => Number(item.qty_units || 0) > 0).length === 0) ? (
           <div className="text-center py-8 bg-white rounded-3xl border border-dashed border-slate-200 p-4 shadow-sm">
             <Box className="w-9 h-9 text-slate-300 mx-auto mb-1.5" />
             <p className="font-bold text-xs text-slate-700">No stock allocated to vehicle yet</p>
@@ -458,7 +458,7 @@ export const EmployeeHome = ({ onStartBilling }) => {
           </div>
         ) : (
           <div className="flex flex-col gap-2.5 sm:gap-3">
-            {employeeStock.map((item, idx) => {
+            {employeeStock.filter(item => Number(item.qty_units || 0) > 0).map((item, idx) => {
               const piecesPerUnit = item.pieces_per_unit || 1;
               const totalPieces = Math.floor(Number(item.qty_units || 0) * piecesPerUnit);
 

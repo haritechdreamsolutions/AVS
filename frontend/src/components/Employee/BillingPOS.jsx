@@ -29,12 +29,6 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
     }, 3500);
   };
 
-  // Extract categories dynamically
-  const categories = useMemo(() => {
-    const cats = new Set(products.map(p => p.category_name || p.selling_unit || 'General').filter(Boolean));
-    return ['all', ...Array.from(cats)];
-  }, [products]);
-
   // Helper to find stock info, operational unit, available stock, unit label, and selling rate
   const getProductStockInfo = (product) => {
     const stock = (employeeStock || []).find(item => item.product_id === product.id);
@@ -49,11 +43,13 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
       const rate = Number(product.piece_selling_price || (Number(product.unit_selling_price || 0) / piecesPerUnit) || 0);
       return {
         opUnit,
+        heldUnits,
         basePieces,
         piecesPerUnit,
         availableStock,
         unitLabel: 'Pieces',
         shortUnit: 'Pieces',
+        sellingUnit: product.selling_unit || 'Trays',
         rate,
         isOutOfStock: availableStock <= 0
       };
@@ -63,27 +59,43 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
       const rate = Number(product.unit_selling_price || (Number(product.piece_selling_price || 0) * piecesPerUnit) || 0);
       return {
         opUnit,
+        heldUnits,
         basePieces,
         piecesPerUnit,
         availableStock,
         unitLabel: opUnit.pluralLabel,
         shortUnit: opUnit.label,
+        sellingUnit: product.selling_unit || opUnit.label,
         rate,
         isOutOfStock: availableStock <= 0
       };
     }
   };
 
+  // Filter ONLY products assigned to this driver that have available stock > 0
+  const availableAssignedProducts = useMemo(() => {
+    return (products || []).filter(p => {
+      const info = getProductStockInfo(p);
+      return !info.isOutOfStock && info.availableStock > 0;
+    });
+  }, [products, employeeStock]);
+
+  // Extract categories dynamically from available in-stock products only
+  const categories = useMemo(() => {
+    const cats = new Set(availableAssignedProducts.map(p => p.category_name || p.selling_unit || 'General').filter(Boolean));
+    return ['all', ...Array.from(cats)];
+  }, [availableAssignedProducts]);
+
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
+    return availableAssignedProducts.filter(p => {
       const cat = p.category_name || p.selling_unit || 'General';
       const catMatch = selectedCategory === 'all' || cat.toLowerCase() === selectedCategory.toLowerCase();
       const nameMatch = !searchQuery || 
-        p.display_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase());
+        (p.display_name && p.display_name.toLowerCase().includes(searchQuery.toLowerCase())) || 
+        (p.name && p.name.toLowerCase().includes(searchQuery.toLowerCase()));
       return catMatch && nameMatch;
     });
-  }, [products, selectedCategory, searchQuery]);
+  }, [availableAssignedProducts, selectedCategory, searchQuery]);
 
   const handleQtyChange = (product, val) => {
     const info = getProductStockInfo(product);
@@ -241,8 +253,16 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
       {filteredProducts.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-3xl border border-dashed border-slate-200">
           <Box className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-          <p className="font-bold text-slate-600 text-sm">No products found</p>
-          <p className="text-xs text-slate-400 mt-0.5">Try searching with a different keyword or category.</p>
+          <p className="font-bold text-slate-600 text-sm">
+            {availableAssignedProducts.length === 0 
+              ? 'No available stock allocated to your vehicle' 
+              : 'No products found'}
+          </p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {availableAssignedProducts.length === 0
+              ? 'Please ask Store Keeper / Admin to issue stock.'
+              : 'Try searching with a different keyword or category.'}
+          </p>
         </div>
       ) : (
         <div className="flex flex-col gap-2 sm:gap-2.5">
@@ -289,16 +309,17 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
                     {prod.display_name}
                   </h3>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <span className={`text-[11px] font-bold ${
-                      isOutOfStock ? 'text-slate-400' : 'text-slate-500'
-                    }`}>
-                      Stock: <strong className={isOutOfStock ? 'text-rose-500 font-mono font-bold' : 'text-indigo-600 font-black font-mono'}>{info.availableStock} {info.unitLabel}</strong>
+                    <span className="text-[11px] font-bold text-slate-500">
+                      Stock: <strong className="text-emerald-600 font-black font-mono">{info.availableStock} {info.unitLabel}</strong>
+                      {info.heldUnits > 0 && info.piecesPerUnit > 1 && (
+                        <span className="text-slate-500 font-semibold ml-1.5">
+                          ({info.heldUnits} {info.sellingUnit})
+                        </span>
+                      )}
                     </span>
-                    {isOutOfStock && (
-                      <span className="text-[9.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100/90 text-rose-700 border border-rose-200/80">
-                        OUT OF STOCK
-                      </span>
-                    )}
+                    <span className="text-[10.5px] font-semibold text-slate-400">
+                      • ₹{info.rate.toFixed(2)}/{info.shortUnit}
+                    </span>
                   </div>
                 </div>
 
