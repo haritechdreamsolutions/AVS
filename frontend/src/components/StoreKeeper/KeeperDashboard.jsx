@@ -53,25 +53,19 @@ export const KeeperDashboard = () => {
         <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
         {/* Level 1: Title & Primary CTA */}
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400 shadow-xs shrink-0">
-              <UserCheck className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-xl sm:text-2xl font-black text-white flex flex-wrap items-center gap-2 tracking-tight">
-                STORE KEEPER POS DASHBOARD
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-400/30">
-                  🟢 Real-Time Inventory Engine
-                </span>
-              </h2>
-              <p className="text-xs text-slate-300 font-medium mt-0.5">Warehouse Stock Control, Direct Counter Sales & Driver Vehicle Allocations</p>
-            </div>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-3.5 border-b border-slate-800/80 pb-4">
+          <div>
+            <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight uppercase">
+              STORE KEEPER POS DASHBOARD
+            </h2>
+            <p className="text-xs text-slate-300 font-medium mt-1">
+              Warehouse Stock Control, Direct Counter Sales & Driver Vehicle Allocations
+            </p>
           </div>
 
           <button
             onClick={() => setActiveModal('DIRECT_SALE')}
-            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg glow-green transition-transform hover:scale-[1.02] active:scale-95 shrink-0"
+            className="w-full md:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg glow-green transition-transform hover:scale-[1.02] active:scale-95 shrink-0 cursor-pointer min-h-[46px]"
           >
             <ShoppingCart className="w-4 h-4 stroke-[2.5]" />
             Direct Store Sale
@@ -79,12 +73,12 @@ export const KeeperDashboard = () => {
         </div>
 
         {/* Level 2: Operations Quick Toolbar */}
-        <div className="relative z-10 grid grid-cols-2 sm:flex items-center gap-2 py-0.5 w-full sm:w-auto">
+        <div className="relative z-10 grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 pt-1 w-full">
           <span className="text-[11px] font-extrabold uppercase text-slate-400 tracking-wider mr-1 hidden sm:inline-block">Quick Actions:</span>
           
           <button
             onClick={() => setActiveModal('ADD_SHOP')}
-            className="px-3.5 py-2.5 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-purple-400/30 shadow-xs transition min-h-[44px] cursor-pointer"
+            className="px-3.5 py-2.5 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-purple-400/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
           >
             <Plus className="w-4 h-4" />
             Add Shop
@@ -92,7 +86,7 @@ export const KeeperDashboard = () => {
 
           <button
             onClick={() => setActiveModal('RECEIVE')}
-            className="px-3.5 py-2.5 rounded-xl bg-blue-600/90 hover:bg-blue-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-blue-400/30 shadow-xs transition min-h-[44px] cursor-pointer"
+            className="px-3.5 py-2.5 rounded-xl bg-blue-600/90 hover:bg-blue-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-blue-400/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
           >
             <ArrowDownLeft className="w-4 h-4" />
             Receive Stock
@@ -100,7 +94,7 @@ export const KeeperDashboard = () => {
           
           <button
             onClick={() => setActiveModal('ALLOCATE')}
-            className="px-3.5 py-2.5 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-indigo-400/30 shadow-xs transition min-h-[44px] cursor-pointer"
+            className="px-3.5 py-2.5 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-indigo-400/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
           >
             <ArrowUpRight className="w-4 h-4" />
             Stock Allocate Driver
@@ -108,7 +102,7 @@ export const KeeperDashboard = () => {
 
           <button
             onClick={() => setActiveModal('RETURN_DRIVER')}
-            className="px-3.5 py-2.5 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-amber-400/30 shadow-xs transition min-h-[44px] cursor-pointer"
+            className="px-3.5 py-2.5 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-amber-400/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
           >
             <RotateCcw className="w-4 h-4" />
             Stock Return Driver
@@ -116,7 +110,7 @@ export const KeeperDashboard = () => {
 
           <button
             onClick={() => setActiveModal('SALES_HISTORY')}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-700/90 hover:bg-slate-600 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-slate-500/30 shadow-xs transition min-h-[44px] cursor-pointer"
+            className="col-span-2 sm:col-span-1 px-3.5 py-2.5 rounded-xl bg-slate-700/90 hover:bg-slate-600 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-slate-500/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
           >
             <FileText className="w-4 h-4" />
             Sales & Receipts
