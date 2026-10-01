@@ -381,7 +381,14 @@ export const KeeperDashboard = () => {
       {completedBill && (
         <ThermalBillModal
           bill={completedBill}
-          onClose={() => setCompletedBill(null)}
+          onClose={() => {
+            setCompletedBill(null);
+            setActiveModal(null);
+          }}
+          onPrintComplete={() => {
+            setCompletedBill(null);
+            setActiveModal(null);
+          }}
         />
       )}
       {activeModal === 'SETTLEMENT' && (

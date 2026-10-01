@@ -1,8 +1,11 @@
 // ============================================================================
 // AVS POS - 58mm ESC/POS Bluetooth Thermal Printer Service
 // Specifically engineered for EXEO EX58C & standard 58mm ESC/POS thermal printers
-// Uses Direct Chrome Web Bluetooth GATT Device Connection
+// Uses Direct Chrome Web Bluetooth GATT Device Connection with Fast Reconnect Cache
 // ============================================================================
+
+let cachedDevice = null;
+let cachedCharacteristic = null;
 
 /**
  * Generates an ESC/POS binary buffer strictly formatted for 58mm thermal rolls.
@@ -190,7 +193,7 @@ export const generateEscPos58mmBuffer = (bill) => {
 
 /**
  * Direct Web Bluetooth GATT Print implementation (Native Chrome Bluetooth Device Selector).
- * Connects directly to EX58C and streams 58mm ESC/POS binary data.
+ * Automatically caches the connected EX58C printer for instant one-click subsequent printing.
  */
 export const printViaWebBluetooth = async (billData) => {
   if (!navigator.bluetooth) {
@@ -200,8 +203,66 @@ export const printViaWebBluetooth = async (billData) => {
 
   const escPosBytes = generateEscPos58mmBuffer(billData);
 
-  // Open native Bluetooth device picker
-  const device = await navigator.bluetooth.requestDevice({
+  let device = cachedDevice;
+  let writeCharacteristic = cachedCharacteristic;
+
+  // 1. Try reusing existing active connected characteristic (Lightning Fast, zero popup)
+  if (device && device.gatt && device.gatt.connected && writeCharacteristic) {
+    try {
+      const chunkSize = 100;
+      for (let i = 0; i < escPosBytes.length; i += chunkSize) {
+        const chunk = escPosBytes.slice(i, i + chunkSize);
+        if (writeCharacteristic.properties.writeWithoutResponse) {
+          await writeCharacteristic.writeValueWithoutResponse(chunk);
+        } else {
+          await writeCharacteristic.writeValue(chunk);
+        }
+      }
+      return { success: true, transport: 'WebBluetooth' };
+    } catch (e) {
+      console.warn("Cached write error, attempting reconnect...", e);
+      writeCharacteristic = null;
+    }
+  }
+
+  // 2. Try reconnecting to cached device if disconnected
+  if (device && device.gatt && !device.gatt.connected) {
+    try {
+      const server = await device.gatt.connect();
+      const services = await server.getPrimaryServices();
+      for (const service of services) {
+        try {
+          const chars = await service.getCharacteristics();
+          for (const char of chars) {
+            if (char.properties.write || char.properties.writeWithoutResponse) {
+              writeCharacteristic = char;
+              break;
+            }
+          }
+        } catch (e) {}
+        if (writeCharacteristic) break;
+      }
+      if (writeCharacteristic) {
+        cachedCharacteristic = writeCharacteristic;
+        const chunkSize = 100;
+        for (let i = 0; i < escPosBytes.length; i += chunkSize) {
+          const chunk = escPosBytes.slice(i, i + chunkSize);
+          if (writeCharacteristic.properties.writeWithoutResponse) {
+            await writeCharacteristic.writeValueWithoutResponse(chunk);
+          } else {
+            await writeCharacteristic.writeValue(chunk);
+          }
+        }
+        return { success: true, transport: 'WebBluetooth' };
+      }
+    } catch (e) {
+      console.warn("Reconnection failed, opening Bluetooth search...", e);
+      device = null;
+    }
+  }
+
+  // 3. Open native Bluetooth device picker
+  device = await navigator.bluetooth.requestDevice({
     acceptAllDevices: true,
     optionalServices: [
       '000018f0-0000-1000-8000-00805f9b34fb', // ESC/POS Service
@@ -218,9 +279,10 @@ export const printViaWebBluetooth = async (billData) => {
     throw new Error('No Bluetooth printer selected.');
   }
 
+  cachedDevice = device;
+
   const server = await device.gatt.connect();
   const services = await server.getPrimaryServices();
-  let writeCharacteristic = null;
 
   for (const service of services) {
     try {
@@ -240,6 +302,8 @@ export const printViaWebBluetooth = async (billData) => {
   if (!writeCharacteristic) {
     throw new Error('Could not find writable Bluetooth characteristic for EX58C.');
   }
+
+  cachedCharacteristic = writeCharacteristic;
 
   // Chunk write (100 bytes per chunk)
   const chunkSize = 100;
