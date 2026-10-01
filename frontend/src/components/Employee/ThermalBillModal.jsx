@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Printer, X, Bluetooth, CheckCircle2 } from 'lucide-react';
-import { printBillViaBluetooth, printBillViaRawBT } from '../../utils/bluetoothPrinter';
+import { Printer, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { printThermalReceipt } from '../../services/printerService';
 import { toast } from 'sonner';
 
-export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
+export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrintComplete }) => {
+  const initialBill = initialBillProp || sale;
   const { companyInfo, API_URL, apiFetch, shops } = useApp();
   const [bill, setBill] = useState(initialBill || {});
   const [items, setItems] = useState(initialBill?.items || []);
-  const [printingBluetooth, setPrintingBluetooth] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [printSuccess, setPrintSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
   const [loading, setLoading] = useState(false);
 
   // Load canonical saved bill from backend if initial bill has missing item details
@@ -40,10 +43,6 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
   const companySubtitle = 'Agencies Management System';
   const companyAddress = companyInfo?.address || 'Salem, Tamil Nadu';
   const companyPhone = companyInfo?.phone || '+91 98765 43210';
-
-  const handleSystemPrint = () => {
-    window.print();
-  };
 
   const totalQty = items.reduce((acc, it) => acc + (Math.floor(Number(it.qty)) || 0), 0);
   const totalAmount = Number(bill.total_amount || 0);
@@ -96,6 +95,50 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
     return String(bill.sale_date);
   };
 
+  const handleThermalPrint = async () => {
+    if (isPrinting) return;
+
+    try {
+      setIsPrinting(true);
+      setErrorMessage(null);
+      setPrintSuccess(false);
+
+      const receiptPayload = {
+        ...bill,
+        company_name: companyName,
+        company_subtitle: companySubtitle,
+        company_address: companyAddress,
+        company_phone: companyPhone,
+        items: items,
+        total_quantity: totalQty,
+        previous_due: previousDue,
+        old_credit_paid: oldCreditPaid,
+        shop_current_due: totalShopDue
+      };
+
+      await printThermalReceipt(receiptPayload);
+
+      setPrintSuccess(true);
+      toast.success("Receipt sent to EX58C Bluetooth Printer!");
+
+      // Allow 800ms for user feedback then close modal and return to POS dashboard
+      setTimeout(() => {
+        if (onPrintComplete) {
+          onPrintComplete();
+        } else {
+          onClose();
+        }
+      }, 800);
+    } catch (err) {
+      console.error("Thermal Print Error:", err);
+      const userMsg = err.message || "EX58C printer is not connected. Please connect printer and try again.";
+      setErrorMessage(userMsg);
+      toast.error(userMsg);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto">
       <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-4 sm:p-5 space-y-4 shadow-2xl my-auto max-h-[92dvh] overflow-y-auto">
@@ -108,11 +151,23 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
           </h3>
           <button 
             onClick={onClose} 
-            className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer"
+            disabled={isPrinting}
+            className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer disabled:opacity-50"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Error Alert Banner if Print Fails */}
+        {errorMessage && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5 text-xs text-red-700">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-bold">Printing Failed</p>
+              <p className="text-[11px] text-red-600 mt-0.5">{errorMessage}</p>
+            </div>
+          </div>
+        )}
 
         {/* 58mm Thermal Bill Container */}
         <div className="printable-thermal-receipt printable-thermal bg-white p-3.5 sm:p-4 font-mono text-[11px] border border-slate-300 rounded-2xl space-y-2.5 text-slate-900 leading-tight">
@@ -291,16 +346,47 @@ export const ThermalBillModal = ({ bill: initialBill, onClose }) => {
         {/* Print & Close Actions */}
         <div className="space-y-2 no-print">
           <button
-            onClick={handleSystemPrint}
-            className="w-full text-xs font-black bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl py-3.5 flex items-center justify-center gap-2 shadow-md min-h-[46px] cursor-pointer transition active:scale-[0.98]"
+            type="button"
+            onClick={handleThermalPrint}
+            disabled={isPrinting}
+            className={`w-full text-xs font-black rounded-2xl py-3.5 flex items-center justify-center gap-2 shadow-md min-h-[46px] cursor-pointer transition active:scale-[0.98] ${
+              printSuccess
+                ? 'bg-emerald-600 text-white'
+                : isPrinting
+                ? 'bg-amber-600 text-white cursor-wait'
+                : errorMessage
+                ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white'
+                : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white'
+            }`}
           >
-            <Printer className="w-4 h-4 text-white" />
-            <span>🖨️ PRINT BILL (பில் அச்சிடு)</span>
+            {isPrinting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>⏳ PRINTING... (அச்சிடப்படுகிறது...)</span>
+              </>
+            ) : printSuccess ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-white" />
+                <span>✓ PRINTED (அச்சிடப்பட்டது)</span>
+              </>
+            ) : errorMessage ? (
+              <>
+                <Printer className="w-4 h-4 text-white" />
+                <span>⚠️ RETRY PRINT (மீண்டும் அச்சிடு)</span>
+              </>
+            ) : (
+              <>
+                <Printer className="w-4 h-4 text-white" />
+                <span>🖨️ PRINT BILL (பில் அச்சிடு)</span>
+              </>
+            )}
           </button>
 
           <button
+            type="button"
             onClick={onClose}
-            className="w-full text-xs font-black bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl py-2.5 flex items-center justify-center gap-2 border border-slate-300 min-h-[40px] cursor-pointer transition active:scale-[0.98]"
+            disabled={isPrinting}
+            className="w-full text-xs font-black bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl py-2.5 flex items-center justify-center gap-2 border border-slate-300 min-h-[40px] cursor-pointer transition active:scale-[0.98] disabled:opacity-50"
           >
             <span>CLOSE (மூடு)</span>
           </button>

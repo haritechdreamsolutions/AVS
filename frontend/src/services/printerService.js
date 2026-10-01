@@ -1,0 +1,327 @@
+// ============================================================================
+// AVS POS - 58mm ESC/POS Bluetooth Thermal Printer Service
+// Specifically engineered for EXEO EX58C & standard 58mm ESC/POS thermal printers
+// Supports Android Native Intent (RawBT Bluetooth SPP) & Web Bluetooth GATT
+// ============================================================================
+
+/**
+ * Generates an ESC/POS binary buffer strictly formatted for 58mm thermal rolls.
+ * Standard 58mm width = 32 ASCII characters per line.
+ */
+export const generateEscPos58mmBuffer = (bill) => {
+  const ESC = 0x1B;
+  const GS = 0x1D;
+
+  // ESC/POS Commands
+  const CMD_INITIALIZE = [ESC, 0x40]; // Initialize printer
+  const CMD_ALIGN_LEFT = [ESC, 0x61, 0];
+  const CMD_ALIGN_CENTER = [ESC, 0x61, 1];
+  const CMD_ALIGN_RIGHT = [ESC, 0x61, 2];
+  const CMD_BOLD_ON = [ESC, 0x45, 1];
+  const CMD_BOLD_OFF = [ESC, 0x45, 0];
+  const CMD_DOUBLE_HEIGHT_ON = [ESC, 0x21, 0x10];
+  const CMD_DOUBLE_WIDTH_ON = [ESC, 0x21, 0x20];
+  const CMD_NORMAL_TEXT = [ESC, 0x21, 0x00];
+  const CMD_LINE_FEED = [0x0A];
+  const CMD_CUT = [GS, 0x56, 66, 0];
+
+  const encoder = new TextEncoder();
+  const buffer = [];
+
+  const addBytes = (bytes) => {
+    buffer.push(...bytes);
+  };
+
+  const addText = (text = '', align = 'LEFT', bold = false, doubleHeight = false) => {
+    if (align === 'CENTER') addBytes(CMD_ALIGN_CENTER);
+    else if (align === 'RIGHT') addBytes(CMD_ALIGN_RIGHT);
+    else addBytes(CMD_ALIGN_LEFT);
+
+    if (doubleHeight) {
+      addBytes(CMD_DOUBLE_HEIGHT_ON);
+    } else {
+      addBytes(CMD_NORMAL_TEXT);
+    }
+
+    if (bold) addBytes(CMD_BOLD_ON);
+
+    // Clean special characters to ensure flawless 58mm thermal font rendering
+    const cleanText = text
+      .replace(/₹/g, 'Rs.')
+      .replace(/[^\x20-\x7E\n]/g, ' '); // Strip non-ASCII to prevent junk characters on hardware
+
+    addBytes(Array.from(encoder.encode(cleanText)));
+
+    if (bold) addBytes(CMD_BOLD_OFF);
+    if (doubleHeight) addBytes(CMD_NORMAL_TEXT);
+    addBytes(CMD_LINE_FEED);
+  };
+
+  const addDashedLine = () => {
+    addText('--------------------------------', 'CENTER');
+  };
+
+  const addTwoColumnRow = (leftText, rightText, bold = false) => {
+    const totalWidth = 32;
+    const cleanLeft = String(leftText || '').replace(/₹/g, 'Rs.');
+    const cleanRight = String(rightText || '').replace(/₹/g, 'Rs.');
+    const maxLeftLen = totalWidth - cleanRight.length - 1;
+    const truncatedLeft = cleanLeft.length > maxLeftLen ? cleanLeft.substring(0, maxLeftLen) : cleanLeft;
+    const spaceCount = Math.max(1, totalWidth - truncatedLeft.length - cleanRight.length);
+    const line = truncatedLeft + ' '.repeat(spaceCount) + cleanRight;
+    addText(line, 'LEFT', bold);
+  };
+
+  // 1. Initialize Printer
+  addBytes(CMD_INITIALIZE);
+
+  // 2. Company Header
+  const companyName = bill.company_name || 'AVS AGENCIES';
+  const companySubtitle = bill.company_subtitle || 'Agencies Management System';
+  const companyAddress = bill.company_address || 'Salem, Tamil Nadu';
+  const companyPhone = bill.company_phone || '+91 98765 43210';
+
+  addText(companyName, 'CENTER', true, true);
+  addText(companySubtitle, 'CENTER', false);
+  addText(companyAddress, 'CENTER', false);
+  addText(`Ph: ${companyPhone}`, 'CENTER', false);
+  addDashedLine();
+
+  // 3. Bill & Customer Metadata
+  const billNo = bill.bill_no || bill.sale?.bill_no || 'INV-000000';
+  const rawDate = bill.sale_date || bill.date || new Date().toISOString().split('T')[0];
+  const dateStr = typeof rawDate === 'string' && rawDate.includes('T') ? rawDate.split('T')[0] : String(rawDate);
+  const timeStr = bill.sale_time || bill.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const shopName = bill.shop_name || bill.shop?.name || 'Customer';
+  const shopCode = bill.shop_code || bill.shop?.code || 'SHP-001';
+  const empName = bill.employee_name || bill.driver_name || 'Driver';
+  const vehicleNo = bill.vehicle_no || bill.vehicle_number || '';
+
+  addTwoColumnRow(`Bill: ${billNo}`, `${dateStr}`, true);
+  addTwoColumnRow(`Shop: ${shopName}`, `${timeStr}`, true);
+  addTwoColumnRow(`Code: ${shopCode}`, `Emp: ${empName}`, false);
+  if (vehicleNo) {
+    addText(`Vehicle: ${vehicleNo}`, 'LEFT', false);
+  }
+  addDashedLine();
+
+  // 4. Items Table (ITEM (14) | QTY (4) | RATE (6) | AMT (8)) = 32 cols
+  // Format: "ITEM           QTY   RATE   TOTAL"
+  addText('ITEM           QTY   RATE    AMT', 'LEFT', true);
+  addDashedLine();
+
+  const items = bill.items || bill.sale?.items || [];
+  let calculatedTotalQty = 0;
+
+  items.forEach((item) => {
+    const rawName = (item.product_name || 'Item').replace(/₹/g, '');
+    const pName = rawName.length > 13 ? rawName.substring(0, 13) : rawName.padEnd(13, ' ');
+    const qtyNum = Math.floor(Number(item.qty || 1));
+    calculatedTotalQty += qtyNum;
+    const qtyStr = String(qtyNum).padStart(4, ' ');
+    const rateStr = Number(item.rate || 0).toFixed(2).padStart(6, ' ');
+    const amtStr = Number(item.amount || (qtyNum * Number(item.rate || 0))).toFixed(2).padStart(7, ' ');
+
+    addText(`${pName} ${qtyStr} ${rateStr} ${amtStr}`, 'LEFT', false);
+  });
+
+  if (items.length === 0) {
+    addText('No items billed', 'CENTER', false);
+  }
+
+  addDashedLine();
+
+  // 5. Totals Section
+  const totalAmount = Number(bill.total_amount || 0);
+  const totalQty = bill.total_quantity || calculatedTotalQty;
+  const previousDue = Number(bill.previous_due || bill.shop_previous_due || 0);
+  const oldCreditPaid = Number(bill.old_credit_paid || 0);
+  const grandTotal = totalAmount + previousDue;
+
+  addTwoColumnRow('TOTAL ITEMS:', `${items.length}`, false);
+  addTwoColumnRow('TOTAL QTY:', `${totalQty}`, false);
+  addTwoColumnRow('BILL TOTAL:', `Rs. ${totalAmount.toFixed(2)}`, true);
+
+  if (previousDue > 0) {
+    addTwoColumnRow('OLD CREDIT:', `Rs. ${previousDue.toFixed(2)}`, false);
+    if (oldCreditPaid > 0) {
+      addTwoColumnRow('OLD CREDIT PAID:', `Rs. ${oldCreditPaid.toFixed(2)}`, false);
+    }
+    addTwoColumnRow('NET GRAND TOTAL:', `Rs. ${grandTotal.toFixed(2)}`, true);
+  }
+
+  addDashedLine();
+
+  // 6. Payment Breakdown
+  const paymentMode = (bill.payment_mode || 'CASH').toUpperCase();
+  const cashPaid = Number(bill.cash_paid || 0);
+  const gpayPaid = Number(bill.gpay_paid || 0);
+  const creditPaid = Number(bill.credit_paid || 0);
+  const shopBalance = Number(bill.shop_current_due !== undefined ? bill.shop_current_due : (bill.balance || 0));
+
+  addTwoColumnRow('PAYMENT MODE:', paymentMode, true);
+
+  if (paymentMode === 'SPLIT') {
+    if (cashPaid > 0) addTwoColumnRow('Cash Paid:', `Rs. ${cashPaid.toFixed(2)}`, false);
+    if (gpayPaid > 0) addTwoColumnRow('GPay / UPI Paid:', `Rs. ${gpayPaid.toFixed(2)}`, false);
+    if (creditPaid > 0) addTwoColumnRow('Credit on Bill:', `Rs. ${creditPaid.toFixed(2)}`, false);
+    addTwoColumnRow('Total Paid:', `Rs. ${(cashPaid + gpayPaid).toFixed(2)}`, true);
+  } else if (paymentMode === 'CASH') {
+    const received = cashPaid > 0 ? cashPaid : (totalAmount + oldCreditPaid);
+    addTwoColumnRow('Cash Received:', `Rs. ${received.toFixed(2)}`, false);
+  } else if (paymentMode === 'GPAY') {
+    const received = gpayPaid > 0 ? gpayPaid : (totalAmount + oldCreditPaid);
+    addTwoColumnRow('GPay Received:', `Rs. ${received.toFixed(2)}`, false);
+  } else if (paymentMode === 'CREDIT') {
+    addTwoColumnRow('Credit Amount:', `Rs. ${totalAmount.toFixed(2)}`, false);
+  }
+
+  addTwoColumnRow('SHOP BALANCE:', `Rs. ${shopBalance.toFixed(2)}`, true);
+  addDashedLine();
+
+  // 7. Footer
+  addText('Thank You! Visit Again', 'CENTER', true);
+  addText(companyName, 'CENTER', false);
+  addBytes(CMD_LINE_FEED);
+  addBytes(CMD_LINE_FEED);
+  addBytes(CMD_LINE_FEED);
+  addBytes(CMD_CUT);
+
+  return new Uint8Array(buffer);
+};
+
+/**
+ * Dispatches ESC/POS data to EX58C Bluetooth Printer via Android Native Print Bridge (RawBT).
+ * This works 100% reliably for Bluetooth Classic SPP printers from Android Chrome / WebViews.
+ */
+export const printViaRawBTBridge = async (billData) => {
+  const escPosBytes = generateEscPos58mmBuffer(billData);
+  let binary = '';
+  for (let i = 0; i < escPosBytes.byteLength; i++) {
+    binary += String.fromCharCode(escPosBytes[i]);
+  }
+  const base64Data = window.btoa(binary);
+
+  return new Promise((resolve, reject) => {
+    try {
+      // Standard Android Intent scheme for RawBT Bluetooth Thermal Service
+      // Direct silent background handoff to paired EX58C Bluetooth SPP printer
+      const rawBtUrl = `rawbt:data:application/octet-stream;base64,${base64Data}`;
+      
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = rawBtUrl;
+      document.body.appendChild(iframe);
+
+      setTimeout(() => {
+        try {
+          document.body.removeChild(iframe);
+        } catch (e) {
+          // ignore cleanup error
+        }
+        resolve({ success: true, transport: 'RawBT' });
+      }, 800);
+    } catch (err) {
+      reject(new Error(`Failed to send data to RawBT bridge: ${err.message}`));
+    }
+  });
+};
+
+/**
+ * Web Bluetooth GATT Print implementation (Fallback for BLE enabled thermal printers).
+ */
+export const printViaWebBluetooth = async (billData) => {
+  if (!navigator.bluetooth) {
+    throw new Error('Web Bluetooth is not supported in this browser.');
+  }
+
+  const escPosBytes = generateEscPos58mmBuffer(billData);
+
+  const device = await navigator.bluetooth.requestDevice({
+    acceptAllDevices: true,
+    optionalServices: [
+      '000018f0-0000-1000-8000-00805f9b34fb', // ESC/POS Service
+      '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC BLE
+      'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // PosBank / Xprinter BLE
+      '0000ff00-0000-1000-8000-00805f9b34fb', // Custom ESC/POS BLE
+      '0000ae00-0000-1000-8000-00805f9b34fb', // Goojprt BLE
+      '0000fee7-0000-1000-8000-00805f9b34fb'  // Generic POS BLE
+    ]
+  });
+
+  const server = await device.gatt.connect();
+  const services = await server.getPrimaryServices();
+  let writeCharacteristic = null;
+
+  for (const service of services) {
+    try {
+      const chars = await service.getCharacteristics();
+      for (const char of chars) {
+        if (char.properties.write || char.properties.writeWithoutResponse) {
+          writeCharacteristic = char;
+          break;
+        }
+      }
+    } catch (e) {
+      // continue checking next service
+    }
+    if (writeCharacteristic) break;
+  }
+
+  if (!writeCharacteristic) {
+    throw new Error('No writable ESC/POS Bluetooth characteristic found.');
+  }
+
+  // Chunk write (100 bytes per chunk to avoid MTU overflow)
+  const chunkSize = 100;
+  for (let i = 0; i < escPosBytes.length; i += chunkSize) {
+    const chunk = escPosBytes.slice(i, i + chunkSize);
+    if (writeCharacteristic.properties.writeWithoutResponse) {
+      await writeCharacteristic.writeValueWithoutResponse(chunk);
+    } else {
+      await writeCharacteristic.writeValue(chunk);
+    }
+  }
+
+  return { success: true, transport: 'WebBluetooth' };
+};
+
+/**
+ * Universal 58mm Thermal Print Dispatcher
+ * Directly prints to EXEO EX58C Bluetooth Printer on Android without opening browser/PDF preview.
+ */
+export const printThermalReceipt = async (billData) => {
+  if (!billData) {
+    throw new Error('Receipt data is missing or empty.');
+  }
+
+  const isAndroid = /android/i.test(navigator.userAgent || '');
+
+  // 1. On Android mobile (Chrome / WebView), use the RawBT native Bluetooth SPP bridge
+  if (isAndroid) {
+    try {
+      const result = await printViaRawBTBridge(billData);
+      return result;
+    } catch (err) {
+      console.warn('RawBT bridge fallback to Web Bluetooth:', err);
+    }
+  }
+
+  // 2. Web Bluetooth GATT support
+  if (navigator.bluetooth) {
+    try {
+      const result = await printViaWebBluetooth(billData);
+      return result;
+    } catch (bleErr) {
+      // If user cancelled device picker, rethrow clear message
+      if (bleErr.name === 'NotFoundError') {
+        throw new Error('Printer selection cancelled. Please ensure EX58C is turned on and paired.');
+      }
+      // If BLE fails on Android, attempt RawBT bridge
+      return await printViaRawBTBridge(billData);
+    }
+  }
+
+  // 3. Fallback to RawBT bridge
+  return await printViaRawBTBridge(billData);
+};

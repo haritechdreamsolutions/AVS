@@ -164,7 +164,16 @@ export default function App() {
                   {activeBill && (
                     <ThermalBillModal
                       bill={activeBill}
-                      onClose={() => setActiveBill(null)}
+                      onClose={() => {
+                        setActiveBill(null);
+                        setLastCreatedBill(null);
+                        setEmpScreen('shop_select');
+                      }}
+                      onPrintComplete={() => {
+                        setActiveBill(null);
+                        setLastCreatedBill(null);
+                        setEmpScreen('shop_select');
+                      }}
                     />
                   )}
                 </>

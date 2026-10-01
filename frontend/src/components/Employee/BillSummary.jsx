@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Printer, ArrowRight, Check, Bluetooth, Store, Calendar, Clock, User, Truck, Receipt, CheckCircle2 } from 'lucide-react';
-import { printBillViaBluetooth } from '../../utils/bluetoothPrinter';
+import { Printer, ArrowRight, Check, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { printThermalReceipt } from '../../services/printerService';
 import { toast } from 'sonner';
 
 export const BillSummary = ({ billResult, onDone }) => {
@@ -9,7 +9,9 @@ export const BillSummary = ({ billResult, onDone }) => {
   const [bill, setBill] = useState(billResult?.sale || billResult || {});
   const [items, setItems] = useState(billResult?.items || billResult?.sale?.items || []);
   const [loading, setLoading] = useState(false);
-  const [printingBluetooth, setPrintingBluetooth] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [printSuccess, setPrintSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
 
   // If billResult only has sale ID or if items are missing, fetch the canonical saved bill from backend
   useEffect(() => {
@@ -77,26 +79,38 @@ export const BillSummary = ({ billResult, onDone }) => {
 
   const grandTotal = totalAmount + previousDue;
 
-  const handleSystemPrint = () => {
-    window.print();
-  };
+  const handleThermalPrint = async () => {
+    if (isPrinting) return;
 
-  const handleBluetoothPrint = async () => {
     try {
-      setPrintingBluetooth(true);
-      toast.info("Scanning for Bluetooth Thermal Printers...");
-      await printBillViaBluetooth({
+      setIsPrinting(true);
+      setErrorMessage(null);
+      setPrintSuccess(false);
+
+      const receiptPayload = {
         ...bill,
         company_name: companyName,
         company_subtitle: companySubtitle,
-        items: items
-      });
-      toast.success("Bill printed successfully via Bluetooth!");
+        company_address: companyAddress,
+        company_phone: companyPhone,
+        items: items,
+        total_quantity: totalQty,
+        previous_due: previousDue,
+        old_credit_paid: oldCreditPaid,
+        shop_current_due: totalShopDue
+      };
+
+      await printThermalReceipt(receiptPayload);
+
+      setPrintSuccess(true);
+      toast.success("Bill sent to EX58C Bluetooth Printer!");
     } catch (err) {
-      console.error("Bluetooth print error:", err);
-      toast.error("Bluetooth Print Notice: " + (err.message || "Failed to connect to Bluetooth printer"));
+      console.error("Thermal Print Error:", err);
+      const userMsg = err.message || "EX58C printer is not connected. Please connect printer and try again.";
+      setErrorMessage(userMsg);
+      toast.error(userMsg);
     } finally {
-      setPrintingBluetooth(false);
+      setIsPrinting(false);
     }
   };
 
@@ -124,6 +138,17 @@ export const BillSummary = ({ billResult, onDone }) => {
         <h2 className="text-lg font-black text-slate-900">BILL CREATED SUCCESSFULLY</h2>
         <p className="text-xs text-slate-500 font-bold">Bill #{bill.bill_no || 'N/A'} is finalized & saved</p>
       </div>
+
+      {/* Error Alert Banner if Print Fails */}
+      {errorMessage && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5 text-xs text-red-700">
+          <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-bold">Printing Failed</p>
+            <p className="text-[11px] text-red-600 mt-0.5">{errorMessage}</p>
+          </div>
+        </div>
+      )}
 
       {/* 58mm Thermal Printable Container & On-Screen Receipt Preview */}
       <div className="printable-thermal-receipt bg-white border border-slate-300 rounded-3xl p-4 sm:p-5 shadow-md font-mono text-[11px] text-slate-900 leading-tight space-y-3">
@@ -298,19 +323,50 @@ export const BillSummary = ({ billResult, onDone }) => {
       {/* Screen Action Buttons (Print & Done) in Document Flow */}
       <div className="space-y-2.5 no-print pt-1">
         
-        {/* Standard / USB 58mm Thermal Print */}
+        {/* 58mm Bluetooth ESC/POS Print */}
         <button
-          onClick={handleSystemPrint}
-          className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-md transition active:scale-[0.98] min-h-[48px] cursor-pointer"
+          type="button"
+          onClick={handleThermalPrint}
+          disabled={isPrinting}
+          className={`w-full py-3.5 px-6 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-md transition active:scale-[0.98] min-h-[48px] cursor-pointer ${
+            printSuccess
+              ? 'bg-emerald-600 text-white'
+              : isPrinting
+              ? 'bg-amber-600 text-white cursor-wait'
+              : errorMessage
+              ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white'
+              : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white'
+          }`}
         >
-          <Printer className="w-4 h-4 text-white" />
-          <span>🖨️ PRINT BILL (பில் அச்சிடு)</span>
+          {isPrinting ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin text-white" />
+              <span>⏳ PRINTING... (அச்சிடப்படுகிறது...)</span>
+            </>
+          ) : printSuccess ? (
+            <>
+              <CheckCircle2 className="w-4 h-4 text-white" />
+              <span>✓ PRINTED (அச்சிடப்பட்டது)</span>
+            </>
+          ) : errorMessage ? (
+            <>
+              <Printer className="w-4 h-4 text-white" />
+              <span>⚠️ RETRY PRINT (மீண்டும் அச்சிடு)</span>
+            </>
+          ) : (
+            <>
+              <Printer className="w-4 h-4 text-white" />
+              <span>🖨️ PRINT BILL (பில் அச்சிடு)</span>
+            </>
+          )}
         </button>
 
         {/* Done / Return to Home */}
         <button
+          type="button"
           onClick={onDone}
-          className="w-full py-3 px-6 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition active:scale-[0.98] min-h-[44px] border border-slate-300 cursor-pointer"
+          disabled={isPrinting}
+          className="w-full py-3 px-6 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition active:scale-[0.98] min-h-[44px] border border-slate-300 cursor-pointer disabled:opacity-50"
         >
           <span>DONE (முடிந்தது)</span>
           <ArrowRight className="w-4 h-4" />
