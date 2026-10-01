@@ -36,6 +36,7 @@ export const AppProvider = ({ children }) => {
   const [expenses, setExpenses] = useState([]);
   const [users, setUsers] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [drivers, setDrivers] = useState([]);
   const DEFAULT_SUPPLIERS = [
     {
       id: 1,
