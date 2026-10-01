@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Printer, X, CheckCircle2, AlertCircle, Loader2, Bluetooth } from 'lucide-react';
-import { printViaRawBT, printViaWebBluetooth } from '../../services/printerService';
+import { Printer, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { printThermalReceipt } from '../../services/printerService';
 import { toast } from 'sonner';
 
 export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrintComplete }) => {
@@ -95,7 +95,7 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
     return String(bill.sale_date);
   };
 
-  const handleThermalPrint = async (useWebBle = false) => {
+  const handleThermalPrint = async () => {
     if (isPrinting) return;
 
     try {
@@ -116,15 +116,11 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
         shop_current_due: totalShopDue
       };
 
-      if (useWebBle) {
-        toast.info("Opening Chrome Bluetooth device search...");
-        await printViaWebBluetooth(receiptPayload);
-      } else {
-        await printViaRawBT(receiptPayload);
-      }
+      toast.info("Connecting to EX58C Bluetooth Printer...");
+      await printThermalReceipt(receiptPayload);
 
       setPrintSuccess(true);
-      toast.success("Receipt sent to EX58C Bluetooth Printer!");
+      toast.success("Receipt printed successfully on EX58C!");
 
       // Allow 1.2s for user feedback then close modal and return to POS dashboard
       setTimeout(() => {
@@ -136,46 +132,50 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
       }, 1200);
     } catch (err) {
       console.error("Thermal Print Error:", err);
-      const userMsg = err.message || "EX58C printer is not connected. Please connect printer and try again.";
-      setErrorMessage(userMsg);
-      toast.error(userMsg);
+      if (err.name === 'NotFoundError' || err.message?.includes('User cancelled')) {
+        setErrorMessage("Printer selection cancelled. Please select your EX58C printer to print.");
+      } else {
+        const userMsg = err.message || "EX58C printer not connected. Please turn on Bluetooth & printer and retry.";
+        setErrorMessage(userMsg);
+        toast.error(userMsg);
+      }
     } finally {
       setIsPrinting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-4 sm:p-5 space-y-4 shadow-2xl my-auto max-h-[92dvh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-white border border-slate-200 rounded-3xl max-w-sm sm:max-w-md w-full p-3.5 sm:p-5 space-y-3 sm:space-y-4 shadow-2xl my-auto max-h-[96dvh] flex flex-col overflow-hidden">
         
         {/* Header (Screen only) */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3 no-print">
-          <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-            <Printer className="w-5 h-5 text-blue-600" />
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 sm:pb-3 no-print shrink-0">
+          <h3 className="font-extrabold text-xs sm:text-sm text-slate-900 flex items-center gap-2">
+            <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
             58mm Thermal Bill Receipt
           </h3>
           <button 
             onClick={onClose} 
             disabled={isPrinting}
-            className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer disabled:opacity-50"
+            className="p-1 sm:p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer disabled:opacity-50"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
         {/* Error Alert Banner if Print Fails */}
         {errorMessage && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5 text-xs text-red-700">
+          <div className="p-2.5 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2 text-xs text-red-700 shrink-0">
             <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
             <div className="flex-1">
-              <p className="font-bold">Printing Notice</p>
-              <p className="text-[11px] text-red-600 mt-0.5">{errorMessage}</p>
+              <p className="font-bold">Printer Notice</p>
+              <p className="text-[11px] text-red-600 mt-0.5 leading-snug">{errorMessage}</p>
             </div>
           </div>
         )}
 
-        {/* 58mm Thermal Bill Container */}
-        <div className="printable-thermal-receipt printable-thermal bg-white p-3.5 sm:p-4 font-mono text-[11px] border border-slate-300 rounded-2xl space-y-2.5 text-slate-900 leading-tight">
+        {/* 58mm Thermal Bill Scrollable Container */}
+        <div className="printable-thermal-receipt printable-thermal bg-white p-3 sm:p-4 font-mono text-[10.5px] sm:text-[11px] border border-slate-300 rounded-2xl space-y-2 sm:space-y-2.5 text-slate-900 leading-tight overflow-y-auto flex-1">
           
           {/* Header */}
           <div className="text-center space-y-0.5 border-b border-dashed border-slate-400 pb-2">
@@ -185,13 +185,13 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
           </div>
 
           {/* Bill Meta */}
-          <div className="border-b border-dashed border-slate-400 pb-2 space-y-1 text-[10.5px]">
+          <div className="border-b border-dashed border-slate-400 pb-2 space-y-1 text-[10px] sm:text-[10.5px]">
             <div className="flex justify-between font-extrabold">
               <span>Bill No: <strong className="text-blue-700 font-black">{bill.bill_no || 'INV-000000'}</strong></span>
               <span>{formattedDate()}</span>
             </div>
             <div className="flex justify-between font-bold">
-              <span className="truncate max-w-[160px]">Shop: <strong>{bill.shop_name || 'Customer'}</strong></span>
+              <span className="truncate max-w-[150px] sm:max-w-[170px]">Shop: <strong>{bill.shop_name || 'Customer'}</strong></span>
               <span>{bill.sale_time || ''}</span>
             </div>
             <div className="flex justify-between text-[10px] text-slate-600 font-bold">
@@ -205,7 +205,7 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
             )}
           </div>
 
-          {/* Items Table (ONLY selected items, showing ITEM, QTY, RATE, AMT) */}
+          {/* Items Table */}
           <div className="space-y-1">
             <div className="flex justify-between font-black border-b border-slate-400 pb-1 text-[10px] uppercase text-slate-800">
               <span className="w-5/12 text-left">ITEM</span>
@@ -246,31 +246,31 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
 
           {/* Totals Section */}
           <div className="border-t border-b border-dashed border-slate-400 py-1.5 space-y-1">
-            <div className="flex justify-between font-bold text-[10.5px]">
+            <div className="flex justify-between font-bold text-[10px] sm:text-[10.5px]">
               <span>TOTAL ITEMS:</span>
               <span>{items.length}</span>
             </div>
-            <div className="flex justify-between font-bold text-[10.5px]">
+            <div className="flex justify-between font-bold text-[10px] sm:text-[10.5px]">
               <span>TOTAL QTY:</span>
               <span>{totalQty}</span>
             </div>
-            <div className="flex justify-between font-black text-sm pt-0.5 text-slate-900 border-t border-slate-200">
+            <div className="flex justify-between font-black text-xs sm:text-sm pt-0.5 text-slate-900 border-t border-slate-200">
               <span>BILL TOTAL:</span>
               <span className="text-emerald-700">₹{totalAmount.toFixed(2)}</span>
             </div>
             {previousDue > 0 && (
               <>
-                <div className="flex justify-between font-bold text-[10.5px] text-amber-700 pt-0.5">
+                <div className="flex justify-between font-bold text-[10px] text-amber-700 pt-0.5">
                   <span>OLD CREDIT (பழைய கடன்):</span>
                   <span className="font-mono">₹{previousDue.toFixed(2)}</span>
                 </div>
                 {oldCreditPaid > 0 && (
-                  <div className="flex justify-between font-bold text-[10.5px] text-emerald-700 pt-0.5">
+                  <div className="flex justify-between font-bold text-[10px] text-emerald-700 pt-0.5">
                     <span>OLD CREDIT PAID (செலுத்தியது):</span>
                     <span className="font-mono">₹{oldCreditPaid.toFixed(2)}</span>
                   </div>
                 )}
-                <div className="flex justify-between font-black text-sm text-slate-950 pt-0.5 border-t border-slate-300">
+                <div className="flex justify-between font-black text-xs sm:text-sm text-slate-950 pt-0.5 border-t border-slate-300">
                   <span>NET GRAND TOTAL:</span>
                   <span className="font-mono text-purple-700">
                     ₹{grandTotal.toFixed(2)}
@@ -330,7 +330,7 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
             )}
 
             {/* Total Shop Due Balance */}
-            <div className="flex justify-between font-black text-[11px] pt-1 border-t border-dashed border-slate-300">
+            <div className="flex justify-between font-black text-[10.5px] pt-1 border-t border-dashed border-slate-300">
               <span className={totalShopDue > 0 ? 'text-amber-800' : 'text-emerald-700'}>
                 SHOP BALANCE (கடை பாக்கி):
               </span>
@@ -349,13 +349,13 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
         </div>
 
         {/* Print & Close Actions */}
-        <div className="space-y-2 no-print">
-          {/* Main Direct Bluetooth Print (RawBT) */}
+        <div className="space-y-2 no-print shrink-0 pt-1">
+          {/* SINGLE PRIMARY DIRECT PRINT BUTTON */}
           <button
             type="button"
-            onClick={() => handleThermalPrint(false)}
+            onClick={handleThermalPrint}
             disabled={isPrinting}
-            className={`w-full text-xs font-black rounded-2xl py-3.5 flex items-center justify-center gap-2 shadow-md min-h-[46px] cursor-pointer transition active:scale-[0.98] ${
+            className={`w-full text-xs sm:text-sm font-black rounded-2xl py-3.5 flex items-center justify-center gap-2 shadow-md min-h-[48px] cursor-pointer transition active:scale-[0.98] ${
               printSuccess
                 ? 'bg-emerald-600 text-white'
                 : isPrinting
@@ -367,39 +367,26 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
           >
             {isPrinting ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin text-white" />
                 <span>⏳ PRINTING... (அச்சிடப்படுகிறது...)</span>
               </>
             ) : printSuccess ? (
               <>
-                <CheckCircle2 className="w-4 h-4 text-white" />
+                <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 <span>✓ PRINTED (அச்சிடப்பட்டது)</span>
               </>
             ) : errorMessage ? (
               <>
-                <Printer className="w-4 h-4 text-white" />
+                <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 <span>⚠️ RETRY PRINT BILL (மீண்டும் அச்சிடு)</span>
               </>
             ) : (
               <>
-                <Printer className="w-4 h-4 text-white" />
+                <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 <span>🖨️ PRINT BILL (பில் அச்சிடு - EX58C)</span>
               </>
             )}
           </button>
-
-          {/* Direct Chrome Web Bluetooth Search Button (Optional 1-Click BLE Connect) */}
-          {navigator.bluetooth && (
-            <button
-              type="button"
-              onClick={() => handleThermalPrint(true)}
-              disabled={isPrinting}
-              className="w-full text-[11px] font-bold bg-sky-50 hover:bg-sky-100 text-sky-800 rounded-2xl py-2 flex items-center justify-center gap-1.5 border border-sky-200 cursor-pointer transition active:scale-[0.98] disabled:opacity-50"
-            >
-              <Bluetooth className="w-3.5 h-3.5 text-sky-600" />
-              <span>📡 Direct Web Bluetooth (Chrome-ல் தேடி பிரிண்ட் செய்)</span>
-            </button>
-          )}
 
           <button
             type="button"

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Printer, ArrowRight, Check, CheckCircle2, AlertCircle, Loader2, Bluetooth } from 'lucide-react';
-import { printViaRawBT, printViaWebBluetooth } from '../../services/printerService';
+import { Printer, ArrowRight, Check, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { printThermalReceipt } from '../../services/printerService';
 import { toast } from 'sonner';
 
 export const BillSummary = ({ billResult, onDone }) => {
@@ -79,7 +79,7 @@ export const BillSummary = ({ billResult, onDone }) => {
 
   const grandTotal = totalAmount + previousDue;
 
-  const handleThermalPrint = async (useWebBle = false) => {
+  const handleThermalPrint = async () => {
     if (isPrinting) return;
 
     try {
@@ -100,20 +100,20 @@ export const BillSummary = ({ billResult, onDone }) => {
         shop_current_due: totalShopDue
       };
 
-      if (useWebBle) {
-        toast.info("Opening Chrome Bluetooth device search...");
-        await printViaWebBluetooth(receiptPayload);
-      } else {
-        await printViaRawBT(receiptPayload);
-      }
+      toast.info("Connecting to EX58C Bluetooth Printer...");
+      await printThermalReceipt(receiptPayload);
 
       setPrintSuccess(true);
-      toast.success("Bill sent to EX58C Bluetooth Printer!");
+      toast.success("Bill printed successfully on EX58C!");
     } catch (err) {
       console.error("Thermal Print Error:", err);
-      const userMsg = err.message || "EX58C printer is not connected. Please connect printer and try again.";
-      setErrorMessage(userMsg);
-      toast.error(userMsg);
+      if (err.name === 'NotFoundError' || err.message?.includes('User cancelled')) {
+        setErrorMessage("Printer selection cancelled. Please select your EX58C printer.");
+      } else {
+        const userMsg = err.message || "EX58C printer not connected. Please turn on Bluetooth & printer and retry.";
+        setErrorMessage(userMsg);
+        toast.error(userMsg);
+      }
     } finally {
       setIsPrinting(false);
     }
@@ -133,20 +133,20 @@ export const BillSummary = ({ billResult, onDone }) => {
   };
 
   return (
-    <div className="max-w-md mx-auto p-3 sm:p-4 space-y-4 pb-32 sm:pb-36">
+    <div className="max-w-md mx-auto p-3 sm:p-4 space-y-3 sm:space-y-4 pb-32 sm:pb-36">
       
       {/* Success Notification Header (Screen only) */}
       <div className="text-center space-y-1 no-print">
-        <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-xs animate-bounce">
-          <Check className="w-6 h-6 stroke-[3]" />
+        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-xs">
+          <Check className="w-5 h-5 sm:w-6 sm:h-6 stroke-[3]" />
         </div>
-        <h2 className="text-lg font-black text-slate-900">BILL CREATED SUCCESSFULLY</h2>
-        <p className="text-xs text-slate-500 font-bold">Bill #{bill.bill_no || 'N/A'} is finalized & saved</p>
+        <h2 className="text-base sm:text-lg font-black text-slate-900">BILL CREATED SUCCESSFULLY</h2>
+        <p className="text-[11px] sm:text-xs text-slate-500 font-bold">Bill #{bill.bill_no || 'N/A'} is finalized & saved</p>
       </div>
 
       {/* Error Alert Banner if Print Fails */}
       {errorMessage && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5 text-xs text-red-700">
+        <div className="p-2.5 sm:p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5 text-xs text-red-700">
           <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
           <div className="flex-1">
             <p className="font-bold">Printing Notice</p>
@@ -156,23 +156,23 @@ export const BillSummary = ({ billResult, onDone }) => {
       )}
 
       {/* 58mm Thermal Printable Container & On-Screen Receipt Preview */}
-      <div className="printable-thermal-receipt bg-white border border-slate-300 rounded-3xl p-4 sm:p-5 shadow-md font-mono text-[11px] text-slate-900 leading-tight space-y-3">
+      <div className="printable-thermal-receipt bg-white border border-slate-300 rounded-3xl p-3.5 sm:p-5 shadow-md font-mono text-[10.5px] sm:text-[11px] text-slate-900 leading-tight space-y-2.5 sm:space-y-3">
         
         {/* Company Header */}
         <div className="text-center space-y-0.5 border-b border-dashed border-slate-400 pb-2">
-          <h2 className="font-black text-base uppercase tracking-wider text-slate-900">{companyName}</h2>
+          <h2 className="font-black text-sm sm:text-base uppercase tracking-wider text-slate-900">{companyName}</h2>
           <p className="text-[10px] text-slate-600 font-bold">{companySubtitle}</p>
           <p className="text-[9px] text-slate-500">{companyAddress} | {companyPhone}</p>
         </div>
 
         {/* Bill & Shop Meta Details */}
-        <div className="space-y-1 text-[11px] border-b border-dashed border-slate-400 pb-2">
+        <div className="space-y-1 text-[10px] sm:text-[11px] border-b border-dashed border-slate-400 pb-2">
           <div className="flex justify-between font-extrabold">
             <span>Bill No: <strong className="text-blue-700 font-black">{bill.bill_no || 'INV-000000'}</strong></span>
             <span>{formattedDate()}</span>
           </div>
           <div className="flex justify-between font-bold">
-            <span className="truncate max-w-[180px]">Shop: <strong>{bill.shop_name || 'Customer'}</strong></span>
+            <span className="truncate max-w-[160px] sm:max-w-[180px]">Shop: <strong>{bill.shop_name || 'Customer'}</strong></span>
             <span>{bill.sale_time || ''}</span>
           </div>
           <div className="flex justify-between text-[10px] text-slate-600 font-bold">
@@ -186,7 +186,7 @@ export const BillSummary = ({ billResult, onDone }) => {
           )}
         </div>
 
-        {/* Billed Items Table (ITEM, QTY, RATE, AMT) */}
+        {/* Billed Items Table */}
         <div className="space-y-1 pt-0.5">
           <div className="flex justify-between font-black border-b border-slate-400 pb-1 text-[10px] uppercase text-slate-800">
             <span className="w-5/12 text-left">ITEM</span>
@@ -202,7 +202,7 @@ export const BillSummary = ({ billResult, onDone }) => {
               const amount = Number(item.amount || (qty * rate));
 
               return (
-                <div key={idx} className="py-1.5 flex justify-between items-start text-[10.5px]">
+                <div key={idx} className="py-1 sm:py-1.5 flex justify-between items-start text-[10px] sm:text-[10.5px]">
                   <div className="w-5/12 text-left pr-1 font-bold text-slate-900 leading-snug break-words">
                     {item.product_name}
                   </div>
@@ -223,31 +223,31 @@ export const BillSummary = ({ billResult, onDone }) => {
 
         {/* Totals Section */}
         <div className="border-t border-b border-dashed border-slate-400 py-1.5 space-y-1">
-          <div className="flex justify-between font-bold text-[10.5px]">
+          <div className="flex justify-between font-bold text-[10px] sm:text-[10.5px]">
             <span>TOTAL ITEMS:</span>
             <span>{items.length}</span>
           </div>
-          <div className="flex justify-between font-bold text-[10.5px]">
+          <div className="flex justify-between font-bold text-[10px] sm:text-[10.5px]">
             <span>TOTAL QTY:</span>
             <span>{totalQty}</span>
           </div>
-          <div className="flex justify-between font-black text-sm pt-0.5 text-slate-900 border-t border-slate-200">
+          <div className="flex justify-between font-black text-xs sm:text-sm pt-0.5 text-slate-900 border-t border-slate-200">
             <span>BILL TOTAL:</span>
             <span className="text-emerald-700">₹{totalAmount.toFixed(2)}</span>
           </div>
           {previousDue > 0 && (
             <>
-              <div className="flex justify-between font-bold text-[10.5px] text-amber-700 pt-0.5">
+              <div className="flex justify-between font-bold text-[10px] text-amber-700 pt-0.5">
                 <span>OLD CREDIT (பழைய கடன்):</span>
                 <span className="font-mono">₹{previousDue.toFixed(2)}</span>
               </div>
               {oldCreditPaid > 0 && (
-                <div className="flex justify-between font-bold text-[10.5px] text-emerald-700 pt-0.5">
+                <div className="flex justify-between font-bold text-[10px] text-emerald-700 pt-0.5">
                   <span>OLD CREDIT PAID (செலுத்தியது):</span>
                   <span className="font-mono">₹{oldCreditPaid.toFixed(2)}</span>
                 </div>
               )}
-              <div className="flex justify-between font-black text-sm text-slate-950 pt-0.5 border-t border-slate-300">
+              <div className="flex justify-between font-black text-xs sm:text-sm text-slate-950 pt-0.5 border-t border-slate-300">
                 <span>NET GRAND TOTAL:</span>
                 <span className="font-mono text-purple-700">
                   ₹{grandTotal.toFixed(2)}
@@ -307,7 +307,7 @@ export const BillSummary = ({ billResult, onDone }) => {
           )}
 
           {/* Total Shop Due Balance */}
-          <div className="flex justify-between font-black text-[11px] pt-1 border-t border-dashed border-slate-300">
+          <div className="flex justify-between font-black text-[10.5px] pt-1 border-t border-dashed border-slate-300">
             <span className={totalShopDue > 0 ? 'text-amber-800' : 'text-emerald-700'}>
               SHOP BALANCE (கடை பாக்கி):
             </span>
@@ -325,15 +325,15 @@ export const BillSummary = ({ billResult, onDone }) => {
 
       </div>
 
-      {/* Screen Action Buttons (Print & Done) in Document Flow */}
+      {/* Screen Action Buttons (Print & Done) */}
       <div className="space-y-2.5 no-print pt-1">
         
-        {/* Main 58mm Bluetooth ESC/POS Print */}
+        {/* Single Primary Direct Bluetooth Print Button */}
         <button
           type="button"
-          onClick={() => handleThermalPrint(false)}
+          onClick={handleThermalPrint}
           disabled={isPrinting}
-          className={`w-full py-3.5 px-6 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-md transition active:scale-[0.98] min-h-[48px] cursor-pointer ${
+          className={`w-full py-3.5 px-6 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-md transition active:scale-[0.98] min-h-[48px] cursor-pointer ${
             printSuccess
               ? 'bg-emerald-600 text-white'
               : isPrinting
@@ -345,46 +345,33 @@ export const BillSummary = ({ billResult, onDone }) => {
         >
           {isPrinting ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin text-white" />
+              <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin text-white" />
               <span>⏳ PRINTING... (அச்சிடப்படுகிறது...)</span>
             </>
           ) : printSuccess ? (
             <>
-              <CheckCircle2 className="w-4 h-4 text-white" />
+              <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               <span>✓ PRINTED (அச்சிடப்பட்டது)</span>
             </>
           ) : errorMessage ? (
             <>
-              <Printer className="w-4 h-4 text-white" />
+              <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               <span>⚠️ RETRY PRINT BILL (மீண்டும் அச்சிடு)</span>
             </>
           ) : (
             <>
-              <Printer className="w-4 h-4 text-white" />
+              <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               <span>🖨️ PRINT BILL (பில் அச்சிடு - EX58C)</span>
             </>
           )}
         </button>
-
-        {/* Direct Chrome Web Bluetooth Button */}
-        {navigator.bluetooth && (
-          <button
-            type="button"
-            onClick={() => handleThermalPrint(true)}
-            disabled={isPrinting}
-            className="w-full text-[11px] font-bold bg-sky-50 hover:bg-sky-100 text-sky-800 rounded-2xl py-2 flex items-center justify-center gap-1.5 border border-sky-200 cursor-pointer transition active:scale-[0.98] disabled:opacity-50"
-          >
-            <Bluetooth className="w-3.5 h-3.5 text-sky-600" />
-            <span>📡 Direct Web Bluetooth (Chrome-ல் தேடி பிரிண்ட் செய்)</span>
-          </button>
-        )}
 
         {/* Done / Return to Home */}
         <button
           type="button"
           onClick={onDone}
           disabled={isPrinting}
-          className="w-full py-3 px-6 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition active:scale-[0.98] min-h-[44px] border border-slate-300 cursor-pointer disabled:opacity-50"
+          className="w-full py-3 px-6 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition active:scale-[0.98] min-h-[44px] border border-slate-300 cursor-pointer disabled:opacity-50"
         >
           <span>DONE (முடிந்தது)</span>
           <ArrowRight className="w-4 h-4" />
