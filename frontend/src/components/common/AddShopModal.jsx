@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Store, X, Save, Snowflake, CheckCircle2, MapPin, Route as RouteIcon } from 'lucide-react';
+import { Store, X, Save, Snowflake, CheckCircle2, MapPin, Route as RouteIcon, Mic, MicOff, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const AddShopModal = ({ onClose, villageId = null, villageName = null }) => {
@@ -15,6 +15,77 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
   const [freezerModel, setFreezerModel] = useState('Blue Star 300L Visicooler');
   const [saving, setSaving] = useState(false);
   const [createdShop, setCreatedShop] = useState(null);
+
+  // Speech Recognition (Voice-to-Text) State - 100% Free Native Web Speech API
+  const [speechLang, setSpeechLang] = useState('ta-IN'); // 'ta-IN' (தமிழ்) or 'en-IN' (English)
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
+
+  const startVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error("Speech Recognition is not supported in this browser. Please use Google Chrome.");
+      return;
+    }
+
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = speechLang;
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        toast.info(speechLang === 'ta-IN' ? "🎙️ கடை பெயரை தமிழில் பேசவும்... (Listening)" : "🎙️ Speak shop name in English... (Listening)");
+      };
+
+      recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          transcript += event.results[i][0].transcript;
+        }
+        if (transcript) {
+          setName(transcript.trim());
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.warn("Speech recognition error:", event.error);
+        setIsListening(false);
+        if (event.error === 'not-allowed') {
+          toast.error("Microphone access denied. Please allow mic in browser settings.");
+        } else if (event.error !== 'no-speech') {
+          toast.error(`Voice error: ${event.error}`);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.error("Speech recognition startup error:", err);
+      setIsListening(false);
+      toast.error("Failed to start voice input.");
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch (e) {}
+      }
+    };
+  }, []);
 
   // Filter active villages for the company
   const activeVillages = useMemo(() => {
@@ -170,19 +241,78 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
           </div>
         ) : (
           <div className="space-y-3.5">
-            {/* 1. Shop Name (Required) */}
-            <div className="space-y-1">
-              <label className="text-xs font-extrabold text-slate-700 uppercase">
-                Shop Name (கடை பெயர்) *
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Lakshmi Store"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
-                autoFocus
-              />
+            {/* 1. Shop Name (Required) with Voice Recognition & Language Toggle */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs font-extrabold text-slate-700 uppercase">
+                  Shop Name (கடை பெயர்) *
+                </label>
+                
+                {/* Language Switcher Buttons: தமிழ் / English */}
+                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setSpeechLang('ta-IN')}
+                    className={`px-2 py-0.5 text-[10px] font-black rounded-md transition cursor-pointer ${
+                      speechLang === 'ta-IN'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    தமிழ்
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSpeechLang('en-IN')}
+                    className={`px-2 py-0.5 text-[10px] font-black rounded-md transition cursor-pointer ${
+                      speechLang === 'en-IN'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    English
+                  </button>
+                </div>
+              </div>
+
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  placeholder={speechLang === 'ta-IN' ? "எ.கா. லட்சுமி ஸ்டோர்" : "e.g. Lakshmi Store"}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className={`w-full bg-slate-50 border rounded-xl pl-3 pr-11 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs transition ${
+                    isListening ? 'border-rose-400 ring-2 ring-rose-200 bg-rose-50/30' : 'border-slate-300'
+                  }`}
+                  autoFocus
+                />
+
+                {/* Mic Button on Right Side */}
+                <button
+                  type="button"
+                  onClick={startVoiceInput}
+                  title={isListening ? "Stop Listening" : (speechLang === 'ta-IN' ? "குரல் உள்ளீடு (Mic) - தமிழ்" : "Voice Input (Mic) - English")}
+                  className={`absolute right-1.5 p-1.5 rounded-lg transition-all flex items-center justify-center cursor-pointer ${
+                    isListening
+                      ? 'bg-rose-600 text-white animate-pulse shadow-md shadow-rose-500/40 ring-2 ring-rose-300'
+                      : 'bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 hover:scale-105 active:scale-95'
+                  }`}
+                >
+                  <Mic className={`w-4 h-4 ${isListening ? 'animate-bounce' : ''}`} />
+                </button>
+              </div>
+
+              {/* Listening Live Indicator */}
+              {isListening && (
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping"></span>
+                  <span>
+                    {speechLang === 'ta-IN' 
+                      ? '🔴 கேட்கிறது... கடை பெயரை தமிழில் பேசவும்...' 
+                      : '🔴 Listening... Speak shop name in English...'}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* 2. Owner Name & Phone */}
