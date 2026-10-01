@@ -1145,7 +1145,7 @@ export const FreezerManagement = () => {
 
             {/* 1. VILLAGE SELECTOR */}
             {!editingFreezer && (
-              <div className="space-y-1.5 bg-gradient-to-r from-cyan-50/70 to-blue-50/70 p-3 rounded-2xl border border-cyan-100 relative">
+              <div className="space-y-1.5 bg-gradient-to-r from-cyan-50/70 to-blue-50/70 p-3 rounded-2xl border border-cyan-100 relative z-30">
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-black text-cyan-950 uppercase flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-cyan-600" />
@@ -1171,8 +1171,12 @@ export const FreezerManagement = () => {
                     onChange={(e) => {
                       setVillageSearchText(e.target.value);
                       setIsVillageDropdownOpen(true);
+                      setIsShopDropdownOpen(false);
                     }}
-                    onFocus={() => setIsVillageDropdownOpen(true)}
+                    onFocus={() => {
+                      setIsVillageDropdownOpen(true);
+                      setIsShopDropdownOpen(false);
+                    }}
                     className="w-full bg-white border border-cyan-200 rounded-xl pl-3 pr-16 py-2 text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-cyan-500 shadow-2xs transition"
                   />
                   
@@ -1189,7 +1193,10 @@ export const FreezerManagement = () => {
                     )}
                     <button
                       type="button"
-                      onClick={() => setIsVillageDropdownOpen(!isVillageDropdownOpen)}
+                      onClick={() => {
+                        setIsVillageDropdownOpen(!isVillageDropdownOpen);
+                        setIsShopDropdownOpen(false);
+                      }}
                       className="p-1 hover:text-slate-700 rounded-md"
                     >
                       <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isVillageDropdownOpen ? 'rotate-180' : ''}`} />
@@ -1198,7 +1205,7 @@ export const FreezerManagement = () => {
 
                   {/* Village Suggestions Dropdown List */}
                   {isVillageDropdownOpen && (
-                    <div className="absolute z-50 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-52 overflow-y-auto divide-y divide-slate-100">
+                    <div className="absolute z-[60] left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-2xl max-h-52 overflow-y-auto divide-y divide-slate-100 ring-1 ring-black/5">
                       <button
                         type="button"
                         onMouseDown={(e) => {
@@ -1251,7 +1258,7 @@ export const FreezerManagement = () => {
             )}
 
             {/* 2. TARGET SHOP SELECTOR */}
-            <div className="space-y-1.5 relative">
+            <div className="space-y-1.5 relative z-20">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-black text-slate-700 uppercase flex items-center gap-1.5">
                   <Store className="w-3.5 h-3.5 text-slate-600" />
@@ -1274,8 +1281,14 @@ export const FreezerManagement = () => {
                   onChange={(e) => {
                     setShopSearchText(e.target.value);
                     setIsShopDropdownOpen(true);
+                    setIsVillageDropdownOpen(false);
                   }}
-                  onFocus={() => { if (!editingFreezer) setIsShopDropdownOpen(true); }}
+                  onFocus={() => {
+                    if (!editingFreezer) {
+                      setIsShopDropdownOpen(true);
+                      setIsVillageDropdownOpen(false);
+                    }
+                  }}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3 pr-10 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition disabled:opacity-80"
                 />
 
@@ -1283,7 +1296,10 @@ export const FreezerManagement = () => {
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-slate-400">
                     <button
                       type="button"
-                      onClick={() => setIsShopDropdownOpen(!isShopDropdownOpen)}
+                      onClick={() => {
+                        setIsShopDropdownOpen(!isShopDropdownOpen);
+                        setIsVillageDropdownOpen(false);
+                      }}
                       className="p-1 hover:text-slate-700 rounded-md"
                     >
                       <ChevronDown className={`w-4 h-4 transition-transform ${isShopDropdownOpen ? 'rotate-180' : ''}`} />
@@ -1293,7 +1309,7 @@ export const FreezerManagement = () => {
 
                 {/* Shop Suggestions Dropdown List */}
                 {isShopDropdownOpen && !editingFreezer && (
-                  <div className="absolute z-50 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100">
+                  <div className="absolute z-[50] left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-2xl max-h-56 overflow-y-auto divide-y divide-slate-100 ring-1 ring-black/5">
                     {modalFilteredShops.length === 0 ? (
                       <div className="p-3 text-center text-xs text-slate-400 font-medium">
                         No shops found matching "{shopSearchText}"
