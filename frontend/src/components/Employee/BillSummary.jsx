@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Printer, ArrowRight, Check, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { printThermalReceipt } from '../../services/printerService';
+import { Printer, ArrowRight, Check, CheckCircle2, AlertCircle, Loader2, Bluetooth } from 'lucide-react';
+import { printViaRawBT, printViaWebBluetooth } from '../../services/printerService';
 import { toast } from 'sonner';
 
 export const BillSummary = ({ billResult, onDone }) => {
@@ -79,7 +79,7 @@ export const BillSummary = ({ billResult, onDone }) => {
 
   const grandTotal = totalAmount + previousDue;
 
-  const handleThermalPrint = async () => {
+  const handleThermalPrint = async (useWebBle = false) => {
     if (isPrinting) return;
 
     try {
@@ -100,7 +100,12 @@ export const BillSummary = ({ billResult, onDone }) => {
         shop_current_due: totalShopDue
       };
 
-      await printThermalReceipt(receiptPayload);
+      if (useWebBle) {
+        toast.info("Opening Chrome Bluetooth device search...");
+        await printViaWebBluetooth(receiptPayload);
+      } else {
+        await printViaRawBT(receiptPayload);
+      }
 
       setPrintSuccess(true);
       toast.success("Bill sent to EX58C Bluetooth Printer!");
@@ -144,7 +149,7 @@ export const BillSummary = ({ billResult, onDone }) => {
         <div className="p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5 text-xs text-red-700">
           <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
           <div className="flex-1">
-            <p className="font-bold">Printing Failed</p>
+            <p className="font-bold">Printing Notice</p>
             <p className="text-[11px] text-red-600 mt-0.5">{errorMessage}</p>
           </div>
         </div>
@@ -323,10 +328,10 @@ export const BillSummary = ({ billResult, onDone }) => {
       {/* Screen Action Buttons (Print & Done) in Document Flow */}
       <div className="space-y-2.5 no-print pt-1">
         
-        {/* 58mm Bluetooth ESC/POS Print */}
+        {/* Main 58mm Bluetooth ESC/POS Print */}
         <button
           type="button"
-          onClick={handleThermalPrint}
+          onClick={() => handleThermalPrint(false)}
           disabled={isPrinting}
           className={`w-full py-3.5 px-6 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-md transition active:scale-[0.98] min-h-[48px] cursor-pointer ${
             printSuccess
@@ -351,15 +356,28 @@ export const BillSummary = ({ billResult, onDone }) => {
           ) : errorMessage ? (
             <>
               <Printer className="w-4 h-4 text-white" />
-              <span>⚠️ RETRY PRINT (மீண்டும் அச்சிடு)</span>
+              <span>⚠️ RETRY PRINT BILL (மீண்டும் அச்சிடு)</span>
             </>
           ) : (
             <>
               <Printer className="w-4 h-4 text-white" />
-              <span>🖨️ PRINT BILL (பில் அச்சிடு)</span>
+              <span>🖨️ PRINT BILL (பில் அச்சிடு - EX58C)</span>
             </>
           )}
         </button>
+
+        {/* Direct Chrome Web Bluetooth Button */}
+        {navigator.bluetooth && (
+          <button
+            type="button"
+            onClick={() => handleThermalPrint(true)}
+            disabled={isPrinting}
+            className="w-full text-[11px] font-bold bg-sky-50 hover:bg-sky-100 text-sky-800 rounded-2xl py-2 flex items-center justify-center gap-1.5 border border-sky-200 cursor-pointer transition active:scale-[0.98] disabled:opacity-50"
+          >
+            <Bluetooth className="w-3.5 h-3.5 text-sky-600" />
+            <span>📡 Direct Web Bluetooth (Chrome-ல் தேடி பிரிண்ட் செய்)</span>
+          </button>
+        )}
 
         {/* Done / Return to Home */}
         <button

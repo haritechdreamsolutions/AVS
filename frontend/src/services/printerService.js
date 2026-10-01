@@ -1,7 +1,9 @@
 // ============================================================================
 // AVS POS - 58mm ESC/POS Bluetooth Thermal Printer Service
 // Specifically engineered for EXEO EX58C & standard 58mm ESC/POS thermal printers
-// Supports Android Native Intent (RawBT Bluetooth SPP) & Web Bluetooth GATT
+// Supports:
+// 1. Android Native RawBT Intent (Bluetooth Classic SPP / RFCOMM - 100% reliable)
+// 2. Direct Web Bluetooth GATT (Chrome Native BLE Device Picker)
 // ============================================================================
 
 /**
@@ -20,7 +22,6 @@ export const generateEscPos58mmBuffer = (bill) => {
   const CMD_BOLD_ON = [ESC, 0x45, 1];
   const CMD_BOLD_OFF = [ESC, 0x45, 0];
   const CMD_DOUBLE_HEIGHT_ON = [ESC, 0x21, 0x10];
-  const CMD_DOUBLE_WIDTH_ON = [ESC, 0x21, 0x20];
   const CMD_NORMAL_TEXT = [ESC, 0x21, 0x00];
   const CMD_LINE_FEED = [0x0A];
   const CMD_CUT = [GS, 0x56, 66, 0];
@@ -191,10 +192,10 @@ export const generateEscPos58mmBuffer = (bill) => {
 };
 
 /**
- * Dispatches ESC/POS data to EX58C Bluetooth Printer via Android Native Print Bridge (RawBT).
- * This works 100% reliably for Bluetooth Classic SPP printers from Android Chrome / WebViews.
+ * Dispatches ESC/POS data to EX58C Bluetooth Printer via Android Native RawBT URI.
+ * Directly triggers Android Bluetooth SPP stream without opening any PDF preview.
  */
-export const printViaRawBTBridge = async (billData) => {
+export const printViaRawBT = (billData) => {
   const escPosBytes = generateEscPos58mmBuffer(billData);
   let binary = '';
   for (let i = 0; i < escPosBytes.byteLength; i++) {
@@ -202,45 +203,28 @@ export const printViaRawBTBridge = async (billData) => {
   }
   const base64Data = window.btoa(binary);
 
-  return new Promise((resolve, reject) => {
-    try {
-      // Standard Android Intent scheme for RawBT Bluetooth Thermal Service
-      // Direct silent background handoff to paired EX58C Bluetooth SPP printer
-      const rawBtUrl = `rawbt:data:application/octet-stream;base64,${base64Data}`;
-      
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = rawBtUrl;
-      document.body.appendChild(iframe);
-
-      setTimeout(() => {
-        try {
-          document.body.removeChild(iframe);
-        } catch (e) {
-          // ignore cleanup error
-        }
-        resolve({ success: true, transport: 'RawBT' });
-      }, 800);
-    } catch (err) {
-      reject(new Error(`Failed to send data to RawBT bridge: ${err.message}`));
-    }
-  });
+  // Direct top-level navigation allows Android Chrome to invoke RawBT service handler
+  const rawBtUrl = `rawbt:data:application/octet-stream;base64,${base64Data}`;
+  window.location.href = rawBtUrl;
+  return { success: true, transport: 'RawBT' };
 };
 
 /**
- * Web Bluetooth GATT Print implementation (Fallback for BLE enabled thermal printers).
+ * Web Bluetooth GATT Print implementation (Native Chrome Bluetooth Device Selector).
  */
 export const printViaWebBluetooth = async (billData) => {
   if (!navigator.bluetooth) {
-    throw new Error('Web Bluetooth is not supported in this browser.');
+    throw new Error('Web Bluetooth is not supported in this browser. Please use Google Chrome on Android.');
   }
 
   const escPosBytes = generateEscPos58mmBuffer(billData);
 
+  // Request Bluetooth Thermal Printer Device
   const device = await navigator.bluetooth.requestDevice({
     acceptAllDevices: true,
     optionalServices: [
       '000018f0-0000-1000-8000-00805f9b34fb', // ESC/POS Service
+      '0000e0ff-0000-1000-8000-00805f9b34fb',
       '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC BLE
       'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // PosBank / Xprinter BLE
       '0000ff00-0000-1000-8000-00805f9b34fb', // Custom ESC/POS BLE
@@ -248,6 +232,10 @@ export const printViaWebBluetooth = async (billData) => {
       '0000fee7-0000-1000-8000-00805f9b34fb'  // Generic POS BLE
     ]
   });
+
+  if (!device) {
+    throw new Error('No Bluetooth printer selected.');
+  }
 
   const server = await device.gatt.connect();
   const services = await server.getPrimaryServices();
@@ -263,16 +251,16 @@ export const printViaWebBluetooth = async (billData) => {
         }
       }
     } catch (e) {
-      // continue checking next service
+      // check next service
     }
     if (writeCharacteristic) break;
   }
 
   if (!writeCharacteristic) {
-    throw new Error('No writable ESC/POS Bluetooth characteristic found.');
+    throw new Error('Could not find writable Bluetooth characteristic for EX58C.');
   }
 
-  // Chunk write (100 bytes per chunk to avoid MTU overflow)
+  // Chunk write (100 bytes per chunk)
   const chunkSize = 100;
   for (let i = 0; i < escPosBytes.length; i += chunkSize) {
     const chunk = escPosBytes.slice(i, i + chunkSize);
@@ -288,40 +276,16 @@ export const printViaWebBluetooth = async (billData) => {
 
 /**
  * Universal 58mm Thermal Print Dispatcher
- * Directly prints to EXEO EX58C Bluetooth Printer on Android without opening browser/PDF preview.
  */
-export const printThermalReceipt = async (billData) => {
+export const printThermalReceipt = async (billData, preferWebBluetooth = false) => {
   if (!billData) {
-    throw new Error('Receipt data is missing or empty.');
+    throw new Error('Receipt data is missing.');
   }
 
-  const isAndroid = /android/i.test(navigator.userAgent || '');
-
-  // 1. On Android mobile (Chrome / WebView), use the RawBT native Bluetooth SPP bridge
-  if (isAndroid) {
-    try {
-      const result = await printViaRawBTBridge(billData);
-      return result;
-    } catch (err) {
-      console.warn('RawBT bridge fallback to Web Bluetooth:', err);
-    }
+  if (preferWebBluetooth && navigator.bluetooth) {
+    return await printViaWebBluetooth(billData);
   }
 
-  // 2. Web Bluetooth GATT support
-  if (navigator.bluetooth) {
-    try {
-      const result = await printViaWebBluetooth(billData);
-      return result;
-    } catch (bleErr) {
-      // If user cancelled device picker, rethrow clear message
-      if (bleErr.name === 'NotFoundError') {
-        throw new Error('Printer selection cancelled. Please ensure EX58C is turned on and paired.');
-      }
-      // If BLE fails on Android, attempt RawBT bridge
-      return await printViaRawBTBridge(billData);
-    }
-  }
-
-  // 3. Fallback to RawBT bridge
-  return await printViaRawBTBridge(billData);
+  // Default: Direct RawBT Bluetooth SPP on Android
+  return printViaRawBT(billData);
 };

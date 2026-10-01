@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Printer, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { printThermalReceipt } from '../../services/printerService';
+import { Printer, X, CheckCircle2, AlertCircle, Loader2, Bluetooth } from 'lucide-react';
+import { printViaRawBT, printViaWebBluetooth } from '../../services/printerService';
 import { toast } from 'sonner';
 
 export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrintComplete }) => {
@@ -95,7 +95,7 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
     return String(bill.sale_date);
   };
 
-  const handleThermalPrint = async () => {
+  const handleThermalPrint = async (useWebBle = false) => {
     if (isPrinting) return;
 
     try {
@@ -116,19 +116,24 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
         shop_current_due: totalShopDue
       };
 
-      await printThermalReceipt(receiptPayload);
+      if (useWebBle) {
+        toast.info("Opening Chrome Bluetooth device search...");
+        await printViaWebBluetooth(receiptPayload);
+      } else {
+        await printViaRawBT(receiptPayload);
+      }
 
       setPrintSuccess(true);
       toast.success("Receipt sent to EX58C Bluetooth Printer!");
 
-      // Allow 800ms for user feedback then close modal and return to POS dashboard
+      // Allow 1.2s for user feedback then close modal and return to POS dashboard
       setTimeout(() => {
         if (onPrintComplete) {
           onPrintComplete();
         } else {
           onClose();
         }
-      }, 800);
+      }, 1200);
     } catch (err) {
       console.error("Thermal Print Error:", err);
       const userMsg = err.message || "EX58C printer is not connected. Please connect printer and try again.";
@@ -163,7 +168,7 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
           <div className="p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5 text-xs text-red-700">
             <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
             <div className="flex-1">
-              <p className="font-bold">Printing Failed</p>
+              <p className="font-bold">Printing Notice</p>
               <p className="text-[11px] text-red-600 mt-0.5">{errorMessage}</p>
             </div>
           </div>
@@ -345,9 +350,10 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
 
         {/* Print & Close Actions */}
         <div className="space-y-2 no-print">
+          {/* Main Direct Bluetooth Print (RawBT) */}
           <button
             type="button"
-            onClick={handleThermalPrint}
+            onClick={() => handleThermalPrint(false)}
             disabled={isPrinting}
             className={`w-full text-xs font-black rounded-2xl py-3.5 flex items-center justify-center gap-2 shadow-md min-h-[46px] cursor-pointer transition active:scale-[0.98] ${
               printSuccess
@@ -372,15 +378,28 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
             ) : errorMessage ? (
               <>
                 <Printer className="w-4 h-4 text-white" />
-                <span>⚠️ RETRY PRINT (மீண்டும் அச்சிடு)</span>
+                <span>⚠️ RETRY PRINT BILL (மீண்டும் அச்சிடு)</span>
               </>
             ) : (
               <>
                 <Printer className="w-4 h-4 text-white" />
-                <span>🖨️ PRINT BILL (பில் அச்சிடு)</span>
+                <span>🖨️ PRINT BILL (பில் அச்சிடு - EX58C)</span>
               </>
             )}
           </button>
+
+          {/* Direct Chrome Web Bluetooth Search Button (Optional 1-Click BLE Connect) */}
+          {navigator.bluetooth && (
+            <button
+              type="button"
+              onClick={() => handleThermalPrint(true)}
+              disabled={isPrinting}
+              className="w-full text-[11px] font-bold bg-sky-50 hover:bg-sky-100 text-sky-800 rounded-2xl py-2 flex items-center justify-center gap-1.5 border border-sky-200 cursor-pointer transition active:scale-[0.98] disabled:opacity-50"
+            >
+              <Bluetooth className="w-3.5 h-3.5 text-sky-600" />
+              <span>📡 Direct Web Bluetooth (Chrome-ல் தேடி பிரிண்ட் செய்)</span>
+            </button>
+          )}
 
           <button
             type="button"
