@@ -36,8 +36,44 @@ export const AppProvider = ({ children }) => {
   const [expenses, setExpenses] = useState([]);
   const [users, setUsers] = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [drivers, setDrivers] = useState([]);
-  const DEFAULT_SUPPLIERS = [];
+  const DEFAULT_SUPPLIERS = [
+    {
+      id: 1,
+      name: 'Amirthaa',
+      code: 'SUP-AMIRTHAA',
+      contact_person: 'Plant Dispatch Manager',
+      phone: '9840012345',
+      is_active: true,
+      product_rates: { 1: 400, 5: 400, 6: 400, 7: 300, 8: 300, 9: 300 }
+    },
+    {
+      id: 4,
+      name: 'Thirumala',
+      code: 'SUP-THIRUMALA',
+      contact_person: 'Sales Depot Head',
+      phone: '9840045678',
+      is_active: true,
+      product_rates: { 1: 400, 5: 400, 6: 400, 7: 300, 8: 300, 9: 300 }
+    },
+    {
+      id: 2,
+      name: 'Coccola',
+      code: 'SUP-COCCOLA',
+      contact_person: 'Sales Executive',
+      phone: '9840023456',
+      is_active: true,
+      product_rates: { 3: 300, 10: 300, 11: 300 }
+    },
+    {
+      id: 3,
+      name: 'Aquafresh',
+      code: 'SUP-AQUAFRESH',
+      contact_person: 'Water Unit Head',
+      phone: '9840034567',
+      is_active: true,
+      product_rates: { 2: 120, 18: 120, 19: 120, 20: 120 }
+    }
+  ];
 
   const [routes, setRoutes] = useState([]);
   const [suppliers, setSuppliers] = useState(() => {
@@ -46,12 +82,19 @@ export const AppProvider = ({ children }) => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          const merged = [...parsed];
+          const seenNames = new Set(parsed.map(s => (s.name || '').trim().toLowerCase()));
+          DEFAULT_SUPPLIERS.forEach(d => {
+            if (!seenNames.has((d.name || '').trim().toLowerCase())) {
+              merged.push(d);
+            }
+          });
+          return merged;
         }
       }
-      return [];
+      return DEFAULT_SUPPLIERS;
     } catch (e) {
-      return [];
+      return DEFAULT_SUPPLIERS;
     }
   });
 
@@ -163,13 +206,11 @@ export const AppProvider = ({ children }) => {
       // Merge remote suppliers with local/cached suppliers safely so user created/edited suppliers NEVER disappear!
       setSuppliers(prev => {
         const remote = Array.isArray(suppliersRes) ? suppliersRes : (Array.isArray(suppliersRes?.suppliers) ? suppliersRes.suppliers : []);
-        if (remote.length === 0) {
-          return prev || [];
-        }
+        const base = remote.length > 0 ? remote : (prev && prev.length > 0 ? prev : DEFAULT_SUPPLIERS);
 
-        const merged = [...remote];
-        const seenIds = new Set(remote.map(r => String(r.id)));
-        const seenNames = new Set(remote.map(r => (r.name || '').trim().toLowerCase()));
+        const merged = [...base];
+        const seenIds = new Set(base.map(r => String(r.id)));
+        const seenNames = new Set(base.map(r => (r.name || '').trim().toLowerCase()));
 
         (prev || []).forEach(localItem => {
           const lName = (localItem.name || '').trim().toLowerCase();
@@ -190,6 +231,14 @@ export const AppProvider = ({ children }) => {
                 }
               };
             }
+          }
+        });
+
+        DEFAULT_SUPPLIERS.forEach(d => {
+          const dName = (d.name || '').trim().toLowerCase();
+          if (!seenNames.has(dName)) {
+            merged.push(d);
+            seenNames.add(dName);
           }
         });
 
