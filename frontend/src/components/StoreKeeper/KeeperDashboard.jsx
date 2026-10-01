@@ -54,13 +54,25 @@ export const KeeperDashboard = () => {
 
         {/* Level 1: Title & Primary CTA */}
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-3.5 border-b border-slate-800/80 pb-4">
-          <div>
-            <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight uppercase">
-              STORE KEEPER POS DASHBOARD
-            </h2>
-            <p className="text-xs text-slate-300 font-medium mt-1">
-              Warehouse Stock Control, Direct Counter Sales & Driver Vehicle Allocations
-            </p>
+          <div className="flex items-center gap-3">
+            {/* User Icon - Desktop only */}
+            <div className="hidden md:flex w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 items-center justify-center text-emerald-400 shadow-xs shrink-0">
+              <UserCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight uppercase">
+                  STORE KEEPER POS DASHBOARD
+                </h2>
+                {/* Real-time badge - Desktop only */}
+                <span className="hidden md:inline-flex items-center text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-400/30">
+                  🟢 Real-Time Inventory Engine
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 font-medium mt-1">
+                Warehouse Stock Control, Direct Counter Sales & Driver Vehicle Allocations
+              </p>
+            </div>
           </div>
 
           <button
