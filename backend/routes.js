@@ -875,8 +875,8 @@ router.post('/sales', requireAuth, async (req, res) => {
     const userRole = (req.session?.role || req.session?.userRole || '').toUpperCase();
     const payload = { ...req.body };
     if (userRole === 'DRIVER') {
-      payload.employee_id = req.session.employeeId;
-      payload.employee_name = req.session.userName || 'Driver POS';
+      payload.employee_id = req.session.employeeId || payload.employee_id || req.session.userId;
+      payload.employee_name = req.session.userName || payload.employee_name || 'Driver POS';
       payload.is_store_direct_sale = false;
     } else if (userRole === 'STORE_KEEPER' || payload.is_store_direct_sale || payload.sale_type === 'STOREKEEPER_DIRECT') {
       payload.employee_id = null;

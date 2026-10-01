@@ -1774,7 +1774,7 @@ export async function createSale(cid, d, actorUserId) {
       credit = Number(credit_paid || 0);
       const sum = parseFloat((cash + gpay + credit).toFixed(2));
       const expectedTotal = parseFloat((computedTotal + oldCreditPaid).toFixed(2));
-      if (Math.abs(sum - expectedTotal) > 0.05 && Math.abs(sum - computedTotal) > 0.05) {
+      if (Math.abs(sum - expectedTotal) > 0.5 && Math.abs(sum - computedTotal) > 0.5) {
         throw new Error(`Split payment sum (₹${sum}) does not equal expected total (₹${expectedTotal})`);
       }
     } else {
@@ -1787,6 +1787,14 @@ export async function createSale(cid, d, actorUserId) {
 
     if (credit > 0 && shop) {
       await client.query('UPDATE shops SET current_due=current_due+$1, updated_at=NOW() WHERE id=$2', [credit, shop.id]);
+    }
+
+    let freshShopDue = Math.max(0, shopPrevDue - oldCreditPaid) + credit;
+    if (shop) {
+      const freshShR = await client.query('SELECT current_due FROM shops WHERE id=$1', [shop.id]);
+      if (freshShR.rows.length > 0) {
+        freshShopDue = Number(freshShR.rows[0].current_due || 0);
+      }
     }
 
     const billNo = clientRef || ('INV-' + Date.now().toString().slice(-6));
@@ -1820,7 +1828,7 @@ export async function createSale(cid, d, actorUserId) {
     sale.previous_due = shopPrevDue;
     sale.shop_previous_due = shopPrevDue;
     sale.old_credit_paid = oldCreditPaid;
-    sale.shop_current_due = Math.max(0, shopPrevDue - oldCreditPaid) + credit;
+    sale.shop_current_due = freshShopDue;
 
     for (const item of evaluatedItems) {
       await client.query(
