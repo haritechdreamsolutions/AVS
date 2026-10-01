@@ -80,7 +80,7 @@ export const Header = ({ onLogout }) => {
                 POS
               </span>
             </div>
-            <p className="text-[11px] text-sky-800/80 font-bold leading-none mt-0.5">
+            <p className="text-[11px] text-sky-800/80 font-bold leading-none mt-0.5 hidden sm:block">
               AVS MANAGEMENT SYSTEM
             </p>
           </div>
@@ -95,8 +95,8 @@ export const Header = ({ onLogout }) => {
             </div>
           )}
 
-          {/* Notification Bell Dropdown */}
-          <div className="relative" ref={dropdownRef}>
+          {/* Notification Bell Dropdown (Hidden on mobile) */}
+          <div className="relative hidden sm:block" ref={dropdownRef}>
             <button
               onClick={() => {
                 setDropdownOpen(!dropdownOpen);
