@@ -46,8 +46,7 @@ export const AppProvider = ({ children }) => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const clean = parsed.filter(s => !['9876543210', '9876543211', '9876543212', '9876543213', '9876543214', '9876543215'].includes(s.phone));
-          return clean;
+          return parsed;
         }
       }
       return [];
@@ -164,19 +163,15 @@ export const AppProvider = ({ children }) => {
       // Merge remote suppliers with local/cached suppliers safely so user created/edited suppliers NEVER disappear!
       setSuppliers(prev => {
         const remote = Array.isArray(suppliersRes) ? suppliersRes : (Array.isArray(suppliersRes?.suppliers) ? suppliersRes.suppliers : []);
-        const cleanRemote = remote.filter(s => !['9876543210', '9876543211', '9876543212', '9876543213', '9876543214', '9876543215'].includes(s.phone));
-        if (cleanRemote.length === 0) {
-          if (prev && prev.length > 0) {
-            return prev.filter(s => !['9876543210', '9876543211', '9876543212', '9876543213', '9876543214', '9876543215'].includes(s.phone));
-          }
-          return [];
+        if (remote.length === 0) {
+          return prev || [];
         }
 
-        const merged = [...cleanRemote];
-        const seenIds = new Set(cleanRemote.map(r => String(r.id)));
-        const seenNames = new Set(cleanRemote.map(r => (r.name || '').trim().toLowerCase()));
+        const merged = [...remote];
+        const seenIds = new Set(remote.map(r => String(r.id)));
+        const seenNames = new Set(remote.map(r => (r.name || '').trim().toLowerCase()));
 
-        (prev || []).filter(s => !['9876543210', '9876543211', '9876543212', '9876543213', '9876543214', '9876543215'].includes(s.phone)).forEach(localItem => {
+        (prev || []).forEach(localItem => {
           const lName = (localItem.name || '').trim().toLowerCase();
           const lId = String(localItem.id);
           if (!seenIds.has(lId) && !seenNames.has(lName)) {

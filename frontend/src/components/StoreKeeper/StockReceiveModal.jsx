@@ -6,7 +6,7 @@ import { ProductImage } from '../common/ProductImage';
 import { resolveProductImageUrl } from '../../utils/productImageHelper';
 
 export const StockReceiveModal = ({ onClose }) => {
-  const { products = [], suppliers = [], receiveDealerStock } = useApp();
+  const { products = [], suppliers = [], fetchSuppliers, receiveDealerStock } = useApp();
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [customSupplierName, setCustomSupplierName] = useState('');
   const [productQuantities, setProductQuantities] = useState({});
@@ -18,10 +18,20 @@ export const StockReceiveModal = ({ onClose }) => {
     return (suppliers || []).filter(s => s.is_active !== false && s.is_active !== 0);
   }, [suppliers]);
 
-  // Set default selected supplier if activeSuppliers exist
+  // Load fresh suppliers from database when modal opens
   React.useEffect(() => {
-    if (activeSuppliers.length > 0 && !selectedSupplierId) {
-      setSelectedSupplierId(String(activeSuppliers[0].id));
+    if (fetchSuppliers) {
+      fetchSuppliers();
+    }
+  }, []);
+
+  // Set default selected supplier if activeSuppliers exist and not set
+  React.useEffect(() => {
+    if (activeSuppliers.length > 0) {
+      const exists = activeSuppliers.some(s => String(s.id) === String(selectedSupplierId));
+      if (!selectedSupplierId || (!exists && selectedSupplierId !== 'CUSTOM')) {
+        setSelectedSupplierId(String(activeSuppliers[0].id));
+      }
     }
   }, [activeSuppliers, selectedSupplierId]);
 
