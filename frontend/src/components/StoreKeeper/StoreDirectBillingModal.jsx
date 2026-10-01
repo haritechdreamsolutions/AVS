@@ -3,7 +3,8 @@ import { useApp } from '../../context/AppContext';
 import { getOperationalUnit } from '../../utils/unitHelper';
 import { 
   X, ShoppingBag, Plus, Minus, CheckCircle2, 
-  CreditCard, DollarSign, Smartphone, Trash2, ArrowRightLeft, Sparkles 
+  CreditCard, DollarSign, Smartphone, Trash2, ArrowRightLeft, Sparkles,
+  ArrowRight, ShoppingCart
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -66,7 +67,8 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
   }, [products]);
 
   const [activeCategory, setActiveCategory] = useState('all');
-  const [cart, setCart] = useState({}); // { [prodId]: { qty, unit_type: 'Piece' } }
+  const [mobileTab, setMobileTab] = useState('products'); // 'products' | 'cart'
+  const [cart, setCart] = useState({}); // { [prodId]: { product, qty, unit_type, rate, amount } }
   const [paymentMode, setPaymentMode] = useState('CASH'); // CASH, GPAY, CREDIT, SPLIT
   const [cashAmount, setCashAmount] = useState('');
   const [gpayAmount, setGpayAmount] = useState('');
@@ -211,7 +213,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
       return;
     }
 
-    // Step 2 & 3: Validate Quantity & Live Stock Availability before submission
+    // Validate Quantity & Live Stock Availability before submission
     for (const item of cartList) {
       const available = getAvailablePieces(item.product);
       const qty = parseInt(item.qty, 10);
@@ -234,7 +236,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
     let finalGpay = 0;
     let finalCredit = 0;
 
-    // Step 5 & 6: Payment mode & cash/split validation
+    // Payment mode & cash/split validation
     if (paymentMode === 'CASH') {
       finalCash = totalAmount;
     } else if (paymentMode === 'GPAY') {
@@ -314,62 +316,97 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-3xl max-w-5xl w-full max-h-[94dvh] flex flex-col shadow-2xl overflow-y-auto lg:overflow-hidden my-auto">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-1 sm:p-4 overflow-y-auto">
+      <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl max-w-5xl w-full h-[98dvh] sm:h-[94dvh] flex flex-col shadow-2xl overflow-hidden my-auto">
         
         {/* Header Bar */}
-        <div className="flex items-center justify-between p-4 px-6 border-b border-slate-100 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400 shadow-xs">
-              <ShoppingBag className="w-5 h-5" />
+        <div className="flex items-center justify-between p-3 sm:p-4 sm:px-6 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400 shrink-0 shadow-xs">
+              <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-black text-lg text-white">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h3 className="font-black text-xs sm:text-base text-white truncate">
                   STORE KEEPER DIRECT POS BILLING
                 </h3>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-400/30">
-                  Real-time Warehouse Stock
+                <span className="hidden sm:inline text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold px-2 py-0.5 rounded-full border border-emerald-400/30">
+                  Live Stock
                 </span>
-                <span className="text-[10px] bg-blue-500/20 text-blue-300 font-extrabold px-2.5 py-0.5 rounded-full border border-blue-400/30">
-                  Billing Shop: AVS AGENCIES
+                <span className="hidden sm:inline text-[10px] bg-blue-500/20 text-blue-300 font-extrabold px-2 py-0.5 rounded-full border border-blue-400/30">
+                  AVS AGENCIES
                 </span>
               </div>
-              <p className="text-xs text-slate-300">Select items, enter quantity, and generate counter bills instantly for AVS AGENCIES</p>
+              <p className="text-[10px] sm:text-xs text-slate-300 truncate">Select items & generate counter bills</p>
             </div>
           </div>
+          
           <button 
             onClick={onClose}
-            className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer shrink-0 ml-2"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
-        {/* Modal Body Layout (Left: Products Grid 7 Cols, Right: Cart & Split Payment 5 Cols) */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-y-auto lg:overflow-hidden">
+        {/* Mobile View Switcher Tabs (Only visible on screens < lg) */}
+        <div className="flex lg:hidden bg-slate-100 p-1 border-b border-slate-200 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileTab('products')}
+            className={`flex-1 py-2 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
+              mobileTab === 'products'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ShoppingBag className="w-3.5 h-3.5 text-blue-600" />
+            <span>Products ({filteredProducts.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMobileTab('cart')}
+            className={`flex-1 py-2 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
+              mobileTab === 'cart'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <ShoppingCart className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Cart ({cartList.length})</span>
+            {totalAmount > 0 && (
+              <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded-md font-black ml-0.5">
+                ₹{totalAmount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Modal Body Layout (Desktop: Side-by-Side 7/5 cols; Mobile: Active Tab) */}
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden min-h-0">
           
           {/* LEFT: Product Selection Grid */}
-          <div className="lg:col-span-7 p-4 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col gap-3 bg-slate-50/60 overflow-y-auto min-h-[300px]">
+          <div className={`${mobileTab === 'products' ? 'flex' : 'hidden'} lg:flex lg:col-span-7 p-2.5 sm:p-4 border-b lg:border-b-0 lg:border-r border-slate-200 flex-col gap-2 sm:gap-3 bg-slate-50/70 overflow-y-auto min-h-0`}>
             
             {/* Category Filter Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none shrink-0">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 shrink-0 no-scrollbar">
               <button
                 onClick={() => setActiveCategory('all')}
-                className={`px-3 py-1.5 rounded-xl font-extrabold text-xs whitespace-nowrap transition ${
+                className={`px-3 py-1.5 rounded-xl font-extrabold text-xs whitespace-nowrap transition cursor-pointer ${
                   activeCategory === 'all'
                     ? 'bg-slate-900 text-white shadow-sm'
                     : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                All Products ({activeProducts.length})
+                All ({activeProducts.length})
               </button>
 
               {PRODUCT_GROUPS.map(group => (
                 <button
                   key={group.id}
                   onClick={() => setActiveCategory(group.id)}
-                  className={`px-3 py-1.5 rounded-xl font-extrabold text-xs whitespace-nowrap transition ${
+                  className={`px-3 py-1.5 rounded-xl font-extrabold text-xs whitespace-nowrap transition cursor-pointer ${
                     activeCategory === group.id
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
@@ -381,7 +418,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
             </div>
 
             {/* Product Cards List */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 overflow-y-auto pr-0.5 pb-16 lg:pb-0">
               {filteredProducts.map(prod => {
                 const actualImage = prod.image_url || prod.image || (PRODUCT_IMAGES[prod.id]?.image) || '';
                 const meta = {
@@ -394,36 +431,38 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                 return (
                   <div 
                     key={prod.id} 
-                    className={`bg-white rounded-2xl p-3 border transition-all flex flex-col justify-between shadow-xs ${
-                      currentQty > 0 ? 'border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/30' : 'border-slate-200 hover:border-blue-400'
+                    className={`bg-white rounded-2xl p-2.5 sm:p-3 border transition-all flex flex-col justify-between shadow-2xs ${
+                      currentQty > 0 ? 'border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/20' : 'border-slate-200 hover:border-blue-400'
                     }`}
                   >
-                    <div className="flex gap-3">
-                      <div className="w-20 h-20 rounded-2xl bg-gradient-to-b from-slate-50 to-slate-100/90 border border-slate-200 flex items-center justify-center p-1.5 shrink-0 overflow-hidden shadow-2xs">
+                    <div className="flex gap-2.5 sm:gap-3">
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-b from-slate-50 to-slate-100/90 border border-slate-200 flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-2xs">
                         {meta.image ? (
-                          <img src={meta.image} alt={prod.display_name} className="h-full w-full object-contain drop-shadow-sm" />
+                          <img src={meta.image} alt={prod.display_name} className="h-full w-full object-contain drop-shadow-xs" />
                         ) : (
-                          <span className="text-3xl">{prod.icon || '📦'}</span>
+                          <span className="text-2xl sm:text-3xl">{prod.icon || '📦'}</span>
                         )}
                       </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="text-[10px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-                            {meta.sizeBadge}
-                          </span>
-                          <span className="font-mono font-black text-xs text-slate-800">
-                            ₹{prod.piece_selling_price || prod.unit_selling_price}/pc
-                          </span>
+                      <div className="flex-1 min-w-0 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[9px] sm:text-[10px] font-black uppercase text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                              {meta.sizeBadge}
+                            </span>
+                            <span className="font-mono font-black text-xs sm:text-sm text-slate-900">
+                              ₹{prod.piece_selling_price || prod.unit_selling_price}/pc
+                            </span>
+                          </div>
+
+                          <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 truncate mt-0.5">
+                            {prod.display_name}
+                          </h4>
                         </div>
 
-                        <h4 className="font-extrabold text-xs text-slate-900 truncate mt-1">
-                          {prod.display_name}
-                        </h4>
-
-                        <div className="flex items-center justify-between text-[10px] mt-1.5">
+                        <div className="flex items-center justify-between text-[10px] mt-1">
                           <span className="text-slate-500 font-bold">Store Stock:</span>
-                          <span className={`font-mono font-black ${availablePcs > 10 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          <span className={`font-mono font-black ${availablePcs > 10 ? 'text-emerald-700' : 'text-rose-600'}`}>
                             {prod.warehouse_stock_units} Trays ({availablePcs} Pcs)
                           </span>
                         </div>
@@ -431,17 +470,17 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                     </div>
 
                     {/* Quantity Input Controls */}
-                    <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-extrabold text-slate-600">Qty (Pcs):</span>
+                    <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-extrabold text-slate-700">Qty:</span>
                       
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => handleQtyChange(prod, (Number(currentQty) || 0) - 1)}
-                          className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-black transition disabled:opacity-30"
+                          className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 flex items-center justify-center font-black transition active:scale-95 disabled:opacity-30 cursor-pointer"
                           disabled={!currentQty || Number(currentQty) <= 0}
                         >
-                          <Minus className="w-3.5 h-3.5" />
+                          <Minus className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                         </button>
 
                         <input
@@ -451,16 +490,16 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                           placeholder="0"
                           value={currentQty}
                           onChange={(e) => handleQtyChange(prod, e.target.value)}
-                          className="w-14 h-7 text-center font-mono font-black text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 focus:bg-white"
+                          className="w-14 h-8 sm:h-7 text-center font-mono font-black text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 focus:bg-white"
                         />
 
                         <button
                           type="button"
                           onClick={() => handleQtyChange(prod, (Number(currentQty) || 0) + 1)}
-                          className="w-7 h-7 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center font-black transition disabled:opacity-30"
+                          className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center font-black transition active:scale-95 disabled:opacity-30 cursor-pointer"
                           disabled={availablePcs <= (Number(currentQty) || 0)}
                         >
-                          <Plus className="w-3.5 h-3.5" />
+                          <Plus className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -468,19 +507,43 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                 );
               })}
             </div>
+
+            {/* Sticky Floating Bottom Bar on Mobile (when items in cart and on products tab) */}
+            {cartList.length > 0 && (
+              <div className="lg:hidden fixed bottom-2 left-2 right-2 z-40 bg-slate-900 text-white p-2.5 px-4 rounded-2xl shadow-2xl flex items-center justify-between border border-slate-800 animate-in slide-in-from-bottom duration-200">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black">
+                    <ShoppingCart className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-black">{totalItemsCount} Pcs Selected</div>
+                    <div className="text-emerald-400 font-mono font-black text-sm">₹{totalAmount.toLocaleString()}</div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setMobileTab('cart')}
+                  className="py-2 px-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+                >
+                  <span>Pay Now</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* RIGHT: Cart & Dynamic Split Payment Controls */}
-          <div className="lg:col-span-5 p-4 flex flex-col justify-between bg-white overflow-y-auto space-y-4">
+          <div className={`${mobileTab === 'cart' ? 'flex' : 'hidden'} lg:flex lg:col-span-5 p-3 sm:p-4 flex-col justify-between bg-white overflow-y-auto space-y-3 sm:space-y-4 min-h-0`}>
             
             {/* Cart Items List Container */}
-            <div className="flex-1 space-y-2 flex flex-col min-h-[160px]">
+            <div className="flex-1 space-y-2 flex flex-col min-h-0">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2 shrink-0">
-                <h4 className="font-black text-xs text-slate-900 flex items-center gap-1.5">
-                  <ShoppingBag className="w-4 h-4 text-blue-600" />
+                <h4 className="font-black text-xs sm:text-sm text-slate-900 flex items-center gap-1.5">
+                  <ShoppingCart className="w-4 h-4 text-blue-600" />
                   Cart Items
                 </h4>
-                <span className="text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
+                <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
                   {cartList.length} Selected ({totalItemsCount} Pcs)
                 </span>
               </div>
@@ -489,12 +552,19 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                 <div className="flex-1 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center p-6 text-center text-slate-400 min-h-[140px]">
                   <ShoppingBag className="w-9 h-9 stroke-[1.5] text-slate-300 mb-1.5" />
                   <p className="text-xs font-bold text-slate-600">Cart is Empty</p>
-                  <p className="text-[10px] text-slate-400">Click products on the left to add items</p>
+                  <p className="text-[10px] text-slate-400">Add products to start counter billing</p>
+                  <button
+                    type="button"
+                    onClick={() => setMobileTab('products')}
+                    className="lg:hidden mt-3 px-4 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer"
+                  >
+                    Browse Products
+                  </button>
                 </div>
               ) : (
-                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 flex-1">
+                <div className="space-y-1.5 max-h-48 sm:max-h-56 overflow-y-auto pr-1 flex-1">
                   {cartList.map(item => (
-                    <div key={item.product.id} className="flex items-center justify-between text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                    <div key={item.product.id} className="flex items-center justify-between text-xs bg-slate-50 p-2 sm:p-2.5 rounded-xl border border-slate-200">
                       <div className="min-w-0 flex-1 pr-2">
                         <p className="font-extrabold text-slate-900 truncate">{item.product.display_name}</p>
                         <p className="text-[10px] text-slate-500 font-mono">
@@ -504,10 +574,12 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-black text-slate-900">₹{item.amount}</span>
                         <button
+                          type="button"
                           onClick={() => handleQtyChange(item.product, 0)}
-                          className="text-slate-400 hover:text-rose-600 transition p-1"
+                          className="text-slate-400 hover:text-rose-600 transition p-1 cursor-pointer"
+                          title="Remove item"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -517,123 +589,123 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
             </div>
 
             {/* Payment Section & Auto-Balancing Split Panel */}
-            <div className="space-y-3 bg-slate-900 text-white p-4 rounded-2xl shadow-md shrink-0">
+            <div className="space-y-2.5 sm:space-y-3 bg-slate-900 text-white p-3 sm:p-4 rounded-2xl shadow-md shrink-0">
               
               {/* Grand Total Bar */}
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                 <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Grand Total:</span>
-                <span className="font-mono font-black text-2xl text-emerald-400">₹{totalAmount.toLocaleString()}</span>
+                <span className="font-mono font-black text-xl sm:text-2xl text-emerald-400">₹{totalAmount.toLocaleString()}</span>
               </div>
 
               {/* Payment Mode Selector Buttons */}
               <div>
-                <label className="text-[10px] font-extrabold text-slate-400 uppercase block mb-1.5">Payment Method:</label>
-                <div className="grid grid-cols-4 gap-1.5">
+                <label className="text-[10px] font-extrabold text-slate-400 uppercase block mb-1">Payment Method:</label>
+                <div className="grid grid-cols-4 gap-1 sm:gap-1.5">
                   <button
                     type="button"
                     onClick={() => handlePaymentModeSelect('CASH')}
-                    className={`py-2 px-1 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 border transition ${
+                    className={`py-2 px-1 rounded-xl text-[10px] sm:text-[11px] font-black flex flex-col sm:flex-row items-center justify-center gap-1 border transition cursor-pointer ${
                       paymentMode === 'CASH' 
                         ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm' 
                         : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                     }`}
                   >
-                    <DollarSign className="w-3.5 h-3.5" /> Cash
+                    <DollarSign className="w-3.5 h-3.5" /> <span>Cash</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handlePaymentModeSelect('GPAY')}
-                    className={`py-2 px-1 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 border transition ${
+                    className={`py-2 px-1 rounded-xl text-[10px] sm:text-[11px] font-black flex flex-col sm:flex-row items-center justify-center gap-1 border transition cursor-pointer ${
                       paymentMode === 'GPAY' 
                         ? 'bg-blue-500 text-white border-blue-400 shadow-sm' 
                         : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                     }`}
                   >
-                    <Smartphone className="w-3.5 h-3.5" /> GPay
+                    <Smartphone className="w-3.5 h-3.5" /> <span>GPay</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handlePaymentModeSelect('CREDIT')}
-                    className={`py-2 px-1 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 border transition ${
+                    className={`py-2 px-1 rounded-xl text-[10px] sm:text-[11px] font-black flex flex-col sm:flex-row items-center justify-center gap-1 border transition cursor-pointer ${
                       paymentMode === 'CREDIT' 
                         ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm' 
                         : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                     }`}
                   >
-                    <CreditCard className="w-3.5 h-3.5" /> Credit
+                    <CreditCard className="w-3.5 h-3.5" /> <span>Credit</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handlePaymentModeSelect('SPLIT')}
-                    className={`py-2 px-1 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 border transition ${
+                    className={`py-2 px-1 rounded-xl text-[10px] sm:text-[11px] font-black flex flex-col sm:flex-row items-center justify-center gap-1 border transition cursor-pointer ${
                       paymentMode === 'SPLIT' 
                         ? 'bg-purple-500 text-white border-purple-400 shadow-sm' 
                         : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                     }`}
                   >
-                    <ArrowRightLeft className="w-3.5 h-3.5" /> 🔀 Split
+                    <ArrowRightLeft className="w-3.5 h-3.5" /> <span>Split</span>
                   </button>
                 </div>
               </div>
 
               {/* Dynamic Auto-Balancing Input Panel when SPLIT Mode is active */}
               {paymentMode === 'SPLIT' && (
-                <div className="space-y-2 bg-slate-800/90 p-3 rounded-xl border border-purple-500/40">
+                <div className="space-y-2 bg-slate-800/90 p-2.5 sm:p-3 rounded-xl border border-purple-500/40">
                   <div className="flex items-center justify-between text-[10px] font-extrabold text-purple-300 uppercase border-b border-slate-700 pb-1">
                     <span className="flex items-center gap-1"><Sparkles className="w-3 h-3" /> Auto-balancing Split</span>
                     <span>Total: ₹{totalAmount}</span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-xs">
                     {/* Cash Input */}
                     <div>
-                      <label className="text-[9px] font-extrabold text-emerald-400 uppercase block mb-0.5">Cash Amount:</label>
+                      <label className="text-[9px] font-extrabold text-emerald-400 uppercase block mb-0.5">Cash:</label>
                       <input
                         type="text"
                         placeholder="0"
                         value={cashAmount}
                         onChange={(e) => handleCashChange(e.target.value)}
-                        className="w-full bg-slate-900 border border-emerald-500/50 rounded-lg p-1.5 font-mono font-black text-emerald-400 focus:outline-none focus:border-emerald-400"
+                        className="w-full bg-slate-900 border border-emerald-500/50 rounded-lg p-1.5 font-mono font-black text-xs text-emerald-400 focus:outline-none focus:border-emerald-400"
                       />
                     </div>
 
                     {/* GPay Input */}
                     <div>
-                      <label className="text-[9px] font-extrabold text-blue-400 uppercase block mb-0.5">GPay Amount:</label>
+                      <label className="text-[9px] font-extrabold text-blue-400 uppercase block mb-0.5">GPay:</label>
                       <input
                         type="text"
                         placeholder="0"
                         value={gpayAmount}
                         onChange={(e) => handleGpayChange(e.target.value)}
-                        className="w-full bg-slate-900 border border-blue-500/50 rounded-lg p-1.5 font-mono font-black text-blue-400 focus:outline-none focus:border-blue-400"
+                        className="w-full bg-slate-900 border border-blue-500/50 rounded-lg p-1.5 font-mono font-black text-xs text-blue-400 focus:outline-none focus:border-blue-400"
                       />
                     </div>
 
                     {/* Credit Input */}
                     <div>
-                      <label className="text-[9px] font-extrabold text-amber-400 uppercase block mb-0.5">Credit Amount:</label>
+                      <label className="text-[9px] font-extrabold text-amber-400 uppercase block mb-0.5">Credit:</label>
                       <input
                         type="text"
                         placeholder="0"
                         value={creditAmount}
                         onChange={(e) => handleCreditChange(e.target.value)}
-                        className="w-full bg-slate-900 border border-amber-500/50 rounded-lg p-1.5 font-mono font-black text-amber-400 focus:outline-none focus:border-amber-400"
+                        className="w-full bg-slate-900 border border-amber-500/50 rounded-lg p-1.5 font-mono font-black text-xs text-amber-400 focus:outline-none focus:border-amber-400"
                       />
                     </div>
                   </div>
 
                   {/* Real-time Match Status Badge */}
-                  <div className="text-[10px] font-bold flex items-center justify-between pt-1">
+                  <div className="text-[10px] font-bold flex items-center justify-between pt-0.5">
                     {splitSum === totalAmount ? (
                       <span className="text-emerald-400 font-extrabold flex items-center gap-1">
-                        ✓ Payment Total Matched (₹{splitSum} / ₹{totalAmount})
+                        ✓ Matched (₹{splitSum} / ₹{totalAmount})
                       </span>
                     ) : (
-                      <span className="text-amber-300 font-extrabold flex items-center gap-1">
-                        ⚠️ Auto-assigned Remaining Balance: ₹{Math.max(0, totalAmount - splitSum)}
+                      <span className="text-amber-300 font-extrabold flex items-center gap-1 text-[9px]">
+                        ⚠️ Auto Remaining: ₹{Math.max(0, totalAmount - splitSum)}
                       </span>
                     )}
                   </div>
@@ -642,12 +714,13 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
 
               {/* Action Submit Button */}
               <button
+                type="button"
                 onClick={handleSubmitBill}
                 disabled={submitting || cartList.length === 0}
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg transition disabled:opacity-50"
+                className="w-full py-3 sm:py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition disabled:opacity-50 cursor-pointer active:scale-[0.98]"
               >
-                <CheckCircle2 className="w-5 h-5" />
-                {submitting ? 'GENERATING BILL & DEDUCTING STOCK...' : 'GENERATE BILL & DEDUCT STOCK'}
+                <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span>{submitting ? 'GENERATING BILL...' : 'GENERATE BILL & DEDUCT STOCK'}</span>
               </button>
             </div>
 
