@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Store, X, Save, Snowflake, CheckCircle2, MapPin, Route as RouteIcon, Mic, MicOff, Volume2 } from 'lucide-react';
+import { Store, X, Save, Snowflake, CheckCircle2, MapPin, Route as RouteIcon, Mic, MicOff, Volume2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const AddShopModal = ({ onClose, villageId = null, villageName = null }) => {
@@ -19,7 +19,47 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
   // Speech Recognition (Voice-to-Text) State - 100% Free Native Web Speech API
   const [speechLang, setSpeechLang] = useState('ta-IN'); // 'ta-IN' (தமிழ்) or 'en-IN' (English)
   const [isListening, setIsListening] = useState(false);
+  const [translating, setTranslating] = useState(false);
   const recognitionRef = useRef(null);
+
+  // Free instant translation / transliteration between Tamil and English
+  const translateText = async (text, fromLang, toLang) => {
+    if (!text || !text.trim()) return text;
+    try {
+      const sl = fromLang === 'ta-IN' ? 'ta' : 'en';
+      const tl = toLang === 'ta-IN' ? 'ta' : 'en';
+      if (sl === tl) return text;
+
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text.trim())}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data && data[0] && Array.isArray(data[0])) {
+        const translated = data[0].map(item => item[0]).filter(Boolean).join(' ').trim();
+        return translated || text;
+      }
+      return text;
+    } catch (e) {
+      console.warn("Translation fallback:", e);
+      return text;
+    }
+  };
+
+  const handleLanguageChange = async (targetLang) => {
+    if (speechLang === targetLang) return;
+    const prevLang = speechLang;
+    setSpeechLang(targetLang);
+
+    // If there is already text typed in the shop name, convert it immediately!
+    if (name && name.trim()) {
+      setTranslating(true);
+      const converted = await translateText(name, prevLang, targetLang);
+      if (converted && converted !== name) {
+        setName(converted);
+        toast.success(targetLang === 'ta-IN' ? "பெயர் தமிழில் மாற்றப்பட்டது!" : "Name converted to English!");
+      }
+      setTranslating(false);
+    }
+  };
 
   const startVoiceInput = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -248,11 +288,13 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
                   Shop Name (கடை பெயர்) *
                 </label>
                 
-                {/* Language Switcher Buttons: தமிழ் / English */}
+                {/* Language Switcher Buttons: தமிழ் / English with Auto-Conversion */}
                 <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                  {translating && <Loader2 className="w-3 h-3 text-blue-600 animate-spin mr-0.5" />}
                   <button
                     type="button"
-                    onClick={() => setSpeechLang('ta-IN')}
+                    onClick={() => handleLanguageChange('ta-IN')}
+                    disabled={translating}
                     className={`px-2 py-0.5 text-[10px] font-black rounded-md transition cursor-pointer ${
                       speechLang === 'ta-IN'
                         ? 'bg-blue-600 text-white shadow-xs'
@@ -263,7 +305,8 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSpeechLang('en-IN')}
+                    onClick={() => handleLanguageChange('en-IN')}
+                    disabled={translating}
                     className={`px-2 py-0.5 text-[10px] font-black rounded-md transition cursor-pointer ${
                       speechLang === 'en-IN'
                         ? 'bg-blue-600 text-white shadow-xs'
