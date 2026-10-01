@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useApp, apiFetch, API_URL } from '../../context/AppContext';
 import { ArrowUpRight, X, Save, User, Truck, ShieldAlert, CheckCircle2, Minus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { ProductImage } from '../common/ProductImage';
+import { resolveProductImageUrl } from '../../utils/productImageHelper';
 
 export const StockAllocationModal = ({ onClose }) => {
   const { products = [], employees = [], drivers: contextDrivers = [], allocateStock, fetchWarehouseStock } = useApp();
@@ -263,7 +265,12 @@ export const StockAllocationModal = ({ onClose }) => {
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-xl shrink-0">{prod.icon || '📦'}</span>
+                        <ProductImage 
+                          src={resolveProductImageUrl(prod)} 
+                          alt={prod.display_name} 
+                          size={40} 
+                          icon={prod.icon || '📦'} 
+                        />
                         <div className="truncate">
                           <span className="font-black text-slate-900 block truncate text-xs">{prod.display_name}</span>
                           <span className={`text-[10px] font-mono block ${whUnits > 0 ? 'text-slate-500 font-bold' : 'text-rose-500 font-black'}`}>

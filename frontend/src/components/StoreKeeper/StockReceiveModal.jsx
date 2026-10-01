@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ArrowDownLeft, X, Save, Building2, Tag, DollarSign, Calculator, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { ProductImage } from '../common/ProductImage';
+import { resolveProductImageUrl } from '../../utils/productImageHelper';
 
 export const StockReceiveModal = ({ onClose }) => {
   const { products = [], suppliers = [], receiveDealerStock } = useApp();
@@ -232,7 +234,12 @@ export const StockReceiveModal = ({ onClose }) => {
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="text-xl shrink-0">{prod.icon || '🥛'}</span>
+                      <ProductImage 
+                        src={resolveProductImageUrl(prod)} 
+                        alt={prod.display_name} 
+                        size={40} 
+                        icon={prod.icon || '📦'} 
+                      />
                       <div className="truncate">
                         <span className="font-extrabold text-slate-900 block truncate text-xs">
                           {prod.display_name}
