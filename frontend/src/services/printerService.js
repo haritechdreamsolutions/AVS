@@ -24,8 +24,8 @@ export const generateEscPos58mmBuffer = (bill) => {
   const CMD_BOLD_OFF = [ESC, 0x45, 0];
   const CMD_DOUBLE_STRIKE_ON = [ESC, 0x47, 1];
   const CMD_DOUBLE_STRIKE_OFF = [ESC, 0x47, 0];
-  const CMD_DOUBLE_SIZE_ON = [GS, 0x21, 0x11]; // Double Width + Double Height
-  const CMD_NORMAL_TEXT = [GS, 0x21, 0x00];
+  const CMD_DOUBLE_HEIGHT_ON = [ESC, 0x21, 0x10]; // Tall condensed font (Double-Height without wide horizontal stretch)
+  const CMD_NORMAL_TEXT = [ESC, 0x21, 0x00];
   const CMD_LINE_FEED = [0x0A];
   const CMD_CUT = [GS, 0x56, 66, 0];
 
@@ -36,13 +36,13 @@ export const generateEscPos58mmBuffer = (bill) => {
     buffer.push(...bytes);
   };
 
-  const addText = (text = '', align = 'LEFT', bold = false, doubleSize = false) => {
+  const addText = (text = '', align = 'LEFT', bold = false, doubleHeight = false) => {
     if (align === 'CENTER') addBytes(CMD_ALIGN_CENTER);
     else if (align === 'RIGHT') addBytes(CMD_ALIGN_RIGHT);
     else addBytes(CMD_ALIGN_LEFT);
 
-    if (doubleSize) {
-      addBytes(CMD_DOUBLE_SIZE_ON);
+    if (doubleHeight) {
+      addBytes(CMD_DOUBLE_HEIGHT_ON);
     } else {
       addBytes(CMD_NORMAL_TEXT);
     }
@@ -63,7 +63,7 @@ export const generateEscPos58mmBuffer = (bill) => {
       addBytes(CMD_BOLD_OFF);
       addBytes(CMD_DOUBLE_STRIKE_OFF);
     }
-    if (doubleSize) addBytes(CMD_NORMAL_TEXT);
+    if (doubleHeight) addBytes(CMD_NORMAL_TEXT);
     addBytes(CMD_LINE_FEED);
   };
 
@@ -111,13 +111,16 @@ export const generateEscPos58mmBuffer = (bill) => {
 
   // 2. Company Header
   const companyName = bill.company_name || 'AVS AGENCIES';
-  const companyAddress = bill.company_address || 'No 71, Mailam Road, Kooteripattu';
   const rawPhone = bill.company_phone || '9486334240';
-  const cleanPhone = rawPhone.replace(/\+91\s*/g, '').trim();
+  const cleanPhone = rawPhone.replace(/\+91\s*/g, '').replace(/\s+/g, '').trim();
 
+  // Title with tight letter gap, tall and extra bold font
   addText(companyName, 'CENTER', true, true);
-  addText(companyAddress, 'CENTER', false);
-  addText(`Ph: ${cleanPhone}`, 'CENTER', true);
+  
+  // Centered address lines with normal spacing
+  addText('No 71, Mailam Road', 'CENTER', false, false);
+  addText('Kooteripattu', 'CENTER', false, false);
+  addText(`Ph:${cleanPhone}`, 'CENTER', true, false);
   addDashedLine();
 
   // 3. Bill & Customer Metadata

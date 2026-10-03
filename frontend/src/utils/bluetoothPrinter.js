@@ -13,10 +13,10 @@ export const generateEscPosBuffer = (bill) => {
   const LINE_FEED = [0x0A];
   const CUT_PAPER = [GS, 0x56, 66, 0];
 
-  const CMD_DOUBLE_SIZE_ON = [GS, 0x21, 0x11];
+  const CMD_DOUBLE_HEIGHT_ON = [ESC, 0x21, 0x10];
   const CMD_DOUBLE_STRIKE_ON = [ESC, 0x47, 1];
   const CMD_DOUBLE_STRIKE_OFF = [ESC, 0x47, 0];
-  const CMD_NORMAL_TEXT = [GS, 0x21, 0x00];
+  const CMD_NORMAL_TEXT = [ESC, 0x21, 0x00];
 
   const encoder = new TextEncoder();
   let buffer = [];
@@ -25,12 +25,12 @@ export const generateEscPosBuffer = (bill) => {
     buffer.push(...bytes);
   };
 
-  const addText = (text, align = 'LEFT', bold = false, doubleSize = false) => {
+  const addText = (text, align = 'LEFT', bold = false, doubleHeight = false) => {
     if (align === 'CENTER') addBytes(ALIGN_CENTER);
     else if (align === 'RIGHT') addBytes(ALIGN_RIGHT);
     else addBytes(ALIGN_LEFT);
 
-    if (doubleSize) addBytes(CMD_DOUBLE_SIZE_ON);
+    if (doubleHeight) addBytes(CMD_DOUBLE_HEIGHT_ON);
     else addBytes(CMD_NORMAL_TEXT);
 
     if (bold) {
@@ -42,7 +42,7 @@ export const generateEscPosBuffer = (bill) => {
       addBytes(BOLD_OFF);
       addBytes(CMD_DOUBLE_STRIKE_OFF);
     }
-    if (doubleSize) addBytes(CMD_NORMAL_TEXT);
+    if (doubleHeight) addBytes(CMD_NORMAL_TEXT);
     addBytes(LINE_FEED);
   };
 
@@ -78,12 +78,16 @@ export const generateEscPosBuffer = (bill) => {
 
   // Header
   const companyName = bill.company_name || 'AVS AGENCIES';
-  const companyAddress = bill.company_address || 'No 71, Mailam Road, Kooteripattu';
   const rawPhone = bill.company_phone || '9486334240';
-  const cleanPhone = rawPhone.replace(/\+91\s*/g, '').trim();
+  const cleanPhone = rawPhone.replace(/\+91\s*/g, '').replace(/\s+/g, '').trim();
+
+  // Title with tight letter gap, tall and extra bold font
   addText(companyName, 'CENTER', true, true);
-  addText(companyAddress, 'CENTER');
-  addText(`Ph: ${cleanPhone}`, 'CENTER', true);
+  
+  // Centered address lines with normal spacing
+  addText('No 71, Mailam Road', 'CENTER', false, false);
+  addText('Kooteripattu', 'CENTER', false, false);
+  addText(`Ph:${cleanPhone}`, 'CENTER', true, false);
   addLine();
 
   // Bill & Shop Info
