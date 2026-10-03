@@ -1,6 +1,6 @@
 import express from 'express';
 import * as db from './db_pg.js';
-import { runAutoMigrations } from './database/auto_migrate.js';
+import { runAutoMigrations, resetTransactionAndInventoryData } from './database/auto_migrate.js';
 
 const router = express.Router();
 
@@ -1145,11 +1145,20 @@ router.get('/export/:reportType', requireAuth, requireRole('OWNER', 'ADMIN'), as
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
-// ====== SYSTEM MIGRATION TRIGGER ======
+// ====== SYSTEM MIGRATION & RESET TRIGGERS ======
 router.all(['/system/migrate', '/system/run-migrations'], async (req, res) => {
   try {
     await runAutoMigrations();
     res.json({ success: true, message: 'Auto-migrations executed successfully on database.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.all(['/system/reset-transactions', '/admin/reset-transactions'], async (req, res) => {
+  try {
+    const result = await resetTransactionAndInventoryData();
+    res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

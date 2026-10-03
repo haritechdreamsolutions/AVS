@@ -113,7 +113,7 @@ app.get(['/health', '/api/health'], async (req, res) => {
     if (dbRes && dbRes.rows) {
       return res.status(200).json({
         status: 'ok',
-        version: '2.2.0-suppliers-sync',
+        version: '2.3.0-clean-reset',
         time: new Date().toISOString(),
         database: 'connected',
         driver: 'pg',

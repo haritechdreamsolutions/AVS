@@ -886,3 +886,51 @@ export async function runAutoMigrations() {
     client.release();
   }
 }
+
+export async function resetTransactionAndInventoryData() {
+  const client = await pool.connect();
+  try {
+    console.log('[reset] Starting complete Transaction and Inventory Data reset...');
+    
+    const tables = [
+      'sale_items',
+      'payments',
+      'sales',
+      'inventory_movements',
+      'stock_transactions',
+      'warehouse_stock',
+      'employee_stock',
+      'employee_stock_balances',
+      'employee_day_closings',
+      'driver_sessions',
+      'driver_returns',
+      'driver_return_items',
+      'driver_closing_reconciliations',
+      'damages',
+      'damage_pieces',
+      'missing_pieces',
+      'expenses',
+      'settlements',
+      'notifications',
+      'audit_logs'
+    ];
+
+    for (const table of tables) {
+      await safeQuery(client, `TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE;`, [], `truncate ${table}`);
+    }
+
+    // Reset all shop current due balance to 0.00
+    await safeQuery(client, 'UPDATE shops SET current_due = 0.00;', [], 'reset shops due');
+
+    // Reset all product warehouse stock and inventory counts to 0
+    await safeQuery(client, 'UPDATE products SET warehouse_stock_units = 0, stock_units = 0;', [], 'reset products stock');
+
+    console.log('[reset] ✅ Transaction and Inventory Data reset finished successfully!');
+    return { success: true, message: 'All transactions, inventory, driver records, damages, expenses, and logs have been reset.' };
+  } catch (err) {
+    console.error('[reset] ❌ Error resetting transaction data:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
