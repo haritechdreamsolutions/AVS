@@ -14,6 +14,8 @@ export const generateEscPosBuffer = (bill) => {
   const CUT_PAPER = [GS, 0x56, 66, 0];
 
   const CMD_DOUBLE_SIZE_ON = [GS, 0x21, 0x11];
+  const CMD_DOUBLE_STRIKE_ON = [ESC, 0x47, 1];
+  const CMD_DOUBLE_STRIKE_OFF = [ESC, 0x47, 0];
   const CMD_NORMAL_TEXT = [GS, 0x21, 0x00];
 
   const encoder = new TextEncoder();
@@ -31,9 +33,15 @@ export const generateEscPosBuffer = (bill) => {
     if (doubleSize) addBytes(CMD_DOUBLE_SIZE_ON);
     else addBytes(CMD_NORMAL_TEXT);
 
-    if (bold) addBytes(BOLD_ON);
+    if (bold) {
+      addBytes(BOLD_ON);
+      addBytes(CMD_DOUBLE_STRIKE_ON);
+    }
     addBytes(Array.from(encoder.encode(text.replace(/₹/g, 'Rs.'))));
-    if (bold) addBytes(BOLD_OFF);
+    if (bold) {
+      addBytes(BOLD_OFF);
+      addBytes(CMD_DOUBLE_STRIKE_OFF);
+    }
     if (doubleSize) addBytes(CMD_NORMAL_TEXT);
     addBytes(LINE_FEED);
   };
@@ -42,21 +50,48 @@ export const generateEscPosBuffer = (bill) => {
     addText("--------------------------------", 'CENTER');
   };
 
+  const formatReceiptDate = (raw) => {
+    if (!raw) {
+      const d = new Date();
+      return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+    }
+    if (typeof raw === 'string') {
+      const clean = raw.split('T')[0];
+      const parts = clean.split('-');
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          return `${parts[2].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[0]}`;
+        } else if (parts[2].length === 4) {
+          return `${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[2]}`;
+        }
+      }
+    }
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) {
+      return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+    }
+    return String(raw);
+  };
+
   // Build ESC/POS Thermal Receipt
   addBytes(INITIALIZE);
 
   // Header
   const companyName = bill.company_name || 'AVS AGENCIES';
   const companyAddress = bill.company_address || 'No 71, Mailam Road, Kooteripattu';
-  const companyPhone = bill.company_phone || '+91 9486334240';
+  const rawPhone = bill.company_phone || '9486334240';
+  const cleanPhone = rawPhone.replace(/\+91\s*/g, '').trim();
   addText(companyName, 'CENTER', true, true);
   addText(companyAddress, 'CENTER');
-  addText(`Ph: ${companyPhone}`, 'CENTER');
+  addText(`Ph: ${cleanPhone}`, 'CENTER', true);
   addLine();
 
   // Bill & Shop Info
-  addText(`Bill No: ${bill.bill_no || 'INV-000000'}`, 'LEFT', true);
-  addText(`Date: ${bill.sale_date || bill.date || ''} ${bill.sale_time || bill.time || ''}`, 'LEFT');
+  const rawBillNo = bill.bill_no || 'INV-000000';
+  const billNo = rawBillNo.length > 12 ? (rawBillNo.substring(0, 9) + '...') : rawBillNo;
+  const dateStr = formatReceiptDate(bill.sale_date || bill.date);
+  addText(`Bill: ${billNo}`, 'LEFT', true);
+  addText(`Date: ${dateStr} ${bill.sale_time || bill.time || ''}`, 'LEFT');
   addText(`Shop: ${bill.shop_name || 'Customer'} (${bill.shop_code || 'SHP-001'})`, 'LEFT', true);
   addText(`Emp: ${bill.employee_name || 'Driver'} ${bill.vehicle_no ? `| Veh: ${bill.vehicle_no}` : ''}`, 'LEFT');
   addLine();

@@ -41,7 +41,8 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
 
   const companyName = companyInfo?.name || 'AVS AGENCIES';
   const companyAddress = companyInfo?.address || 'No 71, Mailam Road, Kooteripattu';
-  const companyPhone = companyInfo?.phone || '+91 9486334240';
+  const rawPhone = companyInfo?.phone || '9486334240';
+  const companyPhone = rawPhone.replace(/\+91\s*/g, '').trim();
 
   const totalQty = items.reduce((acc, it) => acc + (Math.floor(Number(it.qty)) || 0), 0);
   const totalAmount = Number(bill.total_amount || 0);
@@ -83,16 +84,31 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
   const grandTotal = totalAmount + previousDue;
 
   const formattedDate = () => {
-    if (!bill.sale_date) {
+    const raw = bill.sale_date || bill.date;
+    if (!raw) {
       const d = new Date();
       return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
     }
-    if (typeof bill.sale_date === 'string' && bill.sale_date.includes('T')) {
-      const d = new Date(bill.sale_date);
+    if (typeof raw === 'string') {
+      const clean = raw.split('T')[0];
+      const parts = clean.split('-');
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          return `${parts[2].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[0]}`;
+        } else if (parts[2].length === 4) {
+          return `${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[2]}`;
+        }
+      }
+    }
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) {
       return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
     }
-    return String(bill.sale_date);
+    return String(raw);
   };
+
+  const rawBillNo = bill.bill_no || bill.sale?.bill_no || 'INV-000000';
+  const displayBillNo = rawBillNo.length > 12 ? (rawBillNo.substring(0, 9) + '...') : rawBillNo;
 
   const handleThermalPrint = async () => {
     if (isPrinting) return;
@@ -176,16 +192,16 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
         <div className="printable-thermal-receipt printable-thermal bg-white p-3 sm:p-4 font-mono text-[10.5px] sm:text-[11px] border border-slate-300 rounded-2xl space-y-2 sm:space-y-2.5 text-slate-900 leading-tight overflow-y-auto flex-1">
           
           {/* Header */}
-          <div className="text-center space-y-0.5 border-b border-dashed border-slate-400 pb-2">
-            <h2 className="font-black text-base sm:text-lg uppercase tracking-wider text-slate-950 font-mono">{companyName}</h2>
-            <p className="text-[10px] text-slate-700 font-bold">{companyAddress}</p>
-            <p className="text-[10px] text-slate-700 font-bold">Ph: {companyPhone}</p>
+          <div className="text-center space-y-1 border-b border-dashed border-slate-400 pb-2">
+            <h2 className="font-black text-lg sm:text-xl uppercase tracking-widest text-slate-950 font-mono scale-y-105">{companyName}</h2>
+            <p className="text-[10px] sm:text-[10.5px] text-slate-700 font-bold">{companyAddress}</p>
+            <p className="text-[11px] sm:text-xs text-slate-900 font-black tracking-wide">Ph: {companyPhone}</p>
           </div>
 
           {/* Bill Meta */}
           <div className="border-b border-dashed border-slate-400 pb-2 space-y-1 text-[10px] sm:text-[10.5px]">
             <div className="flex justify-between font-extrabold">
-              <span>Bill No: <strong className="text-blue-700 font-black">{bill.bill_no || 'INV-000000'}</strong></span>
+              <span>Bill: <strong className="text-blue-700 font-black">{displayBillNo}</strong></span>
               <span>{formattedDate()}</span>
             </div>
             <div className="flex justify-between font-bold">
@@ -320,11 +336,11 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
             )}
 
             {/* Total Shop Due Balance */}
-            <div className="flex justify-between font-black text-[10.5px] pt-1 border-t border-dashed border-slate-300">
-              <span className={totalShopDue > 0 ? 'text-amber-800' : 'text-emerald-700'}>
+            <div className="flex justify-between items-center font-black text-xs sm:text-sm pt-1.5 pb-1 px-1 border-t-2 border-dashed border-slate-400">
+              <span className={totalShopDue > 0 ? 'text-amber-900 font-black' : 'text-emerald-800 font-black'}>
                 SHOP BALANCE (கடை பாக்கி):
               </span>
-              <span className={`font-mono ${totalShopDue > 0 ? 'text-amber-800' : 'text-emerald-700'}`}>
+              <span className={`font-mono text-sm sm:text-base font-black ${totalShopDue > 0 ? 'text-amber-900' : 'text-emerald-800'}`}>
                 ₹{totalShopDue.toFixed(2)}
               </span>
             </div>

@@ -22,6 +22,8 @@ export const generateEscPos58mmBuffer = (bill) => {
   const CMD_ALIGN_RIGHT = [ESC, 0x61, 2];
   const CMD_BOLD_ON = [ESC, 0x45, 1];
   const CMD_BOLD_OFF = [ESC, 0x45, 0];
+  const CMD_DOUBLE_STRIKE_ON = [ESC, 0x47, 1];
+  const CMD_DOUBLE_STRIKE_OFF = [ESC, 0x47, 0];
   const CMD_DOUBLE_SIZE_ON = [GS, 0x21, 0x11]; // Double Width + Double Height
   const CMD_NORMAL_TEXT = [GS, 0x21, 0x00];
   const CMD_LINE_FEED = [0x0A];
@@ -45,7 +47,10 @@ export const generateEscPos58mmBuffer = (bill) => {
       addBytes(CMD_NORMAL_TEXT);
     }
 
-    if (bold) addBytes(CMD_BOLD_ON);
+    if (bold) {
+      addBytes(CMD_BOLD_ON);
+      addBytes(CMD_DOUBLE_STRIKE_ON);
+    }
 
     // Clean special characters to ensure flawless 58mm thermal font rendering
     const cleanText = text
@@ -54,7 +59,10 @@ export const generateEscPos58mmBuffer = (bill) => {
 
     addBytes(Array.from(encoder.encode(cleanText)));
 
-    if (bold) addBytes(CMD_BOLD_OFF);
+    if (bold) {
+      addBytes(CMD_BOLD_OFF);
+      addBytes(CMD_DOUBLE_STRIKE_OFF);
+    }
     if (doubleSize) addBytes(CMD_NORMAL_TEXT);
     addBytes(CMD_LINE_FEED);
   };
@@ -74,23 +82,48 @@ export const generateEscPos58mmBuffer = (bill) => {
     addText(line, 'LEFT', bold);
   };
 
+  // Helper: Strictly format date as DD-MM-YYYY
+  const formatReceiptDate = (raw) => {
+    if (!raw) {
+      const d = new Date();
+      return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+    }
+    if (typeof raw === 'string') {
+      const clean = raw.split('T')[0];
+      const parts = clean.split('-');
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          return `${parts[2].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[0]}`;
+        } else if (parts[2].length === 4) {
+          return `${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[2]}`;
+        }
+      }
+    }
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) {
+      return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+    }
+    return String(raw);
+  };
+
   // 1. Initialize Printer
   addBytes(CMD_INITIALIZE);
 
   // 2. Company Header
   const companyName = bill.company_name || 'AVS AGENCIES';
   const companyAddress = bill.company_address || 'No 71, Mailam Road, Kooteripattu';
-  const companyPhone = bill.company_phone || '+91 9486334240';
+  const rawPhone = bill.company_phone || '9486334240';
+  const cleanPhone = rawPhone.replace(/\+91\s*/g, '').trim();
 
   addText(companyName, 'CENTER', true, true);
   addText(companyAddress, 'CENTER', false);
-  addText(`Ph: ${companyPhone}`, 'CENTER', false);
+  addText(`Ph: ${cleanPhone}`, 'CENTER', true);
   addDashedLine();
 
   // 3. Bill & Customer Metadata
-  const billNo = bill.bill_no || bill.sale?.bill_no || 'INV-000000';
-  const rawDate = bill.sale_date || bill.date || new Date().toISOString().split('T')[0];
-  const dateStr = typeof rawDate === 'string' && rawDate.includes('T') ? rawDate.split('T')[0] : String(rawDate);
+  const rawBillNo = bill.bill_no || bill.sale?.bill_no || 'INV-000000';
+  const billNo = rawBillNo.length > 12 ? (rawBillNo.substring(0, 9) + '...') : rawBillNo;
+  const dateStr = formatReceiptDate(bill.sale_date || bill.date);
   const timeStr = bill.sale_time || bill.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   const shopName = bill.shop_name || bill.shop?.name || 'Customer';
   const shopCode = bill.shop_code || bill.shop?.code || 'SHP-001';
