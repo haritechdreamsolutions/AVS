@@ -4,7 +4,8 @@ import { AdminAnalyticsChart } from './AdminAnalyticsChart';
 import { 
   TrendingUp, Printer, RefreshCw, Eye, ShoppingBag, 
   DollarSign, Smartphone, CreditCard, ArrowRightLeft, UserCheck, 
-  Truck, Store, Snowflake, Sparkles, CheckCircle2, Clock, X, Download, FileText
+  Truck, Store, Snowflake, Sparkles, CheckCircle2, Clock, X, Download, FileText,
+  AlertTriangle, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateOwnerExecutivePDFReport } from '../../utils/pdfReportGenerator';
@@ -13,11 +14,14 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
   const { 
     summary, sales = [], refreshData, fetchExecutiveDashboard, 
     activeBill, setActiveBill, fetchExpenses, fetchDamages, 
-    fetchMissingStockReport, companyInfo 
+    fetchMissingStockReport, companyInfo,
+    resetTransactionsAndInventory
   } = useApp();
   const [selectedSaleForDetails, setSelectedSaleForDetails] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [filterSellerType, setFilterSellerType] = useState('ALL'); // ALL, STORE, DRIVER
   const [selectedPeriod, setSelectedPeriod] = useState('TODAY'); // TODAY, YESTERDAY, THIS_WEEK, THIS_MONTH
   const [dashboardData, setDashboardData] = useState(null);
@@ -109,6 +113,22 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
       toast.error('Unable to generate PDF report. Please try again.');
     } finally {
       setIsGeneratingPDF(false);
+    }
+  };
+
+  const handleConfirmReset = async () => {
+    if (!resetTransactionsAndInventory) return;
+    setIsResetting(true);
+    try {
+      const res = await resetTransactionsAndInventory();
+      setShowResetModal(false);
+      await loadExecutiveDashboard(selectedPeriod);
+      toast.success(res?.message || 'All transaction and inventory data cleared successfully! Ready for fresh entries.');
+    } catch (err) {
+      console.error('Error resetting transactions:', err);
+      toast.error('Failed to reset transaction data. Please try again.');
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -229,7 +249,16 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
               className="px-3.5 py-2 sm:py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs sm:text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer whitespace-nowrap disabled:opacity-75"
             >
               <Download className={`w-3.5 h-3.5 ${isGeneratingPDF ? 'animate-bounce' : ''}`} />
-              {isGeneratingPDF ? 'Generating...' : 'Download PDF Report'}
+              {isGeneratingPDF ? 'Generating...' : 'Download PDF'}
+            </button>
+
+            <button
+              onClick={() => setShowResetModal(true)}
+              className="px-3 py-2 sm:py-2.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white font-extrabold text-xs sm:text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer whitespace-nowrap border border-rose-500/50"
+              title="Reset Live Transactions & Stock"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Reset Live Data</span>
             </button>
           </div>
         </div>
@@ -561,6 +590,67 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
             >
               Close Receipt
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Confirmation Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl border border-rose-200 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-3 text-rose-600 mb-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Reset Live Transactions?</h3>
+                <p className="text-xs text-rose-600 font-bold">Safe Data Cleanup for Fresh Start</p>
+              </div>
+            </div>
+
+            <div className="space-y-2.5 text-xs text-slate-600 my-4 bg-rose-50/70 p-3.5 rounded-2xl border border-rose-100">
+              <p className="font-extrabold text-slate-800">The following transaction data will be erased:</p>
+              <ul className="list-disc list-inside space-y-1 font-medium text-slate-700">
+                <li>All Bills, Sales, Invoices & Payments</li>
+                <li>Warehouse Stock & Movements (reset to 0)</li>
+                <li>Driver Allocations, Returns & Day Closings</li>
+                <li>Damages & Missing Stock Records</li>
+                <li>Expenses & Daily Cash Settlements</li>
+                <li>All Shop Dues will be reset to ₹0.00</li>
+              </ul>
+              <div className="pt-2 border-t border-rose-200/80 text-[11px] font-bold text-emerald-700">
+                ✓ Master Data KEPT: Routes, Villages, Shops, Categories, Products & User Logins are safe!
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 mt-5">
+              <button
+                type="button"
+                onClick={() => setShowResetModal(false)}
+                disabled={isResetting}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReset}
+                disabled={isResetting}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs transition shadow-md shadow-rose-600/30 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isResetting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Cleaning...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Yes, Clear Live Data</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

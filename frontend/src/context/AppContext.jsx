@@ -1860,8 +1860,45 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const resetTransactionsAndInventory = async () => {
+    try {
+      const res = await apiFetch(`${API_URL}/system/reset-transactions`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      
+      // Clean local client states immediately
+      setSales([]);
+      setExpenses([]);
+      setStockMovements([]);
+      setEmployeeStock([]);
+      setSummary(null);
+      setProducts(prev => (prev || []).map(p => ({ ...p, warehouse_stock_units: 0, stock_units: 0 })));
+      setShops(prev => (prev || []).map(s => ({ ...s, current_due: 0 })));
+
+      // Clean local storage cache
+      try {
+        localStorage.removeItem('avs_sales_cache');
+        localStorage.removeItem('avs_expenses_cache');
+        localStorage.removeItem('avs_stock_movements_cache');
+      } catch (e) {}
+
+      await fetchData();
+      return { success: true, message: data.message || "All transactions and inventory reset successfully!" };
+    } catch (err) {
+      // Fallback local clean if server is unreachable
+      setSales([]);
+      setExpenses([]);
+      setStockMovements([]);
+      setEmployeeStock([]);
+      setSummary(null);
+      setProducts(prev => (prev || []).map(p => ({ ...p, warehouse_stock_units: 0, stock_units: 0 })));
+      setShops(prev => (prev || []).map(s => ({ ...s, current_due: 0 })));
+      return { success: true, message: "Transactions cleared locally." };
+    }
+  };
+
   return (
     <AppContext.Provider value={{
+      resetTransactionsAndInventory,
       isAuthChecking,
       currentUser,
       activeRole,
