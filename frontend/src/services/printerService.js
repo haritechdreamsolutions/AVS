@@ -24,8 +24,9 @@ export const generateEscPos58mmBuffer = (bill) => {
   const CMD_BOLD_OFF = [ESC, 0x45, 0];
   const CMD_DOUBLE_STRIKE_ON = [ESC, 0x47, 1];
   const CMD_DOUBLE_STRIKE_OFF = [ESC, 0x47, 0];
-  const CMD_DOUBLE_HEIGHT_ON = [ESC, 0x21, 0x10]; // Tall condensed font (Double-Height without wide horizontal stretch)
-  const CMD_NORMAL_TEXT = [ESC, 0x21, 0x00];
+  const CMD_DOUBLE_SIZE_ON = [GS, 0x21, 0x11]; // Double Width + Double Height (Large Bold Title)
+  const CMD_DOUBLE_HEIGHT_ON = [ESC, 0x21, 0x10]; // Double Height only
+  const CMD_NORMAL_TEXT = [GS, 0x21, 0x00];
   const CMD_LINE_FEED = [0x0A];
   const CMD_CUT = [GS, 0x56, 66, 0];
 
@@ -36,12 +37,14 @@ export const generateEscPos58mmBuffer = (bill) => {
     buffer.push(...bytes);
   };
 
-  const addText = (text = '', align = 'LEFT', bold = false, doubleHeight = false) => {
+  const addText = (text = '', align = 'LEFT', bold = false, size = 'NORMAL') => {
     if (align === 'CENTER') addBytes(CMD_ALIGN_CENTER);
     else if (align === 'RIGHT') addBytes(CMD_ALIGN_RIGHT);
     else addBytes(CMD_ALIGN_LEFT);
 
-    if (doubleHeight) {
+    if (size === 'DOUBLE_SIZE' || size === true) {
+      addBytes(CMD_DOUBLE_SIZE_ON);
+    } else if (size === 'DOUBLE_HEIGHT') {
       addBytes(CMD_DOUBLE_HEIGHT_ON);
     } else {
       addBytes(CMD_NORMAL_TEXT);
@@ -63,7 +66,7 @@ export const generateEscPos58mmBuffer = (bill) => {
       addBytes(CMD_BOLD_OFF);
       addBytes(CMD_DOUBLE_STRIKE_OFF);
     }
-    if (doubleHeight) addBytes(CMD_NORMAL_TEXT);
+    if (size) addBytes(CMD_NORMAL_TEXT);
     addBytes(CMD_LINE_FEED);
   };
 
@@ -114,13 +117,13 @@ export const generateEscPos58mmBuffer = (bill) => {
   const rawPhone = bill.company_phone || '9486334240';
   const cleanPhone = rawPhone.replace(/\+91\s*/g, '').replace(/\s+/g, '').trim();
 
-  // Title with tight letter gap, tall and extra bold font
-  addText(companyName, 'CENTER', true, true);
+  // Title: Extra Bold & Large font with clean blank line below
+  addText(companyName, 'CENTER', true, 'DOUBLE_SIZE');
+  addBytes(CMD_LINE_FEED); // Space below title
   
-  // Centered address lines with normal spacing
-  addText('No 71, Mailam Road', 'CENTER', false, false);
-  addText('Kooteripattu', 'CENTER', false, false);
-  addText(`Ph:${cleanPhone}`, 'CENTER', true, false);
+  // Single line address & phone
+  addText('No 71, Mailam Road, Kooteripattu', 'CENTER', false);
+  addText(`Ph: ${cleanPhone}`, 'CENTER', true);
   addDashedLine();
 
   // 3. Bill & Customer Metadata
@@ -141,19 +144,19 @@ export const generateEscPos58mmBuffer = (bill) => {
   }
   addDashedLine();
 
-  // 4. Items Table (ITEM (13) + QTY (3) + RATE (6) + AMT (7) + 3 spaces = 32 cols exactly)
-  addText('ITEM           QTY   RATE     AMT', 'LEFT', true);
+  // 4. Items Table (ITEM (12) + QTY (3) + RATE (6) + AMT (8) + 3 spaces = 32 cols exactly)
+  addText('ITEM          QTY   RATE      AMT', 'LEFT', true);
   addDashedLine();
 
   const items = bill.items || bill.sale?.items || [];
 
   items.forEach((item) => {
     const rawName = (item.product_name || 'Item').replace(/₹/g, '');
-    const pName = rawName.length > 13 ? rawName.substring(0, 13) : rawName.padEnd(13, ' ');
+    const pName = rawName.length > 12 ? rawName.substring(0, 12) : rawName.padEnd(12, ' ');
     const qtyNum = Math.floor(Number(item.qty || 1));
     const qtyStr = String(qtyNum).padStart(3, ' ');
     const rateStr = Number(item.rate || 0).toFixed(2).padStart(6, ' ');
-    const amtStr = Number(item.amount || (qtyNum * Number(item.rate || 0))).toFixed(2).padStart(7, ' ');
+    const amtStr = Number(item.amount || (qtyNum * Number(item.rate || 0))).toFixed(2).padStart(8, ' ');
 
     addText(`${pName} ${qtyStr} ${rateStr} ${amtStr}`, 'LEFT', false);
   });

@@ -192,12 +192,11 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
         <div className="printable-thermal-receipt printable-thermal bg-white p-3 sm:p-4 font-mono text-[10.5px] sm:text-[11px] border border-slate-300 rounded-2xl space-y-2 sm:space-y-2.5 text-slate-900 leading-tight overflow-y-auto flex-1">
           
           {/* Header */}
-          <div className="text-center space-y-1 border-b border-dashed border-slate-400 pb-2.5 pt-0.5">
-            <h2 className="font-black text-xl sm:text-2xl uppercase tracking-normal text-slate-950 font-mono scale-y-110 mb-1">{companyName}</h2>
-            <div className="space-y-0.5 text-[10.5px] sm:text-[11px] text-slate-800 font-bold tracking-tight">
-              <p>No 71, Mailam Road</p>
-              <p>Kooteripattu</p>
-              <p className="text-[11px] sm:text-xs text-slate-950 font-black tracking-normal pt-0.5">Ph:{companyPhone}</p>
+          <div className="text-center space-y-1.5 border-b border-dashed border-slate-400 pb-2.5 pt-1">
+            <h2 className="font-black text-2xl sm:text-3xl uppercase tracking-normal text-slate-950 font-mono scale-y-110 mb-2">{companyName}</h2>
+            <div className="space-y-0.5 text-[10.5px] sm:text-[11px] text-slate-800 font-bold">
+              <p>No 71, Mailam Road, Kooteripattu</p>
+              <p className="text-[11px] sm:text-xs text-slate-950 font-black tracking-normal">Ph: {companyPhone}</p>
             </div>
           </div>
 
