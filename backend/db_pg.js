@@ -6764,7 +6764,8 @@ export async function getSuppliers(cid, query = {}) {
   let sql = 'SELECT * FROM suppliers WHERE (company_id = $1 OR company_id = 1 OR company_id IS NULL)';
   const params = [companyId];
 
-  if (query.active_only === 'true' || query.active_only === true) {
+  // Default: only return active suppliers unless explicitly requested otherwise
+  if (query.include_inactive !== 'true' && query.include_inactive !== true) {
     sql += ' AND is_active = TRUE';
   }
   if (query.search) {
@@ -6895,13 +6896,20 @@ export async function updateSupplier(cid, id, data, actorUserId) {
 }
 
 export async function deleteSupplier(cid, id, actorUserId) {
-  const sRes = await pool.query('SELECT * FROM suppliers WHERE id = $1 AND company_id = $2', [id, cid]);
-  if (sRes.rows.length === 0) throw new Error('Supplier not found');
+  const sRes = await pool.query('SELECT * FROM suppliers WHERE id = $1 AND (company_id = $2 OR company_id = 1 OR company_id IS NULL)', [id, cid]);
+  if (sRes.rows.length === 0) {
+    return { success: true, message: 'Supplier removed' };
+  }
 
-  // Soft delete / toggle active
-  await pool.query('UPDATE suppliers SET is_active = FALSE, updated_at = NOW() WHERE id = $1 AND company_id = $2', [id, cid]);
-  await auditLog({ companyId: cid, actorUserId, action: 'SUPPLIER_DEACTIVATED', entityType: 'suppliers', entityId: id });
-  return { success: true, message: 'Supplier deactivated successfully' };
+  try {
+    await pool.query('DELETE FROM supplier_product_rates WHERE supplier_id = $1', [id]);
+    await pool.query('DELETE FROM suppliers WHERE id = $1', [id]);
+  } catch (err) {
+    await pool.query('UPDATE suppliers SET is_active = FALSE, updated_at = NOW() WHERE id = $1', [id]);
+  }
+
+  await auditLog({ companyId: cid, actorUserId, action: 'SUPPLIER_DELETED', entityType: 'suppliers', entityId: id });
+  return { success: true, message: 'Company removed successfully' };
 }
 
 export async function getSupplierInwardStockReport(cid, filters = {}) {

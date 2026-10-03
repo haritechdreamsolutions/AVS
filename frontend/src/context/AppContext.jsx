@@ -37,6 +37,7 @@ export const AppProvider = ({ children }) => {
   const [users, setUsers] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [drivers, setDrivers] = useState([]);
+  const [routes, setRoutes] = useState([]);
   const DEFAULT_SUPPLIERS = [
     {
       id: 1,
@@ -76,21 +77,13 @@ export const AppProvider = ({ children }) => {
     }
   ];
 
-  const [routes, setRoutes] = useState([]);
   const [suppliers, setSuppliers] = useState(() => {
     try {
       const saved = localStorage.getItem('avs_suppliers_cache');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const merged = [...parsed];
-          const seenNames = new Set(parsed.map(s => (s.name || '').trim().toLowerCase()));
-          DEFAULT_SUPPLIERS.forEach(d => {
-            if (!seenNames.has((d.name || '').trim().toLowerCase())) {
-              merged.push(d);
-            }
-          });
-          return merged;
+        if (Array.isArray(parsed)) {
+          return parsed;
         }
       }
       return DEFAULT_SUPPLIERS;
@@ -101,7 +94,7 @@ export const AppProvider = ({ children }) => {
 
   // Sync suppliers to localStorage
   useEffect(() => {
-    if (Array.isArray(suppliers) && suppliers.length > 0) {
+    if (Array.isArray(suppliers)) {
       try {
         localStorage.setItem('avs_suppliers_cache', JSON.stringify(suppliers));
       } catch (e) {}
@@ -204,48 +197,12 @@ export const AppProvider = ({ children }) => {
       setDrivers(Array.isArray(driversRes) ? driversRes : []);
       setFreezerModels(Array.isArray(freezerModelsRes) ? freezerModelsRes : []);
       
-      // Merge remote suppliers with local/cached suppliers safely so user created/edited suppliers NEVER disappear!
-      setSuppliers(prev => {
-        const remote = Array.isArray(suppliersRes) ? suppliersRes : (Array.isArray(suppliersRes?.suppliers) ? suppliersRes.suppliers : []);
-        const base = remote.length > 0 ? remote : (prev && prev.length > 0 ? prev : DEFAULT_SUPPLIERS);
-
-        const merged = [...base];
-        const seenIds = new Set(base.map(r => String(r.id)));
-        const seenNames = new Set(base.map(r => (r.name || '').trim().toLowerCase()));
-
-        (prev || []).forEach(localItem => {
-          const lName = (localItem.name || '').trim().toLowerCase();
-          const lId = String(localItem.id);
-          if (!seenIds.has(lId) && !seenNames.has(lName)) {
-            merged.push(localItem);
-            seenIds.add(lId);
-            seenNames.add(lName);
-          } else {
-            // Keep local product_rates if local has more configured rates
-            const remoteIdx = merged.findIndex(r => String(r.id) === lId || (r.name || '').trim().toLowerCase() === lName);
-            if (remoteIdx !== -1 && localItem.product_rates && Object.keys(localItem.product_rates).length > 0) {
-              merged[remoteIdx] = {
-                ...merged[remoteIdx],
-                product_rates: {
-                  ...(merged[remoteIdx].product_rates || {}),
-                  ...localItem.product_rates
-                }
-              };
-            }
-          }
-        });
-
-        DEFAULT_SUPPLIERS.forEach(d => {
-          const dName = (d.name || '').trim().toLowerCase();
-          if (!seenNames.has(dName)) {
-            merged.push(d);
-            seenNames.add(dName);
-          }
-        });
-
-        try { localStorage.setItem('avs_suppliers_cache', JSON.stringify(merged)); } catch (e) {}
-        return merged;
-      });
+      // Use backend suppliers list as authoritative source of truth
+      const rawSuppliers = Array.isArray(suppliersRes) ? suppliersRes : (Array.isArray(suppliersRes?.suppliers) ? suppliersRes.suppliers : null);
+      if (rawSuppliers !== null) {
+        setSuppliers(rawSuppliers);
+        try { localStorage.setItem('avs_suppliers_cache', JSON.stringify(rawSuppliers)); } catch (e) {}
+      }
       
       // Merge remote freezers with local freezers safely
       setFreezers(prev => {
@@ -1037,8 +994,17 @@ export const AppProvider = ({ children }) => {
       const res = await apiFetch(`${API_URL}/suppliers/${supplierId}`, {
         method: 'DELETE'
       });
-      return { success: true, message: 'Company removed' };
+      const data = await res.json().catch(() => ({}));
+
+      const refreshed = await apiFetch(`${API_URL}/suppliers`).then(r => r.ok ? r.json() : []).catch(() => []);
+      if (Array.isArray(refreshed)) {
+        setSuppliers(refreshed);
+        try { localStorage.setItem('avs_suppliers_cache', JSON.stringify(refreshed)); } catch (e) {}
+      }
+
+      return { success: true, message: data.message || 'Company removed successfully' };
     } catch (err) {
+      console.warn("deleteSupplier fallback:", err);
       return { success: true, message: 'Company removed locally' };
     }
   };
