@@ -13,6 +13,9 @@ export const generateEscPosBuffer = (bill) => {
   const LINE_FEED = [0x0A];
   const CUT_PAPER = [GS, 0x56, 66, 0];
 
+  const CMD_DOUBLE_SIZE_ON = [GS, 0x21, 0x11];
+  const CMD_NORMAL_TEXT = [GS, 0x21, 0x00];
+
   const encoder = new TextEncoder();
   let buffer = [];
 
@@ -20,14 +23,18 @@ export const generateEscPosBuffer = (bill) => {
     buffer.push(...bytes);
   };
 
-  const addText = (text, align = 'LEFT', bold = false) => {
+  const addText = (text, align = 'LEFT', bold = false, doubleSize = false) => {
     if (align === 'CENTER') addBytes(ALIGN_CENTER);
     else if (align === 'RIGHT') addBytes(ALIGN_RIGHT);
     else addBytes(ALIGN_LEFT);
 
+    if (doubleSize) addBytes(CMD_DOUBLE_SIZE_ON);
+    else addBytes(CMD_NORMAL_TEXT);
+
     if (bold) addBytes(BOLD_ON);
-    addBytes(Array.from(encoder.encode(text)));
+    addBytes(Array.from(encoder.encode(text.replace(/₹/g, 'Rs.'))));
     if (bold) addBytes(BOLD_OFF);
+    if (doubleSize) addBytes(CMD_NORMAL_TEXT);
     addBytes(LINE_FEED);
   };
 
@@ -40,10 +47,11 @@ export const generateEscPosBuffer = (bill) => {
 
   // Header
   const companyName = bill.company_name || 'AVS AGENCIES';
-  const companySubtitle = bill.company_subtitle || 'Agencies Management System';
-  addText(companyName, 'CENTER', true);
-  addText(companySubtitle, 'CENTER');
-  addText("Salem, Tamil Nadu | +91 98765 43210", 'CENTER');
+  const companyAddress = bill.company_address || 'No 71, Mailam Road, Kooteripattu';
+  const companyPhone = bill.company_phone || '+91 9486334240';
+  addText(companyName, 'CENTER', true, true);
+  addText(companyAddress, 'CENTER');
+  addText(`Ph: ${companyPhone}`, 'CENTER');
   addLine();
 
   // Bill & Shop Info
@@ -53,27 +61,27 @@ export const generateEscPosBuffer = (bill) => {
   addText(`Emp: ${bill.employee_name || 'Driver'} ${bill.vehicle_no ? `| Veh: ${bill.vehicle_no}` : ''}`, 'LEFT');
   addLine();
 
-  // Itemized Table Header
-  addText("ITEM             QTY   RATE   TOTAL", 'LEFT', true);
+  // Itemized Table Header (ITEM 13 + QTY 3 + RATE 6 + AMT 7 + 3 spaces = 32 cols)
+  addText("ITEM           QTY   RATE     AMT", 'LEFT', true);
   addLine();
 
   // Items (Strictly actual bill items)
   const items = bill.items || [];
 
   items.forEach(item => {
-    const pName = (item.product_name || 'Item').padEnd(14, ' ').substring(0, 14);
-    const qty = String(Math.floor(Number(item.qty || 1))).padStart(3, ' ');
-    const rate = `₹${Number(item.rate || 0).toFixed(2)}`.padStart(7, ' ');
-    const amt = `₹${Number(item.amount || 0).toFixed(2)}`.padStart(8, ' ');
-    addText(`${pName} ${qty} ${rate} ${amt}`, 'LEFT');
+    const rawName = (item.product_name || 'Item').replace(/₹/g, '');
+    const pName = rawName.length > 13 ? rawName.substring(0, 13) : rawName.padEnd(13, ' ');
+    const qtyNum = Math.floor(Number(item.qty || 1));
+    const qtyStr = String(qtyNum).padStart(3, ' ');
+    const rateStr = Number(item.rate || 0).toFixed(2).padStart(6, ' ');
+    const amtStr = Number(item.amount || (qtyNum * Number(item.rate || 0))).toFixed(2).padStart(7, ' ');
+    addText(`${pName} ${qtyStr} ${rateStr} ${amtStr}`, 'LEFT');
   });
 
   addLine();
 
   // Totals & Payment
-  const totalQty = items.reduce((acc, it) => acc + (Math.floor(Number(it.qty)) || 0), 0);
-  addText(`TOTAL QTY: ${totalQty}`, 'LEFT', true);
-  addText(`TOTAL AMOUNT: RS. ${Number(bill.total_amount || 0).toFixed(2)}`, 'RIGHT', true);
+  addText(`BILL TOTAL: RS. ${Number(bill.total_amount || 0).toFixed(2)}`, 'RIGHT', true);
   addText(`PAYMENT MODE: ${bill.payment_mode || 'CASH'}`, 'RIGHT', true);
 
   if (bill.payment_mode === 'SPLIT') {

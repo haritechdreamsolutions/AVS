@@ -23,8 +23,8 @@ export const AppProvider = ({ children }) => {
   const [companyInfo, setCompanyInfo] = useState({
     name: "AVS AGENCIES",
     subtitle: "Distribution Management System",
-    address: "Main Road, Salem, Tamil Nadu",
-    phone: "+91 98765 43210"
+    address: "No 71, Mailam Road, Kooteripattu",
+    phone: "+91 9486334240"
   });
 
   const [shops, setShops] = useState([]);

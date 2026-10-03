@@ -22,8 +22,8 @@ export const generateEscPos58mmBuffer = (bill) => {
   const CMD_ALIGN_RIGHT = [ESC, 0x61, 2];
   const CMD_BOLD_ON = [ESC, 0x45, 1];
   const CMD_BOLD_OFF = [ESC, 0x45, 0];
-  const CMD_DOUBLE_HEIGHT_ON = [ESC, 0x21, 0x10];
-  const CMD_NORMAL_TEXT = [ESC, 0x21, 0x00];
+  const CMD_DOUBLE_SIZE_ON = [GS, 0x21, 0x11]; // Double Width + Double Height
+  const CMD_NORMAL_TEXT = [GS, 0x21, 0x00];
   const CMD_LINE_FEED = [0x0A];
   const CMD_CUT = [GS, 0x56, 66, 0];
 
@@ -34,13 +34,13 @@ export const generateEscPos58mmBuffer = (bill) => {
     buffer.push(...bytes);
   };
 
-  const addText = (text = '', align = 'LEFT', bold = false, doubleHeight = false) => {
+  const addText = (text = '', align = 'LEFT', bold = false, doubleSize = false) => {
     if (align === 'CENTER') addBytes(CMD_ALIGN_CENTER);
     else if (align === 'RIGHT') addBytes(CMD_ALIGN_RIGHT);
     else addBytes(CMD_ALIGN_LEFT);
 
-    if (doubleHeight) {
-      addBytes(CMD_DOUBLE_HEIGHT_ON);
+    if (doubleSize) {
+      addBytes(CMD_DOUBLE_SIZE_ON);
     } else {
       addBytes(CMD_NORMAL_TEXT);
     }
@@ -55,7 +55,7 @@ export const generateEscPos58mmBuffer = (bill) => {
     addBytes(Array.from(encoder.encode(cleanText)));
 
     if (bold) addBytes(CMD_BOLD_OFF);
-    if (doubleHeight) addBytes(CMD_NORMAL_TEXT);
+    if (doubleSize) addBytes(CMD_NORMAL_TEXT);
     addBytes(CMD_LINE_FEED);
   };
 
@@ -79,12 +79,10 @@ export const generateEscPos58mmBuffer = (bill) => {
 
   // 2. Company Header
   const companyName = bill.company_name || 'AVS AGENCIES';
-  const companySubtitle = bill.company_subtitle || 'Agencies Management System';
-  const companyAddress = bill.company_address || 'Salem, Tamil Nadu';
-  const companyPhone = bill.company_phone || '+91 98765 43210';
+  const companyAddress = bill.company_address || 'No 71, Mailam Road, Kooteripattu';
+  const companyPhone = bill.company_phone || '+91 9486334240';
 
   addText(companyName, 'CENTER', true, true);
-  addText(companySubtitle, 'CENTER', false);
   addText(companyAddress, 'CENTER', false);
   addText(`Ph: ${companyPhone}`, 'CENTER', false);
   addDashedLine();
@@ -107,19 +105,17 @@ export const generateEscPos58mmBuffer = (bill) => {
   }
   addDashedLine();
 
-  // 4. Items Table (ITEM (14) | QTY (4) | RATE (6) | AMT (8)) = 32 cols
-  addText('ITEM           QTY   RATE    AMT', 'LEFT', true);
+  // 4. Items Table (ITEM (13) + QTY (3) + RATE (6) + AMT (7) + 3 spaces = 32 cols exactly)
+  addText('ITEM           QTY   RATE     AMT', 'LEFT', true);
   addDashedLine();
 
   const items = bill.items || bill.sale?.items || [];
-  let calculatedTotalQty = 0;
 
   items.forEach((item) => {
     const rawName = (item.product_name || 'Item').replace(/₹/g, '');
     const pName = rawName.length > 13 ? rawName.substring(0, 13) : rawName.padEnd(13, ' ');
     const qtyNum = Math.floor(Number(item.qty || 1));
-    calculatedTotalQty += qtyNum;
-    const qtyStr = String(qtyNum).padStart(4, ' ');
+    const qtyStr = String(qtyNum).padStart(3, ' ');
     const rateStr = Number(item.rate || 0).toFixed(2).padStart(6, ' ');
     const amtStr = Number(item.amount || (qtyNum * Number(item.rate || 0))).toFixed(2).padStart(7, ' ');
 
@@ -134,13 +130,10 @@ export const generateEscPos58mmBuffer = (bill) => {
 
   // 5. Totals Section
   const totalAmount = Number(bill.total_amount || 0);
-  const totalQty = bill.total_quantity || calculatedTotalQty;
   const previousDue = Number(bill.previous_due || bill.shop_previous_due || 0);
   const oldCreditPaid = Number(bill.old_credit_paid || 0);
   const grandTotal = totalAmount + previousDue;
 
-  addTwoColumnRow('TOTAL ITEMS:', `${items.length}`, false);
-  addTwoColumnRow('TOTAL QTY:', `${totalQty}`, false);
   addTwoColumnRow('BILL TOTAL:', `Rs. ${totalAmount.toFixed(2)}`, true);
 
   if (previousDue > 0) {

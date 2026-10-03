@@ -40,9 +40,8 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
   }, [initialBill, API_URL]);
 
   const companyName = companyInfo?.name || 'AVS AGENCIES';
-  const companySubtitle = 'Agencies Management System';
-  const companyAddress = companyInfo?.address || 'Salem, Tamil Nadu';
-  const companyPhone = companyInfo?.phone || '+91 98765 43210';
+  const companyAddress = companyInfo?.address || 'No 71, Mailam Road, Kooteripattu';
+  const companyPhone = companyInfo?.phone || '+91 9486334240';
 
   const totalQty = items.reduce((acc, it) => acc + (Math.floor(Number(it.qty)) || 0), 0);
   const totalAmount = Number(bill.total_amount || 0);
@@ -179,9 +178,9 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
           
           {/* Header */}
           <div className="text-center space-y-0.5 border-b border-dashed border-slate-400 pb-2">
-            <h2 className="font-black text-sm sm:text-base uppercase tracking-wider text-slate-900">{companyName}</h2>
-            <p className="text-[10px] text-slate-600 font-bold">{companySubtitle}</p>
-            <p className="text-[9px] text-slate-500">{companyAddress} | {companyPhone}</p>
+            <h2 className="font-black text-base sm:text-lg uppercase tracking-wider text-slate-950 font-mono">{companyName}</h2>
+            <p className="text-[10px] text-slate-700 font-bold">{companyAddress}</p>
+            <p className="text-[10px] text-slate-700 font-bold">Ph: {companyPhone}</p>
           </div>
 
           {/* Bill Meta */}
@@ -246,15 +245,7 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
 
           {/* Totals Section */}
           <div className="border-t border-b border-dashed border-slate-400 py-1.5 space-y-1">
-            <div className="flex justify-between font-bold text-[10px] sm:text-[10.5px]">
-              <span>TOTAL ITEMS:</span>
-              <span>{items.length}</span>
-            </div>
-            <div className="flex justify-between font-bold text-[10px] sm:text-[10.5px]">
-              <span>TOTAL QTY:</span>
-              <span>{totalQty}</span>
-            </div>
-            <div className="flex justify-between font-black text-xs sm:text-sm pt-0.5 text-slate-900 border-t border-slate-200">
+            <div className="flex justify-between font-black text-xs sm:text-sm pt-0.5 text-slate-900">
               <span>BILL TOTAL:</span>
               <span className="text-emerald-700">₹{totalAmount.toFixed(2)}</span>
             </div>

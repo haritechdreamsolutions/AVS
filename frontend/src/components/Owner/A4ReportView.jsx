@@ -40,7 +40,7 @@ export const A4ReportView = ({ onBack }) => {
         <div className="text-center border-b-2 border-black pb-4">
           <h2 className="text-xl font-black uppercase tracking-wider text-black">DAILY BUSINESS SALES REPORT</h2>
           <h3 className="text-base font-black text-blue-900 mt-1 uppercase">{companyInfo?.name || 'AVS DISTRIBUTORS'}</h3>
-          <p className="text-[10px] text-gray-600 font-bold">{companyInfo?.subtitle || 'Distribution Management System'} | {companyInfo?.address || 'Salem, Tamil Nadu'}</p>
+          <p className="text-[10px] text-gray-600 font-bold">{companyInfo?.subtitle || 'Distribution Management System'} | {companyInfo?.address || 'No 71, Mailam Road, Kooteripattu'}</p>
 
           <div className="flex justify-between items-center text-[11px] font-bold mt-4 pt-2 border-t border-gray-300">
             <span>Date: {todayStr}</span>
