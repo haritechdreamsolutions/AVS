@@ -389,7 +389,6 @@ export const OwnerSuppliersView = () => {
     if (res.success) {
       toast.success(editingSupplier ? 'Company & Buy Rates updated successfully!' : 'New Production Company added with Buy Rates!');
       setIsModalOpen(false);
-      refreshData();
       loadInwardReport();
     } else {
       toast.error(res.message || 'Failed to save company.');

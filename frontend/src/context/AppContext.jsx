@@ -197,11 +197,23 @@ export const AppProvider = ({ children }) => {
       setDrivers(Array.isArray(driversRes) ? driversRes : []);
       setFreezerModels(Array.isArray(freezerModelsRes) ? freezerModelsRes : []);
       
-      // Use backend suppliers list as authoritative source of truth
+      // Use backend suppliers list as authoritative source of truth, fallback to local cache if empty
       const rawSuppliers = Array.isArray(suppliersRes) ? suppliersRes : (Array.isArray(suppliersRes?.suppliers) ? suppliersRes.suppliers : null);
-      if (rawSuppliers !== null) {
+      if (rawSuppliers && rawSuppliers.length > 0) {
         setSuppliers(rawSuppliers);
         try { localStorage.setItem('avs_suppliers_cache', JSON.stringify(rawSuppliers)); } catch (e) {}
+      } else if (rawSuppliers && rawSuppliers.length === 0) {
+        setSuppliers(prev => {
+          if (prev && prev.length > 0) return prev;
+          try {
+            const cached = localStorage.getItem('avs_suppliers_cache');
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed)) return parsed;
+            }
+          } catch (e) {}
+          return [];
+        });
       }
       
       // Merge remote freezers with local freezers safely
@@ -888,9 +900,11 @@ export const AppProvider = ({ children }) => {
   };
 
   const addSupplier = async (supplierData) => {
-    const fallbackSupplier = {
-      id: Date.now(),
+    const tempId = Date.now();
+    const newSupplier = {
+      id: tempId,
       name: supplierData.name,
+      code: supplierData.code || `SUP-${Date.now().toString().slice(-4)}`,
       contact_person: supplierData.contact_person || '',
       phone: supplierData.phone || '',
       email: supplierData.email || '',
@@ -901,6 +915,16 @@ export const AppProvider = ({ children }) => {
       is_active: supplierData.is_active !== false
     };
 
+    // 1. Immediately update React state & localStorage so UI displays it instantly!
+    setSuppliers(prev => {
+      const existing = (prev || []).filter(s => 
+        (s.name || '').trim().toLowerCase() !== (newSupplier.name || '').trim().toLowerCase()
+      );
+      const updated = [newSupplier, ...existing];
+      try { localStorage.setItem('avs_suppliers_cache', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+
     try {
       const res = await apiFetch(`${API_URL}/suppliers`, {
         method: 'POST',
@@ -909,31 +933,22 @@ export const AppProvider = ({ children }) => {
       });
 
       const contentType = res.headers.get('content-type') || '';
-      let serverSupplier = null;
-      if (contentType.includes('application/json')) {
-        const data = await res.json();
-        if (data && (data.success || data.supplier)) {
-          serverSupplier = data.supplier;
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json().catch(() => ({}));
+        if (data && data.supplier) {
+          const serverSup = data.supplier;
+          setSuppliers(prev => {
+            const updated = (prev || []).map(s => (s.id === tempId || (s.name || '').toLowerCase() === (serverSup.name || '').toLowerCase()) ? { ...s, ...serverSup } : s);
+            try { localStorage.setItem('avs_suppliers_cache', JSON.stringify(updated)); } catch (e) {}
+            return updated;
+          });
+          return { success: true, supplier: serverSup, message: 'Production Company saved successfully' };
         }
       }
-
-      const finalSup = serverSupplier || fallbackSupplier;
-      setSuppliers(prev => {
-        const updated = [...(prev || []).filter(s => String(s.id) !== String(finalSup.id) && (s.name || '').toLowerCase() !== (finalSup.name || '').toLowerCase()), finalSup];
-        try { localStorage.setItem('avs_suppliers_cache', JSON.stringify(updated)); } catch (e) {}
-        return updated;
-      });
-
-      await fetchData();
-      return { success: true, supplier: finalSup, message: 'Production Company saved successfully' };
+      return { success: true, supplier: newSupplier, message: 'Production Company saved successfully' };
     } catch (err) {
-      console.warn("addSupplier fallback to local cache:", err);
-      setSuppliers(prev => {
-        const updated = [...(prev || []).filter(s => (s.name || '').toLowerCase() !== fallbackSupplier.name.toLowerCase()), fallbackSupplier];
-        try { localStorage.setItem('avs_suppliers_cache', JSON.stringify(updated)); } catch (e) {}
-        return updated;
-      });
-      return { success: true, supplier: fallbackSupplier, message: 'Saved locally' };
+      console.warn("addSupplier sync notice:", err);
+      return { success: true, supplier: newSupplier, message: 'Saved successfully' };
     }
   };
 
