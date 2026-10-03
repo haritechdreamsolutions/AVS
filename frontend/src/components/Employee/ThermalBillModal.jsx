@@ -105,7 +105,6 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
       const receiptPayload = {
         ...bill,
         company_name: companyName,
-        company_subtitle: companySubtitle,
         company_address: companyAddress,
         company_phone: companyPhone,
         items: items,
