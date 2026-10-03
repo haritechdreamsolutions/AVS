@@ -117,13 +117,14 @@ export const generateEscPos58mmBuffer = (bill) => {
   const rawPhone = bill.company_phone || '9486334240';
   const cleanPhone = rawPhone.replace(/\+91\s*/g, '').replace(/\s+/g, '').trim();
 
-  // Title: Extra Bold & Large font with clean blank line below
+  // Title: Extra Bold & Large font with space below
   addText(companyName, 'CENTER', true, 'DOUBLE_SIZE');
   addBytes(CMD_LINE_FEED); // Space below title
   
-  // Single line address & phone
-  addText('No 71, Mailam Road, Kooteripattu', 'CENTER', false);
+  // Single line address & phone in bold for uniform dark look
+  addText('No 71, Mailam Road, Kooteripattu', 'CENTER', true);
   addText(`Ph: ${cleanPhone}`, 'CENTER', true);
+  addBytes(CMD_LINE_FEED); // Space below content
   addDashedLine();
 
   // 3. Bill & Customer Metadata
@@ -144,19 +145,19 @@ export const generateEscPos58mmBuffer = (bill) => {
   }
   addDashedLine();
 
-  // 4. Items Table (ITEM (12) + QTY (3) + RATE (6) + AMT (8) + 3 spaces = 32 cols exactly)
-  addText('ITEM          QTY   RATE      AMT', 'LEFT', true);
+  // 4. Items Table (ITEM (13) + QTY (3) + RATE (6) + AMT (7) + 3 spaces = 32 cols exactly)
+  addText('ITEM           QTY   RATE     AMT', 'LEFT', true);
   addDashedLine();
 
   const items = bill.items || bill.sale?.items || [];
 
   items.forEach((item) => {
     const rawName = (item.product_name || 'Item').replace(/₹/g, '');
-    const pName = rawName.length > 12 ? rawName.substring(0, 12) : rawName.padEnd(12, ' ');
+    const pName = rawName.length > 13 ? rawName.substring(0, 13) : rawName.padEnd(13, ' ');
     const qtyNum = Math.floor(Number(item.qty || 1));
     const qtyStr = String(qtyNum).padStart(3, ' ');
     const rateStr = Number(item.rate || 0).toFixed(2).padStart(6, ' ');
-    const amtStr = Number(item.amount || (qtyNum * Number(item.rate || 0))).toFixed(2).padStart(8, ' ');
+    const amtStr = Number(item.amount || (qtyNum * Number(item.rate || 0))).toFixed(2).padStart(7, ' ');
 
     addText(`${pName} ${qtyStr} ${rateStr} ${amtStr}`, 'LEFT', false);
   });

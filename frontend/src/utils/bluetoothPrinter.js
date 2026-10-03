@@ -87,13 +87,14 @@ export const generateEscPosBuffer = (bill) => {
   const rawPhone = bill.company_phone || '9486334240';
   const cleanPhone = rawPhone.replace(/\+91\s*/g, '').replace(/\s+/g, '').trim();
 
-  // Title: Extra Bold & Large font with clean blank line below
+  // Title: Extra Bold & Large font with space below
   addText(companyName, 'CENTER', true, 'DOUBLE_SIZE');
   addBytes(LINE_FEED); // Space below title
   
-  // Single line address & phone
-  addText('No 71, Mailam Road, Kooteripattu', 'CENTER', false);
+  // Single line address & phone in bold for uniform dark look
+  addText('No 71, Mailam Road, Kooteripattu', 'CENTER', true);
   addText(`Ph: ${cleanPhone}`, 'CENTER', true);
+  addBytes(LINE_FEED); // Space below content
   addLine();
 
   // Bill & Shop Info
@@ -106,8 +107,8 @@ export const generateEscPosBuffer = (bill) => {
   addText(`Emp: ${bill.employee_name || 'Driver'} ${bill.vehicle_no ? `| Veh: ${bill.vehicle_no}` : ''}`, 'LEFT');
   addLine();
 
-  // Itemized Table Header (ITEM 12 + QTY 3 + RATE 6 + AMT 8 + 3 spaces = 32 cols)
-  addText("ITEM          QTY   RATE      AMT", 'LEFT', true);
+  // Itemized Table Header (ITEM 13 + QTY 3 + RATE 6 + AMT 7 + 3 spaces = 32 cols exactly)
+  addText("ITEM           QTY   RATE     AMT", 'LEFT', true);
   addLine();
 
   // Items (Strictly actual bill items)
@@ -115,11 +116,11 @@ export const generateEscPosBuffer = (bill) => {
 
   items.forEach(item => {
     const rawName = (item.product_name || 'Item').replace(/₹/g, '');
-    const pName = rawName.length > 12 ? rawName.substring(0, 12) : rawName.padEnd(12, ' ');
+    const pName = rawName.length > 13 ? rawName.substring(0, 13) : rawName.padEnd(13, ' ');
     const qtyNum = Math.floor(Number(item.qty || 1));
     const qtyStr = String(qtyNum).padStart(3, ' ');
     const rateStr = Number(item.rate || 0).toFixed(2).padStart(6, ' ');
-    const amtStr = Number(item.amount || (qtyNum * Number(item.rate || 0))).toFixed(2).padStart(8, ' ');
+    const amtStr = Number(item.amount || (qtyNum * Number(item.rate || 0))).toFixed(2).padStart(7, ' ');
     addText(`${pName} ${qtyStr} ${rateStr} ${amtStr}`, 'LEFT');
   });
 
