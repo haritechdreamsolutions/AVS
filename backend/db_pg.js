@@ -563,6 +563,89 @@ export async function deleteCategory(cid,catId) {
   };
 }
 
+function getProductDisplayRank(product) {
+  if (!product) return 999;
+  const name = ((product.display_name || product.name || '') + ' ' + (product.sku || '')).toLowerCase();
+  const cat = (product.category_name || product.category || '').toLowerCase();
+
+  // 1. Milk 120ml (Rank 1)
+  if (name.includes('milk') && (name.includes('120') || name.includes('120ml'))) {
+    return 10;
+  }
+  // 2. Milk 500ml (Rank 2)
+  if (name.includes('milk') && (name.includes('500') || name.includes('500ml'))) {
+    return 20;
+  }
+  // Butter Milk 200ml / Milk variant
+  if (name.includes('butter milk') || name.includes('buttermilk') || (name.includes('milk') && name.includes('200'))) {
+    return 25;
+  }
+  // 3. Curd 120ml (Rank 3)
+  if (name.includes('curd') && (name.includes('120') || name.includes('120ml'))) {
+    return 30;
+  }
+  // 4. Curd 500ml (Rank 4)
+  if (name.includes('curd') && (name.includes('500') || name.includes('500ml')) && !name.includes('5000')) {
+    return 40;
+  }
+  // 5. Curd 1L / 1000ml (Rank 5)
+  if (name.includes('curd') && (name.includes('1000') || name.includes('1l') || name.includes('1 ltr') || name.includes('1000ml') || name.includes('1 l')) && !name.includes('5000')) {
+    return 50;
+  }
+  // 6. FCM / Milk 1L (Rank 6)
+  if (name.includes('fcm') || (name.includes('milk') && (name.includes('1000') || name.includes('1l') || name.includes('1 ltr') || name.includes('1000ml') || name.includes('1 l')))) {
+    return 60;
+  }
+  // 7. Cooldrinks / Soft Drinks / Juice (Rank 7)
+  if (
+    name.includes('cool') ||
+    name.includes('drink') ||
+    name.includes('coccola') ||
+    name.includes('coke') ||
+    name.includes('soda') ||
+    name.includes('bovonto') ||
+    name.includes('juice') ||
+    name.includes('tata') ||
+    cat.includes('bev') ||
+    cat.includes('juice')
+  ) {
+    return 70;
+  }
+  // 8. Water 300ml (Rank 8)
+  if ((name.includes('water') || name.includes('aqua')) && (name.includes('300') || name.includes('300ml'))) {
+    return 80;
+  }
+  // 9. Water 500ml (Rank 9)
+  if ((name.includes('water') || name.includes('aqua')) && (name.includes('500') || name.includes('500ml'))) {
+    return 90;
+  }
+  // 10. Water 1L / 1000ml (Rank 10)
+  if ((name.includes('water') || name.includes('aqua')) && (name.includes('1000') || name.includes('1l') || name.includes('1 ltr') || name.includes('1000ml') || name.includes('1 l')) && !name.includes('2')) {
+    return 100;
+  }
+  // 11. Water 2L / 2000ml (Rank 11)
+  if ((name.includes('water') || name.includes('aqua')) && (name.includes('2000') || name.includes('2l') || name.includes('2 ltr') || name.includes('2000ml') || name.includes('2 l'))) {
+    return 110;
+  }
+  // 12. Badam (Rank 12)
+  if (name.includes('badam')) {
+    return 120;
+  }
+  // Other milk
+  if (name.includes('milk') || cat.includes('milk') || cat.includes('dairy')) {
+    return 130;
+  }
+  // Other curd
+  if (name.includes('curd') || cat.includes('curd')) {
+    return 140;
+  }
+  // Other water
+  if (name.includes('water') || name.includes('aqua') || cat.includes('water')) {
+    return 150;
+  }
+  return 200;
+}
+
 // ====== PRODUCTS & UOM FOUNDATION (PHASE 1) ======
 export async function getProducts(cid, filters) {
   if (!filters) filters = {};
@@ -590,7 +673,7 @@ export async function getProducts(cid, filters) {
     uomMap[u.product_id].push(u);
   });
   
-  return products.map(p => ({
+  const mapped = products.map(p => ({
     ...p,
     image: p.image_url || p.image || null,
     image_url: p.image_url || p.image || null,
@@ -608,6 +691,13 @@ export async function getProducts(cid, filters) {
       { uom: p.selling_unit || 'Tray', conversion_to_base: Number(p.pieces_per_unit || 1), is_base_uom: false, is_purchase_uom: true, is_sales_uom: true, buy_rate: Number(p.purchase_price || 0), selling_rate: Number(p.unit_selling_price || 0) }
     ]
   }));
+
+  return mapped.sort((a, b) => {
+    const rankA = getProductDisplayRank(a);
+    const rankB = getProductDisplayRank(b);
+    if (rankA !== rankB) return rankA - rankB;
+    return (a.display_name || a.name || '').localeCompare(b.display_name || b.name || '');
+  });
 }
 
 export async function addProduct(cid, d) {

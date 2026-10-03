@@ -15,6 +15,7 @@ import { StoreDirectBillingModal } from './StoreDirectBillingModal';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { ThermalBillModal } from '../Employee/ThermalBillModal';
 import { SalesRecordsView } from '../Owner/SalesRecordsView';
+import { sortProductsCustom } from '../../utils/productOrderHelper';
 
 export const KeeperDashboard = () => {
   const { products = [], summary, employees, stockMovements } = useApp();
@@ -25,7 +26,7 @@ export const KeeperDashboard = () => {
 
   // Strictly operational ACTIVE products only for Store Keeper dashboard & warehouse inventory
   const activeProducts = useMemo(() => {
-    return (products || []).filter(p => p.is_active !== false && p.is_active !== 0);
+    return sortProductsCustom((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
   }, [products]);
 
   // Dynamically extract categories from active products

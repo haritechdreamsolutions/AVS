@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getOperationalUnit } from '../../utils/unitHelper';
+import { sortProductsCustom } from '../../utils/productOrderHelper';
 import { 
   X, ShoppingBag, Plus, Minus, CheckCircle2, 
   CreditCard, DollarSign, Smartphone, Trash2, ArrowRightLeft, Sparkles,
@@ -63,7 +64,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
   const { products = [], createSale } = useApp();
   
   const activeProducts = useMemo(() => {
-    return (products || []).filter(p => p.is_active !== false && p.is_active !== 0);
+    return sortProductsCustom((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
   }, [products]);
 
   const [activeCategory, setActiveCategory] = useState('all');

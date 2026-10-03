@@ -10,6 +10,7 @@ import {
   Sparkles, RefreshCw, Layers3, DollarSign, Barcode, ShieldAlert, Check, Upload, Image as ImageIcon 
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { sortProductsCustom } from '../../utils/productOrderHelper';
 
 const SELLING_UNITS = ['Tray', 'Box', 'Case', 'Pack', 'Crate', 'Bottle'];
 const BASE_UNITS = ['Piece', 'Bottle', 'Packet', 'Can', 'Pouches'];
@@ -112,11 +113,9 @@ export const AdminProductsMasterView = () => {
     }
   }, [activeCategories]);
 
-  const [formErrors, setFormErrors] = useState({});
-
-  // Filtered Products
+  // Filtered Products sorted by custom business order
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
+    const list = products.filter(p => {
       if (!p) return false;
       
       let catMatch = true;
@@ -138,6 +137,7 @@ export const AdminProductsMasterView = () => {
 
       return catMatch && statusMatch && nameMatch;
     });
+    return sortProductsCustom(list);
   }, [products, selectedCategory, statusFilter, searchQuery]);
 
   // Overall Statistics

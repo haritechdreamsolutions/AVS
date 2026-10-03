@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateSupplierInwardPDFReport } from '../../utils/pdfReportGenerator';
+import { sortProductsCustom } from '../../utils/productOrderHelper';
 
 export const OwnerSuppliersView = () => {
   const { 
@@ -46,7 +47,7 @@ export const OwnerSuppliersView = () => {
 
   // Active products for rate configuration
   const activeProducts = useMemo(() => {
-    return (products || []).filter(p => p.is_active !== false && p.is_active !== 0);
+    return sortProductsCustom((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
   }, [products]);
 
   // Company Modal State

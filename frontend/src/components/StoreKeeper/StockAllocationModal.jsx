@@ -4,6 +4,7 @@ import { ArrowUpRight, X, Save, User, Truck, ShieldAlert, CheckCircle2, Minus, P
 import { toast } from 'sonner';
 import { ProductImage } from '../common/ProductImage';
 import { resolveProductImageUrl } from '../../utils/productImageHelper';
+import { sortProductsCustom } from '../../utils/productOrderHelper';
 
 export const StockAllocationModal = ({ onClose }) => {
   const { products = [], employees = [], drivers: contextDrivers = [], allocateStock, fetchWarehouseStock } = useApp();
@@ -150,8 +151,8 @@ export const StockAllocationModal = ({ onClose }) => {
     }
   };
 
-  // Only products with active status
-  const availableProducts = (products || []).filter(p => p.is_active !== false && p.is_active !== 0);
+  // Only products with active status sorted by custom business order
+  const availableProducts = sortProductsCustom((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
 
   const totalAllocatedItems = Object.values(allocations).reduce((acc, q) => acc + (q > 0 ? q : 0), 0);
 

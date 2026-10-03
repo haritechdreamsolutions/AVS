@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ArrowLeft, ArrowRight, ShoppingBag, AlertTriangle, X, Search, Box } from 'lucide-react';
 import { getOperationalUnit } from '../../utils/unitHelper';
+import { sortProductsCustom } from '../../utils/productOrderHelper';
 
 export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) => {
   const { products, employeeStock, shops } = useApp();
@@ -72,12 +73,12 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
     }
   };
 
-  // Filter ONLY products assigned to this driver that have available stock > 0
+  // Filter ONLY products assigned to this driver that have available stock > 0 sorted by custom order
   const availableAssignedProducts = useMemo(() => {
-    return (products || []).filter(p => {
+    return sortProductsCustom((products || []).filter(p => {
       const info = getProductStockInfo(p);
       return !info.isOutOfStock && info.availableStock > 0;
-    });
+    }));
   }, [products, employeeStock]);
 
   // Extract categories dynamically from available in-stock products only

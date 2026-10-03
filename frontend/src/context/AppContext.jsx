@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { sortProductsCustom } from '../utils/productOrderHelper';
 
 // Helper for authenticated requests
 export const apiFetch = async (url, options = {}) => {
@@ -184,7 +185,7 @@ export const AppProvider = ({ children }) => {
 
       setShops(Array.isArray(shopsRes) ? shopsRes : []);
       setVillages(Array.isArray(villagesRes) ? villagesRes : []);
-      setProducts(Array.isArray(prodRes) ? prodRes : []);
+      setProducts(Array.isArray(prodRes) ? sortProductsCustom(prodRes) : []);
       setCategories(Array.isArray(catRes) ? catRes : []);
       setEmployeeStock(Array.isArray(empStockRes) ? empStockRes : []);
       setSummary(summaryRes);
@@ -1537,7 +1538,7 @@ export const AppProvider = ({ children }) => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setProducts(prev => [...prev, data.product]);
+        setProducts(prev => sortProductsCustom([...prev, data.product]));
         fetchData();
         return { success: true, product: data.product };
       } else {
@@ -1557,7 +1558,7 @@ export const AppProvider = ({ children }) => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setProducts(prev => prev.map(p => Number(p.id) === Number(productId) ? { ...p, ...data.product } : p));
+        setProducts(prev => sortProductsCustom(prev.map(p => Number(p.id) === Number(productId) ? { ...p, ...data.product } : p)));
         fetchData();
         return { success: true, product: data.product };
       } else {
