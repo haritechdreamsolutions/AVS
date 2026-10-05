@@ -909,6 +909,7 @@ export async function resetTransactionAndInventoryData() {
       'damages',
       'damage_pieces',
       'missing_pieces',
+      'route_assignments',
       'expenses',
       'settlements',
       'notifications',
