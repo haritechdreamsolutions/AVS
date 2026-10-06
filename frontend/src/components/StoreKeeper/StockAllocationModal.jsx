@@ -41,7 +41,7 @@ export const StockAllocationModal = ({ onClose }) => {
     return role === 'DRIVER';
   });
 
-  const selectedDriver = drivers.find(d => String(d.id) === String(employeeId));
+  const selectedDriver = drivers.find(d => String(d.id) === String(employeeId) || String(d.employee_id) === String(employeeId));
 
   const handleQtyChange = (prod, val) => {
     const whUnits = Math.max(0, Number(prod.warehouse_stock_units || 0));
@@ -124,13 +124,14 @@ export const StockAllocationModal = ({ onClose }) => {
       }
     }
 
+    const targetEmpId = selectedDriver?.id || selectedDriver?.employee_id || employeeId;
     // Backend idempotency token to prevent double-click allocations
-    const clientRef = 'ALLOC-' + employeeId + '-' + Date.now();
+    const clientRef = 'ALLOC-' + targetEmpId + '-' + Date.now();
 
     setSaving(true);
     try {
       const res = await allocateStock({
-        employee_id: Number(employeeId),
+        employee_id: Number(targetEmpId),
         client_reference: clientRef,
         items
       });

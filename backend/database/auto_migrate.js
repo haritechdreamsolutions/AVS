@@ -879,6 +879,35 @@ export async function runAutoMigrations() {
       await safeQuery(client, 'UPDATE user_accounts SET pin_hash=$1, failed_attempts=0, locked_until=NULL, account_status=\'ACTIVE\' WHERE role_id=$2', [hash, empRole]);
     }
 
+    // Auto-link any DRIVER / EMPLOYEE user_accounts that have missing or invalid employee_id
+    const unlinkedUsers = await safeQuery(client, `
+      SELECT ua.id, ua.company_id, ua.login_id, ua.name, ua.phone, ua.employee_id, r.role_name
+      FROM user_accounts ua
+      JOIN roles r ON r.id = ua.role_id
+      WHERE (r.role_name = 'DRIVER' OR r.role_name = 'EMPLOYEE')
+        AND (ua.employee_id IS NULL OR NOT EXISTS (SELECT 1 FROM employees e WHERE e.id = ua.employee_id));
+    `);
+    if (unlinkedUsers && unlinkedUsers.rows && unlinkedUsers.rows.length > 0) {
+      for (const u of unlinkedUsers.rows) {
+        console.log(`[auto_migrate] Creating missing employee record for user ${u.login_id}...`);
+        const empCode = 'EMP-' + String(u.id).padStart(3, '0');
+        const empInsert = await safeQuery(client, `
+          INSERT INTO employees (company_id, employee_code, full_name, designation, phone, is_active)
+          VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING id;
+        `, [u.company_id || cid, empCode, u.name || u.login_id, u.role_name, u.phone || null]);
+        if (empInsert && empInsert.rows.length > 0) {
+          const newEmpId = empInsert.rows[0].id;
+          await safeQuery(client, `UPDATE user_accounts SET employee_id = $1 WHERE id = $2;`, [newEmpId, u.id]);
+        }
+      }
+    }
+
+    // Ensure employee_stock table constraints are clean and robust
+    await safeQuery(client, 'ALTER TABLE employee_stock DROP CONSTRAINT IF EXISTS employee_stock_employee_id_fkey;', [], 'drop old employee_stock_employee_id_fkey');
+    await safeQuery(client, 'ALTER TABLE employee_stock DROP CONSTRAINT IF EXISTS fk_es_employee;', [], 'drop old fk_es_employee');
+    await safeQuery(client, 'ALTER TABLE employee_stock DROP CONSTRAINT IF EXISTS fk_es_product;', [], 'drop old fk_es_product');
+    await safeQuery(client, 'ALTER TABLE employee_stock DROP CONSTRAINT IF EXISTS fk_es_company;', [], 'drop old fk_es_company');
+
     // Ensure one-time clean transaction wipe migration on deployment
     const resetMarker = await safeQuery(client, "SELECT to_regclass('public.system_reset_v1') as tbl;");
     if (!resetMarker || !resetMarker.rows[0]?.tbl) {

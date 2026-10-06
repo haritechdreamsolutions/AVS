@@ -1153,7 +1153,7 @@ export async function issueStockToEmployee(cid, data, actorUserId) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const employee_id = data.employee_id;
+    let employee_id = Number(data.employee_id);
     let items = data.items;
     if (!items && data.product_id && (data.quantity || data.qty_units)) {
       items = [{ product_id: data.product_id, quantity: data.quantity || data.qty_units, unit_type: data.unit_type || 'Tray' }];
@@ -1171,8 +1171,16 @@ export async function issueStockToEmployee(cid, data, actorUserId) {
       }
     }
 
-    const empRes = await client.query('SELECT * FROM employees WHERE id=$1 AND company_id=$2 AND is_active=TRUE', [employee_id, cid]);
-    if (empRes.rows.length === 0) throw new Error('Employee not found or inactive');
+    let empRes = await client.query('SELECT * FROM employees WHERE id=$1 AND company_id=$2 AND is_active=TRUE', [employee_id, cid]);
+    if (empRes.rows.length === 0) {
+      // Check if user_accounts ID was passed instead
+      const userRes = await client.query('SELECT * FROM user_accounts WHERE id=$1 AND company_id=$2', [employee_id, cid]);
+      if (userRes.rows.length > 0 && userRes.rows[0].employee_id) {
+        employee_id = Number(userRes.rows[0].employee_id);
+        empRes = await client.query('SELECT * FROM employees WHERE id=$1 AND company_id=$2 AND is_active=TRUE', [employee_id, cid]);
+      }
+    }
+    if (empRes.rows.length === 0) throw new Error('Employee / Driver not found or inactive');
     const emp = empRes.rows[0];
 
     // Get or activate driver session
