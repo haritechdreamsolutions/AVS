@@ -879,6 +879,42 @@ export async function runAutoMigrations() {
       await safeQuery(client, 'UPDATE user_accounts SET pin_hash=$1, failed_attempts=0, locked_until=NULL, account_status=\'ACTIVE\' WHERE role_id=$2', [hash, empRole]);
     }
 
+    // Ensure one-time clean transaction wipe migration on deployment
+    const resetMarker = await safeQuery(client, "SELECT to_regclass('public.system_reset_v1') as tbl;");
+    if (!resetMarker || !resetMarker.rows[0]?.tbl) {
+      console.log('[auto_migrate] Performing one-time transaction and dues reset on cloud database...');
+      const tables = [
+        'sale_items',
+        'payments',
+        'sales',
+        'inventory_movements',
+        'stock_transactions',
+        'warehouse_stock',
+        'employee_stock',
+        'employee_stock_balances',
+        'employee_day_closings',
+        'driver_sessions',
+        'driver_returns',
+        'driver_return_items',
+        'driver_closing_reconciliations',
+        'damages',
+        'damage_pieces',
+        'missing_pieces',
+        'route_assignments',
+        'expenses',
+        'settlements',
+        'notifications',
+        'audit_logs'
+      ];
+      for (const table of tables) {
+        await safeQuery(client, `TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE;`, [], `truncate ${table}`);
+      }
+      await safeQuery(client, 'UPDATE shops SET current_due = 0.00;', [], 'reset shops due');
+      await safeQuery(client, 'UPDATE products SET warehouse_stock_units = 0;', [], 'reset products warehouse_stock_units');
+      await safeQuery(client, 'CREATE TABLE IF NOT EXISTS system_reset_v1 (reset_at TIMESTAMPTZ DEFAULT NOW());', [], 'create system_reset_v1');
+      console.log('[auto_migrate] ✅ Cloud database transaction reset completed successfully!');
+    }
+
     console.log('[auto_migrate] ✅ Database auto-migration completed successfully!');
   } catch (err) {
     console.error('[auto_migrate] ❌ Database migration error:', err);
