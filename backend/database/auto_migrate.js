@@ -924,7 +924,7 @@ export async function resetTransactionAndInventoryData() {
     await safeQuery(client, 'UPDATE shops SET current_due = 0.00;', [], 'reset shops due');
 
     // Reset all product warehouse stock and inventory counts to 0
-    await safeQuery(client, 'UPDATE products SET warehouse_stock_units = 0, stock_units = 0;', [], 'reset products stock');
+    await safeQuery(client, 'UPDATE products SET warehouse_stock_units = 0;', [], 'reset products warehouse_stock_units');
 
     console.log('[reset] ✅ Transaction and Inventory Data reset finished successfully!');
     return { success: true, message: 'All transactions, inventory, driver records, damages, expenses, and logs have been reset.' };
