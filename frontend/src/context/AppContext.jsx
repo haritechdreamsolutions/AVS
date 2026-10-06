@@ -683,6 +683,42 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const updateDamage = async (damageId, updateData) => {
+    try {
+      const res = await apiFetch(`${API_URL}/damages/${damageId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+        return { success: true, message: data.message, damage: data.damage };
+      }
+      return { success: false, message: data.message || "Failed to update damage" };
+    } catch (err) {
+      console.error("Error updating damage:", err);
+      return { success: false, message: "Network error updating damage" };
+    }
+  };
+
+  const deleteDamage = async (damageId) => {
+    try {
+      const res = await apiFetch(`${API_URL}/damages/${damageId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchData();
+        return { success: true, message: data.message };
+      }
+      return { success: false, message: data.message || "Failed to delete damage" };
+    } catch (err) {
+      console.error("Error deleting damage:", err);
+      return { success: false, message: "Network error deleting damage" };
+    }
+  };
+
   const fetchDamages = async (filters = {}) => {
     try {
       const params = new URLSearchParams();
@@ -1933,6 +1969,8 @@ export const AppProvider = ({ children }) => {
       toggleProductStatus,
       deleteProduct,
       addDamage,
+      updateDamage,
+      deleteDamage,
       fetchDamages,
       fetchDamageSummary,
       verifyDamageRecord,

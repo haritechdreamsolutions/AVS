@@ -1002,6 +1002,20 @@ router.post('/damages', requireAuth, async (req, res) => {
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
+router.put(['/damages/:id', '/sk/damage/:id', '/sk/damages/:id'], requireAuth, async (req, res) => {
+  try {
+    const result = await db.updateDamage(getCid(req), req.params.id, req.body, req.session.userId);
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+router.delete(['/damages/:id', '/sk/damage/:id', '/sk/damages/:id'], requireAuth, async (req, res) => {
+  try {
+    const result = await db.deleteDamage(getCid(req), req.params.id, req.session.userId);
+    res.json(result);
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
 router.get('/settlements', requireAuth, async (req, res) => {
   try {
     const settlements = await db.getSettlements(getCid(req), req.query);

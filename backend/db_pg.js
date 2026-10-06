@@ -1646,6 +1646,171 @@ export async function processDamage(cid, data, actorUserId) {
   }
 }
 
+export async function deleteDamage(cid, damageId, actorUserId) {
+  if (!damageId) throw new Error('Damage ID is required.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const dRes = await client.query('SELECT * FROM damages WHERE id=$1 AND company_id=$2 FOR UPDATE', [Number(damageId), cid]);
+    if (dRes.rows.length === 0) throw new Error('Damage record not found.');
+    const dmg = dRes.rows[0];
+
+    // Check if working session is locked
+    if (dmg.employee_id) {
+      const session = await client.query(
+        'SELECT * FROM driver_sessions WHERE company_id = $1 AND employee_id = $2 ORDER BY id DESC LIMIT 1',
+        [cid, dmg.employee_id]
+      );
+      if (session.rows.length > 0) {
+        const sStatus = (session.rows[0].status || '').toUpperCase();
+        if (['CLOSED', 'COMPLETED', 'RETURN_VERIFIED', 'RECONCILED'].includes(sStatus)) {
+          throw new Error('Forbidden: Working session for this driver has been submitted and locked. Damage modifications are not allowed.');
+        }
+      }
+    }
+
+    const qtyUnits = Number(dmg.qty_units || 0);
+
+    // 1. Restore stock
+    if (dmg.employee_id) {
+      // Driver stock restoration
+      await client.query(
+        'INSERT INTO employee_stock (employee_id, product_id, company_id, qty_units, unit) VALUES ($1,$2,$3,$4,$5) ' +
+        'ON CONFLICT (employee_id, product_id) DO UPDATE SET qty_units=employee_stock.qty_units+$4, updated_at=NOW()',
+        [dmg.employee_id, dmg.product_id, cid, qtyUnits, dmg.unit || 'Tray']
+      );
+    } else {
+      // Warehouse stock restoration
+      await client.query(
+        'UPDATE products SET warehouse_stock_units=warehouse_stock_units+$1, updated_at=NOW() WHERE id=$2 AND company_id=$3',
+        [qtyUnits, dmg.product_id, cid]
+      );
+    }
+
+    // 2. Insert reversal inventory movement
+    const movNo = 'MOV-DMG-REV-' + Date.now() + '-' + Math.floor(Math.random()*10000);
+    const movementNotes = `Damage #${damageId} reversed/deleted: ${dmg.base_quantity || dmg.qty_units} ${dmg.damage_unit || dmg.unit} restored to ${dmg.employee_id ? 'driver vehicle' : 'warehouse'}`;
+    await client.query(
+      'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+      [cid, movNo, 'DAMAGE_REVERSAL', dmg.product_id, dmg.product_name, dmg.employee_id || null, dmg.employee_name || null, dmg.base_quantity || dmg.qty_units, dmg.damage_unit || dmg.unit, movementNotes]
+    );
+
+    // 3. Delete from damages
+    await client.query('DELETE FROM damages WHERE id=$1 AND company_id=$2', [Number(damageId), cid]);
+
+    await client.query('COMMIT');
+    await auditLog({ companyId: cid, actorUserId, action: 'DAMAGE_DELETED', entityType: 'damages', entityId: Number(damageId), metadata: { damage: dmg } });
+    return { success: true, message: 'Damage entry removed and stock restored successfully.' };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export async function updateDamage(cid, damageId, data, actorUserId) {
+  if (!damageId) throw new Error('Damage ID is required.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const dRes = await client.query('SELECT * FROM damages WHERE id=$1 AND company_id=$2 FOR UPDATE', [Number(damageId), cid]);
+    if (dRes.rows.length === 0) throw new Error('Damage record not found.');
+    const existing = dRes.rows[0];
+
+    // Check if working session is locked
+    if (existing.employee_id) {
+      const session = await client.query(
+        'SELECT * FROM driver_sessions WHERE company_id = $1 AND employee_id = $2 ORDER BY id DESC LIMIT 1',
+        [cid, existing.employee_id]
+      );
+      if (session.rows.length > 0) {
+        const sStatus = (session.rows[0].status || '').toUpperCase();
+        if (['CLOSED', 'COMPLETED', 'RETURN_VERIFIED', 'RECONCILED'].includes(sStatus)) {
+          throw new Error('Forbidden: Working session for this driver has been submitted and locked. Damage modifications are not allowed.');
+        }
+      }
+    }
+
+    const newRawQty = data.quantity !== undefined ? Number(data.quantity) : (data.qty_units !== undefined ? Number(data.qty_units) : Number(existing.base_quantity || existing.qty_units));
+    if (isNaN(newRawQty) || newRawQty <= 0) throw new Error('Valid damage quantity (> 0) required.');
+
+    const newReason = data.reason || existing.reason;
+    const newNotes = data.notes !== undefined ? data.notes : existing.notes;
+
+    // Fetch product details
+    const pRes = await client.query('SELECT * FROM products WHERE id=$1 AND company_id=$2 FOR UPDATE', [existing.product_id, cid]);
+    if (pRes.rows.length === 0) throw new Error('Product not found.');
+    const prod = pRes.rows[0];
+
+    const opUnit = getOperationalUnit(prod);
+    const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
+    const buyRatePerSellingUnit = Number(prod.purchase_price || prod.unit_selling_price || 0);
+    const pieceBuyRate = ppu > 0 ? (buyRatePerSellingUnit / ppu) : buyRatePerSellingUnit;
+
+    let calculationUnit;
+    let newQtyInSellingUnits;
+    let newNormalizedPieces;
+    let newDamageCost;
+
+    if (opUnit.isPieceBased) {
+      calculationUnit = 'Piece';
+      newQtyInSellingUnits = newRawQty / ppu;
+      newNormalizedPieces = newRawQty;
+      newDamageCost = parseFloat((newRawQty * pieceBuyRate).toFixed(2));
+    } else {
+      calculationUnit = opUnit.operationalUnit;
+      newQtyInSellingUnits = newRawQty;
+      newNormalizedPieces = newRawQty * ppu;
+      newDamageCost = parseFloat((newRawQty * buyRatePerSellingUnit).toFixed(2));
+    }
+
+    const oldQtyInSellingUnits = Number(existing.qty_units || 0);
+    const diffSellingUnits = newQtyInSellingUnits - oldQtyInSellingUnits;
+
+    if (diffSellingUnits !== 0) {
+      if (existing.employee_id) {
+        // Driver stock adjustment
+        const esRes = await client.query(
+          'SELECT * FROM employee_stock WHERE employee_id=$1 AND product_id=$2 AND company_id=$3 FOR UPDATE',
+          [existing.employee_id, existing.product_id, cid]
+        );
+        const currentDriverStock = esRes.rows.length > 0 ? Number(esRes.rows[0].qty_units) : 0;
+        if (diffSellingUnits > 0 && currentDriverStock < diffSellingUnits) {
+          throw new Error(`Insufficient driver stock to increase damage by ${diffSellingUnits.toFixed(2)} ${prod.selling_unit || 'Tray'}. Driver currently holds ${currentDriverStock} ${prod.selling_unit || 'Tray'}.`);
+        }
+        await client.query(
+          'UPDATE employee_stock SET qty_units=GREATEST(0, qty_units-$1), updated_at=NOW() WHERE employee_id=$2 AND product_id=$3 AND company_id=$4',
+          [diffSellingUnits, existing.employee_id, existing.product_id, cid]
+        );
+      } else {
+        // Warehouse stock adjustment
+        if (diffSellingUnits > 0 && Number(prod.warehouse_stock_units || 0) < diffSellingUnits) {
+          throw new Error(`Insufficient warehouse stock to increase damage.`);
+        }
+        await client.query(
+          'UPDATE products SET warehouse_stock_units=GREATEST(0, warehouse_stock_units-$1), updated_at=NOW() WHERE id=$2 AND company_id=$3',
+          [diffSellingUnits, existing.product_id, cid]
+        );
+      }
+    }
+
+    const updated = await client.query(
+      'UPDATE damages SET qty_units=$1, unit=$2, damage_unit=$3, base_quantity=$4, damage_cost=$5, reason=$6, notes=$7, updated_at=NOW() WHERE id=$8 AND company_id=$9 RETURNING *',
+      [newQtyInSellingUnits, calculationUnit, calculationUnit, newNormalizedPieces, newDamageCost, newReason, newNotes, Number(damageId), cid]
+    );
+
+    await client.query('COMMIT');
+    await auditLog({ companyId: cid, actorUserId, action: 'DAMAGE_UPDATED', entityType: 'damages', entityId: Number(damageId), metadata: { updated: updated.rows[0] } });
+    return { success: true, message: 'Damage entry updated successfully.', damage: updated.rows[0] };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // ====== ORG / DEFAULT COUNTER SHOP RESOLUTION ======
 export async function getOrCreateDefaultOrgShop(cid, client) {
   const runner = client || pool;
