@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import { generateSupplierInwardPDFReport } from '../../utils/pdfReportGenerator';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
 import { getOperationalUnit } from '../../utils/unitHelper';
+import { ProductImage } from '../common/ProductImage';
+import { resolveProductImageUrl } from '../../utils/productImageHelper';
 
 export const OwnerSuppliersView = () => {
   const { 
@@ -801,36 +803,48 @@ export const OwnerSuppliersView = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {reportData.product_totals.map((pt, idx) => (
-                  <div 
-                    key={pt.product_id || idx}
-                    className="p-4 rounded-2xl bg-sky-50/60 hover:bg-sky-100/70 transition-all border border-sky-200 space-y-2 shadow-sm"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <h4 className="font-extrabold text-sm text-[#002244] truncate">
-                          {pt.product_name}
-                        </h4>
-                        <p className="text-[11px] text-sky-800/80 font-mono">
-                          {pt.batch_count || pt.batches_count || 0} batches received
-                        </p>
+                {reportData.product_totals.map((pt, idx) => {
+                  const matchedProd = products.find(p => p.id === Number(pt.product_id) || p.name === pt.product_name || p.display_name === pt.product_name);
+                  return (
+                    <div 
+                      key={pt.product_id || idx}
+                      className="p-4 rounded-3xl bg-gradient-to-b from-sky-50 via-white to-sky-50/70 hover:to-sky-100/70 transition-all border-2 border-sky-200 hover:border-sky-300 space-y-3 shadow-sm"
+                    >
+                      <div className="flex items-center gap-3">
+                        <ProductImage 
+                          src={resolveProductImageUrl(matchedProd)}
+                          alt={pt.product_name}
+                          size={46}
+                          icon={matchedProd?.icon || '📦'}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-black text-sm sm:text-base text-[#002244] truncate">
+                            {pt.product_name}
+                          </h4>
+                          <p className="text-xs text-sky-800 font-bold">
+                            {pt.batch_count || pt.batches_count || 0} batches received
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <span className="text-base font-black text-blue-700 block">
-                          {Number(pt.total_received_quantity || pt.total_qty || pt.total_units || 0).toLocaleString('en-IN')} {pt.selling_unit || pt.unit || 'Tray'}
-                        </span>
+                      <div className="pt-2.5 border-t border-sky-200/90 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider font-extrabold text-sky-900 block">Total Inward Qty</span>
+                          <span className="text-base sm:text-lg font-black text-blue-900 font-mono">
+                            {Number(pt.total_received_quantity || pt.total_qty || pt.total_units || 0).toLocaleString('en-IN')} <span className="text-xs font-bold text-sky-700">{pt.selling_unit || pt.unit || 'Tray'}</span>
+                          </span>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="text-[10px] uppercase tracking-wider font-extrabold text-sky-900 block">Purchase Value</span>
+                          <span className="text-base sm:text-lg font-black text-emerald-700 font-mono">
+                            ₹{Number(pt.total_received_amount || pt.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
                       </div>
                     </div>
-
-                    <div className="pt-2 border-t border-sky-200/80 flex items-center justify-between text-xs">
-                      <span className="text-[11px] font-bold text-sky-900">Total Purchase Value:</span>
-                      <span className="font-black text-emerald-700 font-mono">
-                        ₹{Number(pt.total_received_amount || pt.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -968,71 +982,77 @@ export const OwnerSuppliersView = () => {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
               {filteredSuppliers.map(s => {
                 const rates = s.product_rates || {};
-                const configuredCount = Object.keys(rates).filter(k => Number(rates[k]) > 0).length;
+                const configuredCount = Object.keys(rates).filter(k => {
+                  const r = rates[k];
+                  if (typeof r === 'object' && r !== null) {
+                    return Number(r.tray_rate) > 0 || Number(r.piece_rate) > 0;
+                  }
+                  return Number(r) > 0;
+                }).length;
 
                 return (
                   <div 
                     key={s.id}
-                    className="p-5 rounded-3xl bg-white/90 hover:bg-white transition-all border border-sky-300 shadow-md space-y-4 relative group"
+                    className="p-5 sm:p-6 rounded-3xl bg-gradient-to-b from-sky-50/50 via-white to-sky-50/70 hover:to-sky-100/50 transition-all border-2 border-sky-300/90 shadow-md hover:shadow-lg space-y-4 relative group"
                   >
                     {/* Card Header */}
-                    <div className="flex items-start justify-between gap-3 border-b border-sky-100 pb-3">
+                    <div className="flex items-start justify-between gap-3 border-b border-sky-200 pb-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-500 to-blue-600 text-white flex items-center justify-center font-black text-lg shadow-sm">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-sky-500 via-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-xl shadow-md shadow-blue-500/20">
                           {s.name ? s.name.charAt(0).toUpperCase() : 'C'}
                         </div>
                         <div>
-                          <h3 className="font-black text-base text-[#002244] leading-snug">
+                          <h3 className="font-black text-base sm:text-lg text-[#002244] leading-snug">
                             {s.name}
                           </h3>
-                          <div className="flex items-center gap-2 text-[11px] text-sky-900 font-bold">
-                            {s.code && <span className="bg-sky-100 px-1.5 py-0.5 rounded text-[10px] font-mono">{s.code}</span>}
+                          <div className="flex items-center gap-2 text-xs text-sky-900 font-bold">
+                            {s.code && <span className="bg-sky-100 px-2 py-0.5 rounded-lg text-[11px] font-mono border border-sky-300">{s.code}</span>}
                             <span>Contact: {s.contact_person || 'Not specified'}</span>
                           </div>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-1.5">
-                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${s.is_active !== false ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-100 text-rose-800 border border-rose-300'}`}>
+                        <span className={`text-xs font-black px-3 py-1 rounded-full ${s.is_active !== false ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-rose-100 text-rose-800 border border-rose-300'}`}>
                           {s.is_active !== false ? 'Active' : 'Inactive'}
                         </span>
                       </div>
                     </div>
 
                     {/* Contact & Info Chips */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-sky-950 font-medium bg-sky-50/60 p-2.5 rounded-2xl border border-sky-200/80">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <Phone className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-sky-950 font-semibold bg-sky-100/50 p-3 rounded-2xl border border-sky-200">
+                      <div className="flex items-center gap-2 truncate">
+                        <Phone className="w-4 h-4 text-sky-600 shrink-0" />
                         <span className="font-bold text-sky-950 truncate">{s.phone || 'Phone not set'}</span>
                       </div>
-                      <div className="flex items-center gap-1.5 truncate">
-                        <MapPin className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                      <div className="flex items-center gap-2 truncate">
+                        <MapPin className="w-4 h-4 text-sky-600 shrink-0" />
                         <span className="truncate">{s.address || 'Address not set'}</span>
                       </div>
                       {s.gstin && (
-                        <div className="col-span-1 sm:col-span-2 flex items-center gap-1.5 text-[11px] font-mono text-sky-800">
-                          <Tag className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                        <div className="col-span-1 sm:col-span-2 flex items-center gap-2 text-xs font-mono text-sky-900">
+                          <Tag className="w-4 h-4 text-sky-600 shrink-0" />
                           <span>GSTIN: <strong>{s.gstin}</strong></span>
                         </div>
                       )}
                     </div>
 
-                    {/* PRODUCT BUY RATES SECTION (PROMINENTLY DISPLAYED) */}
-                    <div className="space-y-2 bg-sky-100/50 p-3.5 rounded-2xl border border-sky-300/90">
+                    {/* PRODUCT BUY RATES SECTION (PROMINENTLY DISPLAYED WITH PRODUCT IMAGE) */}
+                    <div className="space-y-2.5 bg-gradient-to-b from-sky-100/60 to-sky-50/80 p-4 rounded-2xl border-2 border-sky-300">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-black text-[#002244] uppercase tracking-wider flex items-center gap-1.5">
-                          <DollarSign className="w-3.5 h-3.5 text-sky-700" />
-                          Configured Product Buy Rates ({configuredCount}/{activeProducts.length})
+                        <span className="text-xs sm:text-sm font-black text-[#002244] uppercase tracking-wider flex items-center gap-2">
+                          <DollarSign className="w-4 h-4 text-sky-700" />
+                          Configured Buy Rates ({configuredCount}/{activeProducts.length})
                         </span>
 
                         <button
                           onClick={() => handleOpenQuickRates(s)}
-                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-sky-50 text-sky-800 border border-sky-300 text-[11px] font-black shadow-2xs flex items-center gap-1 transition-all hover:scale-[1.03]"
+                          className="px-3 py-1.5 rounded-xl bg-white hover:bg-sky-50 text-sky-900 border-2 border-sky-300 text-xs font-black shadow-sm flex items-center gap-1.5 transition-all hover:scale-[1.03]"
                         >
-                          <Edit3 className="w-3 h-3 text-sky-600" />
+                          <Edit3 className="w-3.5 h-3.5 text-sky-600" />
                           <span>Edit Rates ✏️</span>
                         </button>
                       </div>
@@ -1040,7 +1060,7 @@ export const OwnerSuppliersView = () => {
                       {activeProducts.length === 0 ? (
                         <p className="text-xs text-sky-800">No active products.</p>
                       ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 max-h-48 overflow-y-auto pr-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 max-h-56 overflow-y-auto pr-1">
                           {activeProducts.map(prod => {
                             const opUnit = getOperationalUnit(prod);
                             const isTray = opUnit.isPieceBased;
@@ -1049,38 +1069,41 @@ export const OwnerSuppliersView = () => {
                             return (
                               <div 
                                 key={prod.id}
-                                className={`p-2 rounded-xl border transition-all text-xs ${
+                                className={`p-2.5 rounded-2xl border-2 transition-all flex items-center gap-3 ${
                                   ratesInfo.hasRate 
-                                    ? 'bg-white border-sky-300 shadow-2xs' 
-                                    : 'bg-white/60 border-sky-200/70 text-sky-800/70'
+                                    ? 'bg-white border-sky-300 shadow-xs' 
+                                    : 'bg-white/60 border-sky-200/80 text-sky-800/70'
                                 }`}
                               >
-                                <div className="font-extrabold text-[#002244] truncate text-[11px]" title={prod.display_name}>
-                                  {prod.display_name}
+                                <ProductImage 
+                                  src={resolveProductImageUrl(prod)}
+                                  alt={prod.display_name}
+                                  size={38}
+                                  icon={prod.icon || '📦'}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-black text-[#002244] truncate text-xs sm:text-sm" title={prod.display_name}>
+                                    {prod.display_name}
+                                  </div>
+                                  {isTray ? (
+                                    <div className="flex items-center gap-2 mt-0.5 text-xs">
+                                      <span className="text-sky-900 font-black">
+                                        Tray: <span className={`font-mono ${ratesInfo.trayRate > 0 ? 'text-blue-900 font-black' : 'text-slate-400'}`}>
+                                          {ratesInfo.trayRate > 0 ? `₹${ratesInfo.trayRate.toFixed(2)}` : '₹0'}
+                                        </span>
+                                      </span>
+                                      <span className="text-indigo-900 font-black">
+                                        Pcs: <span className={`font-mono ${ratesInfo.pieceRate > 0 ? 'text-indigo-900 font-black' : 'text-slate-400'}`}>
+                                          {ratesInfo.pieceRate > 0 ? `₹${ratesInfo.pieceRate.toFixed(2)}` : '₹0'}
+                                        </span>
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="mt-0.5 text-xs font-black text-blue-900 font-mono">
+                                      {ratesInfo.trayRate > 0 ? `₹${ratesInfo.trayRate.toFixed(2)}` : '₹0.00'} <span className="text-[10px] text-sky-700 font-sans font-bold">/{prod.selling_unit || 'Unit'}</span>
+                                    </div>
+                                  )}
                                 </div>
-                                {isTray ? (
-                                  <div className="flex flex-col gap-0.5 mt-1">
-                                    <div className="flex items-center justify-between text-[10px]">
-                                      <span className="text-sky-700 font-bold">Tray:</span>
-                                      <span className={`font-black font-mono ${ratesInfo.trayRate > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
-                                        {ratesInfo.trayRate > 0 ? `₹${ratesInfo.trayRate.toFixed(2)}` : '₹0.00'}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center justify-between text-[10px]">
-                                      <span className="text-indigo-700 font-bold">Piece:</span>
-                                      <span className={`font-black font-mono ${ratesInfo.pieceRate > 0 ? 'text-indigo-900' : 'text-slate-400'}`}>
-                                        {ratesInfo.pieceRate > 0 ? `₹${ratesInfo.pieceRate.toFixed(2)}` : '₹0.00'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center justify-between mt-1">
-                                    <span className="text-[10px] font-bold text-sky-700">{prod.selling_unit || 'Case'}</span>
-                                    <span className={`font-black text-xs font-mono ${ratesInfo.trayRate > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
-                                      {ratesInfo.trayRate > 0 ? `₹${ratesInfo.trayRate.toFixed(2)}` : '₹0.00'}
-                                    </span>
-                                  </div>
-                                )}
                               </div>
                             );
                           })}
@@ -1173,11 +1196,26 @@ export const OwnerSuppliersView = () => {
                       const opUnit = getOperationalUnit(prod);
                       const isTray = opUnit.isPieceBased;
                       return (
-                        <tr key={prod.id} className="hover:bg-sky-50/70 transition-colors">
-                          <td className="p-3 font-black text-[#002244] sticky left-0 bg-white/90 z-10">
-                            {prod.display_name}
+                        <tr key={prod.id} className="hover:bg-sky-50/80 transition-colors">
+                          <td className="p-3 sticky left-0 bg-white/95 z-10">
+                            <div className="flex items-center gap-2.5">
+                              <ProductImage
+                                src={resolveProductImageUrl(prod)}
+                                alt={prod.display_name}
+                                size={36}
+                                icon={prod.icon || '📦'}
+                              />
+                              <div>
+                                <span className="font-black text-xs sm:text-sm text-[#002244] block">
+                                  {prod.display_name}
+                                </span>
+                                <span className="text-[10px] font-bold text-sky-800 block">
+                                  {prod.pieces_per_unit ? `${prod.pieces_per_unit} Pcs / Tray` : (prod.category || 'Standard')}
+                                </span>
+                              </div>
+                            </div>
                           </td>
-                          <td className="p-3 text-sky-800 font-bold">
+                          <td className="p-3 text-sky-900 font-bold text-xs">
                             {prod.selling_unit || 'Tray'}
                           </td>
                           {suppliers.map(s => {
@@ -1185,18 +1223,18 @@ export const OwnerSuppliersView = () => {
                             return (
                               <td key={s.id} className="p-3 text-right font-mono font-bold">
                                 {ratesInfo.hasRate ? (
-                                  <div className="flex flex-col items-end gap-0.5">
-                                    <span className="text-blue-900 font-black bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                                  <div className="flex flex-col items-end gap-1">
+                                    <span className="text-blue-900 font-black text-xs bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-300 shadow-2xs">
                                       ₹{ratesInfo.trayRate.toFixed(2)} {isTray ? '/Tray' : ''}
                                     </span>
                                     {isTray && ratesInfo.pieceRate > 0 && (
-                                      <span className="text-indigo-700 font-extrabold text-[10px]">
+                                      <span className="text-indigo-900 font-black text-[11px] bg-indigo-50/80 px-2 py-0.5 rounded-md border border-indigo-200">
                                         ₹{ratesInfo.pieceRate.toFixed(2)}/Pcs
                                       </span>
                                     )}
                                   </div>
                                 ) : (
-                                  <span className="text-sky-700/60 font-medium">₹0.00</span>
+                                  <span className="text-slate-400 font-medium text-xs">₹0.00</span>
                                 )}
                               </td>
                             );
@@ -1215,19 +1253,19 @@ export const OwnerSuppliersView = () => {
       {/* ADD / EDIT COMPANY MODAL (WITH EMBEDDED PRODUCT BUY RATES) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-[#0a192f]/60 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto">
-          <div className="bg-white/95 backdrop-blur-xl border border-sky-300 rounded-3xl max-w-2xl w-full p-4 sm:p-6 space-y-4 shadow-2xl my-auto max-h-[94dvh] overflow-y-auto animate-scale-in text-[#002244]">
+          <div className="bg-gradient-to-b from-sky-50 via-white to-sky-50/95 border-2 border-sky-300 rounded-3xl max-w-2xl w-full p-4 sm:p-6 space-y-4 shadow-2xl my-auto max-h-[94dvh] overflow-y-auto animate-scale-in text-[#002244]">
             
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-sky-200 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-blue-600 text-white flex items-center justify-center shadow-sm">
-                  <Building2 className="w-5 h-5" />
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-500 to-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
+                  <Building2 className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-black text-base sm:text-lg text-[#002244]">
+                  <h3 className="font-black text-base sm:text-xl text-[#002244]">
                     {editingSupplier ? 'Edit Company & Buy Rates' : 'Add Production Company & Buy Rates'}
                   </h3>
-                  <p className="text-[11px] font-medium text-sky-800">
+                  <p className="text-xs font-bold text-sky-800">
                     சப்ளையர் விபரம் & பொருட்களின் வாங்கும் விலை (Buy Rate)
                   </p>
                 </div>
@@ -1235,7 +1273,7 @@ export const OwnerSuppliersView = () => {
 
               <button 
                 onClick={() => setIsModalOpen(false)}
-                className="p-1.5 text-sky-600 hover:text-sky-900 rounded-xl hover:bg-sky-100"
+                className="p-2 text-sky-600 hover:text-sky-900 rounded-xl hover:bg-sky-100 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1245,15 +1283,15 @@ export const OwnerSuppliersView = () => {
             <form onSubmit={handleSaveSupplier} className="space-y-4">
               
               {/* SECTION 1: COMPANY BASIC INFO */}
-              <div className="space-y-3 bg-sky-50/70 p-3.5 rounded-2xl border border-sky-200">
-                <h4 className="text-xs font-black text-[#002244] uppercase tracking-wider flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-sky-600" />
+              <div className="space-y-3 bg-sky-100/50 p-4 rounded-2xl border-2 border-sky-200">
+                <h4 className="text-xs sm:text-sm font-black text-[#002244] uppercase tracking-wider flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-sky-600" />
                   1. Company Details (கம்பெனி விபரம்)
                 </h4>
 
                 {/* Company Name Full Width */}
                 <div className="space-y-1">
-                  <label className="text-[11px] font-extrabold text-[#002244] uppercase tracking-wider">
+                  <label className="text-xs font-extrabold text-[#002244] uppercase tracking-wider">
                     Company Name / தயாரிப்பு கம்பெனி பெயர் *
                   </label>
                   <input
@@ -1262,13 +1300,13 @@ export const OwnerSuppliersView = () => {
                     placeholder="e.g. Arokya Dairy / Cavin's / Dodla"
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
-                    className="w-full bg-white border border-sky-300 focus:border-sky-500 rounded-xl px-3.5 py-2.5 text-xs font-bold text-[#002244] focus:outline-none shadow-2xs"
+                    className="w-full bg-white border-2 border-sky-300 focus:border-sky-500 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-black text-[#002244] focus:outline-none shadow-xs"
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[11px] font-extrabold text-[#002244] uppercase">
+                    <label className="text-xs font-extrabold text-[#002244] uppercase">
                       Contact Person
                     </label>
                     <input
@@ -1276,12 +1314,12 @@ export const OwnerSuppliersView = () => {
                       placeholder="Manager / Sales Rep"
                       value={contactPerson}
                       onChange={(e) => setContactPerson(e.target.value)}
-                      className="w-full bg-white border border-sky-300 focus:border-sky-500 rounded-xl px-3 py-2 text-xs font-medium text-[#002244] focus:outline-none"
+                      className="w-full bg-white border border-sky-300 focus:border-sky-500 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold text-[#002244] focus:outline-none"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[11px] font-extrabold text-[#002244] uppercase">
+                    <label className="text-xs font-extrabold text-[#002244] uppercase">
                       Phone Number
                     </label>
                     <input
@@ -1289,34 +1327,34 @@ export const OwnerSuppliersView = () => {
                       placeholder="+91 98765 43210"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      className="w-full bg-white border border-sky-300 focus:border-sky-500 rounded-xl px-3 py-2 text-xs font-medium text-[#002244] focus:outline-none"
+                      className="w-full bg-white border border-sky-300 focus:border-sky-500 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold text-[#002244] focus:outline-none"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* SECTION 2: PRODUCT BUY RATES MATRIX */}
-              <div className="space-y-3 bg-sky-100/60 p-3.5 rounded-2xl border border-sky-300">
+              {/* SECTION 2: PRODUCT BUY RATES MATRIX WITH PRODUCT IMAGE */}
+              <div className="space-y-3 bg-gradient-to-b from-sky-100/70 to-sky-50/80 p-4 rounded-2xl border-2 border-sky-300">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="text-xs font-black text-[#002244] uppercase tracking-wider flex items-center gap-1.5">
+                    <h4 className="text-xs sm:text-sm font-black text-[#002244] uppercase tracking-wider flex items-center gap-1.5">
                       <DollarSign className="w-4 h-4 text-sky-600" />
                       2. Product Buy Rates / கொள்முதல் விலை (Tray & Piece Rates)
                     </h4>
-                    <p className="text-[11px] text-sky-900/90 font-medium">
+                    <p className="text-xs text-sky-900/90 font-bold">
                       Store Keeper stock receive பண்ணும்போது Tray மற்றும் Piece-க்கு இந்த விலை தானாக apply ஆகும்.
                     </p>
                   </div>
-                  <span className="text-[10px] font-black bg-white text-sky-800 px-2.5 py-1 rounded-lg border border-sky-200 shadow-2xs">
+                  <span className="text-xs font-black bg-white text-sky-900 px-3 py-1 rounded-xl border border-sky-300 shadow-2xs">
                     {activeProducts.length} Products
                   </span>
                 </div>
 
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
                   {activeProducts.length === 0 ? (
                     <p className="text-xs text-sky-700 text-center py-4">No active products available.</p>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-1 gap-2.5">
                       {activeProducts.map(prod => {
                         const opUnit = getOperationalUnit(prod);
                         const isTray = opUnit.isPieceBased;
@@ -1327,62 +1365,67 @@ export const OwnerSuppliersView = () => {
                         return (
                           <div 
                             key={prod.id}
-                            className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-2.5 rounded-2xl border border-sky-200 shadow-2xs gap-2"
+                            className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-3 rounded-2xl border-2 border-sky-200/90 hover:border-sky-400 shadow-xs gap-3 transition-all"
                           >
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <span className="text-base shrink-0">{prod.icon || '🥛'}</span>
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <ProductImage 
+                                src={resolveProductImageUrl(prod)}
+                                alt={prod.display_name}
+                                size={44}
+                                icon={prod.icon || '🥛'}
+                              />
                               <div className="truncate">
-                                <span className="font-extrabold text-xs text-[#002244] block truncate">
+                                <span className="font-black text-xs sm:text-sm text-[#002244] block truncate">
                                   {prod.display_name}
                                 </span>
-                                <span className="text-[10px] font-bold text-sky-700 block">
+                                <span className="text-xs font-bold text-sky-800 block">
                                   {prod.selling_unit || 'Tray'} ({prod.pieces_per_unit || 1} Pcs/Tray)
                                 </span>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-1.5 shrink-0 justify-end">
+                            <div className="flex items-center gap-2 shrink-0 justify-end flex-wrap sm:flex-nowrap">
                               {isTray ? (
                                 <>
                                   {/* Tray Rate Box */}
-                                  <div className="flex items-center gap-1 bg-sky-50 px-2 py-1 rounded-xl border border-sky-300">
-                                    <span className="text-[10px] font-extrabold text-sky-900">₹/Tray</span>
+                                  <div className="flex items-center gap-1.5 bg-sky-50 px-2.5 py-1 rounded-xl border-2 border-sky-300">
+                                    <span className="text-xs font-black text-sky-900">₹/Tray</span>
                                     <input
                                       type="number"
                                       step="0.01"
                                       min="0"
-                                      placeholder="0"
+                                      placeholder="0.00"
                                       value={trayVal}
                                       onChange={(e) => handleTrayRateChange(prod, e.target.value)}
-                                      className="w-16 bg-white border border-sky-300 focus:border-sky-500 rounded px-1.5 py-0.5 text-right text-xs font-black text-blue-900 focus:outline-none"
+                                      className="w-20 bg-white border border-sky-300 focus:border-sky-500 rounded-lg px-2 py-1 text-right text-xs sm:text-sm font-black text-blue-900 focus:outline-none"
                                     />
                                   </div>
 
                                   {/* Piece Rate Box */}
-                                  <div className="flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-xl border border-indigo-200">
-                                    <span className="text-[10px] font-extrabold text-indigo-900">₹/Pcs</span>
+                                  <div className="flex items-center gap-1.5 bg-indigo-50 px-2.5 py-1 rounded-xl border-2 border-indigo-200">
+                                    <span className="text-xs font-black text-indigo-900">₹/Pcs</span>
                                     <input
                                       type="number"
                                       step="0.01"
                                       min="0"
-                                      placeholder="0"
+                                      placeholder="0.00"
                                       value={pieceVal}
                                       onChange={(e) => handlePieceRateChange(prod, e.target.value)}
-                                      className="w-14 bg-white border border-indigo-300 focus:border-indigo-500 rounded px-1 py-0.5 text-right text-xs font-black text-indigo-900 focus:outline-none"
+                                      className="w-16 bg-white border border-indigo-300 focus:border-indigo-500 rounded-lg px-1.5 py-1 text-right text-xs sm:text-sm font-black text-indigo-900 focus:outline-none"
                                     />
                                   </div>
                                 </>
                               ) : (
-                                <div className="flex items-center gap-1 bg-sky-50 px-2.5 py-1 rounded-xl border border-sky-300">
-                                  <span className="text-[10px] font-extrabold text-sky-900">₹/{prod.selling_unit || 'Unit'}</span>
+                                <div className="flex items-center gap-1.5 bg-sky-50 px-3 py-1 rounded-xl border-2 border-sky-300">
+                                  <span className="text-xs font-black text-sky-900">₹/{prod.selling_unit || 'Unit'}</span>
                                   <input
                                     type="number"
                                     step="0.01"
                                     min="0"
-                                    placeholder="0"
+                                    placeholder="0.00"
                                     value={trayVal}
                                     onChange={(e) => handleTrayRateChange(prod, e.target.value)}
-                                    className="w-20 bg-white border border-sky-300 focus:border-sky-500 rounded px-1.5 py-0.5 text-right text-xs font-black text-blue-900 focus:outline-none"
+                                    className="w-24 bg-white border border-sky-300 focus:border-sky-500 rounded-lg px-2 py-1 text-right text-xs sm:text-sm font-black text-blue-900 focus:outline-none"
                                   />
                                 </div>
                               )}
@@ -1397,33 +1440,33 @@ export const OwnerSuppliersView = () => {
 
               {/* SECTION 3: ADDITIONAL SETTINGS & ACTIVE STATUS */}
               <div className="space-y-2">
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex items-center gap-2.5 pt-1">
                   <input
                     type="checkbox"
                     id="active_check"
                     checked={isActive}
                     onChange={(e) => setIsActive(e.target.checked)}
-                    className="w-4 h-4 text-sky-600 rounded border-sky-300 focus:ring-sky-500"
+                    className="w-5 h-5 text-sky-600 rounded-lg border-2 border-sky-300 focus:ring-sky-500"
                   />
-                  <label htmlFor="active_check" className="text-xs font-bold text-[#002244] select-none">
+                  <label htmlFor="active_check" className="text-xs sm:text-sm font-black text-[#002244] select-none">
                     Active Supplier (Store Keeper Receive Stock Dropdown-ல் காண்பி)
                   </label>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-sky-200">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-sky-200">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-sky-800 hover:bg-sky-100"
+                  className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-sky-900 hover:bg-sky-100 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingSupplier}
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-md disabled:opacity-50"
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-blue-500/20 disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-[0.98]"
                 >
                   <Save className="w-4 h-4" />
                   {savingSupplier ? 'Saving...' : (editingSupplier ? 'Update Company & Rates' : 'Save Company & Rates')}
@@ -1437,18 +1480,18 @@ export const OwnerSuppliersView = () => {
       {/* QUICK RATES EDIT MODAL */}
       {rateModalSupplier && (
         <div className="fixed inset-0 z-50 bg-[#0a192f]/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white/95 backdrop-blur-xl border border-sky-300 rounded-3xl max-w-lg w-full p-5 space-y-4 shadow-2xl my-auto animate-scale-in text-[#002244]">
+          <div className="bg-gradient-to-b from-sky-50 via-white to-sky-50/95 border-2 border-sky-300 rounded-3xl max-w-xl w-full p-5 sm:p-6 space-y-4 shadow-2xl my-auto animate-scale-in text-[#002244]">
             
             <div className="flex items-center justify-between border-b border-sky-200 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-sky-500 to-blue-600 text-white flex items-center justify-center">
-                  <Tag className="w-5 h-5" />
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-500 to-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
+                  <Tag className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-black text-base text-[#002244]">
-                    Product Buy Rates: {rateModalSupplier.name}
+                  <h3 className="font-black text-base sm:text-xl text-[#002244]">
+                    Buy Rates: {rateModalSupplier.name}
                   </h3>
-                  <p className="text-[11px] font-medium text-sky-800">
+                  <p className="text-xs font-bold text-sky-800">
                     கம்பெனிக்கான வாங்கும் விலை (Buy Rate) மாற்றம்
                   </p>
                 </div>
@@ -1456,14 +1499,14 @@ export const OwnerSuppliersView = () => {
 
               <button 
                 onClick={() => setRateModalSupplier(null)}
-                className="p-1.5 text-sky-600 hover:text-sky-900 rounded-xl hover:bg-sky-100"
+                className="p-2 text-sky-600 hover:text-sky-900 rounded-xl hover:bg-sky-100 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveQuickRates} className="space-y-4">
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
                 {activeProducts.map(prod => {
                   const opUnit = getOperationalUnit(prod);
                   const isTray = opUnit.isPieceBased;
@@ -1474,59 +1517,64 @@ export const OwnerSuppliersView = () => {
                   return (
                     <div 
                       key={prod.id}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between bg-sky-50/70 p-2.5 rounded-xl border border-sky-200 gap-2"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-3 rounded-2xl border-2 border-sky-200/90 hover:border-sky-400 gap-3 shadow-xs transition-all"
                     >
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="text-base">{prod.icon || '🥛'}</span>
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <ProductImage 
+                          src={resolveProductImageUrl(prod)}
+                          alt={prod.display_name}
+                          size={46}
+                          icon={prod.icon || '🥛'}
+                        />
                         <div className="truncate">
-                          <span className="font-extrabold text-xs text-[#002244] block truncate">
+                          <span className="font-black text-xs sm:text-sm text-[#002244] block truncate">
                             {prod.display_name}
                           </span>
-                          <span className="text-[10px] font-bold text-sky-700 block">
+                          <span className="text-xs font-bold text-sky-800 block">
                             {prod.selling_unit || 'Tray'} ({prod.pieces_per_unit || 1} Pcs)
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0 justify-end">
+                      <div className="flex items-center gap-2 shrink-0 justify-end flex-wrap sm:flex-nowrap">
                         {isTray ? (
                           <>
-                            <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-sky-300">
-                              <span className="text-[10px] font-bold text-sky-800">₹/Tray</span>
+                            <div className="flex items-center gap-1.5 bg-sky-50 px-2.5 py-1 rounded-xl border-2 border-sky-300">
+                              <span className="text-xs font-black text-sky-900">₹/Tray</span>
                               <input
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                placeholder="0"
+                                placeholder="0.00"
                                 value={trayVal}
                                 onChange={(e) => handleTrayRateChange(prod, e.target.value, true)}
-                                className="w-16 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5 text-right text-xs font-black text-blue-900 focus:outline-none"
+                                className="w-20 bg-white border border-sky-300 focus:border-sky-500 rounded-lg px-2 py-1 text-right text-xs sm:text-sm font-black text-blue-900 focus:outline-none"
                               />
                             </div>
-                            <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-indigo-200">
-                              <span className="text-[10px] font-bold text-indigo-800">₹/Pcs</span>
+                            <div className="flex items-center gap-1.5 bg-indigo-50 px-2.5 py-1 rounded-xl border-2 border-indigo-200">
+                              <span className="text-xs font-black text-indigo-900">₹/Pcs</span>
                               <input
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                placeholder="0"
+                                placeholder="0.00"
                                 value={pieceVal}
                                 onChange={(e) => handlePieceRateChange(prod, e.target.value, true)}
-                                className="w-14 bg-indigo-50/50 border border-indigo-200 rounded px-1 py-0.5 text-right text-xs font-black text-indigo-900 focus:outline-none"
+                                className="w-16 bg-white border border-indigo-300 focus:border-indigo-500 rounded-lg px-1.5 py-1 text-right text-xs sm:text-sm font-black text-indigo-900 focus:outline-none"
                               />
                             </div>
                           </>
                         ) : (
-                          <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-sky-300">
-                            <span className="text-[10px] font-bold text-sky-800">₹/{prod.selling_unit || 'Case'}</span>
+                          <div className="flex items-center gap-1.5 bg-sky-50 px-3 py-1 rounded-xl border-2 border-sky-300">
+                            <span className="text-xs font-black text-sky-900">₹/{prod.selling_unit || 'Case'}</span>
                             <input
                               type="number"
                               step="0.01"
                               min="0"
-                              placeholder="0"
+                              placeholder="0.00"
                               value={trayVal}
                               onChange={(e) => handleTrayRateChange(prod, e.target.value, true)}
-                              className="w-20 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5 text-right text-xs font-black text-blue-900 focus:outline-none"
+                              className="w-24 bg-white border border-sky-300 focus:border-sky-500 rounded-lg px-2 py-1 text-right text-xs sm:text-sm font-black text-blue-900 focus:outline-none"
                             />
                           </div>
                         )}
@@ -1536,18 +1584,18 @@ export const OwnerSuppliersView = () => {
                 })}
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-sky-200">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-sky-200">
                 <button
                   type="button"
                   onClick={() => setRateModalSupplier(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-sky-800 hover:bg-sky-100"
+                  className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-sky-900 hover:bg-sky-100 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingQuickRates}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-md disabled:opacity-50"
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-blue-500/20 disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-[0.98]"
                 >
                   <Save className="w-4 h-4" />
                   {savingQuickRates ? 'Saving Rates...' : 'Save Buy Rates'}
