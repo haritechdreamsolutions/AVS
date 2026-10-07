@@ -363,27 +363,27 @@ export const UserBalanceView = () => {
       </div>
 
       {/* FILTER CONTROLS PANEL (English Only) */}
-      <div className="glass-panel p-3.5 sm:p-5 rounded-3xl bg-white border-2 border-sky-200 space-y-3.5 shadow-sm">
+      <div className="glass-panel p-3 sm:p-4 rounded-2xl bg-white border border-sky-200 space-y-3 shadow-xs">
         
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
           
-          {/* English Search Bar */}
-          <div className="relative w-full lg:w-80">
-            <Search className="w-4 h-4 text-sky-600 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          {/* English Search Bar - Compact Size */}
+          <div className="relative w-full sm:w-48 lg:w-56 shrink-0">
+            <Search className="w-3.5 h-3.5 text-sky-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               placeholder="Search User, Shop, Bill #..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 sm:py-3 text-xs sm:text-sm font-black bg-sky-50/70 border-2 border-sky-200 rounded-2xl focus:outline-none focus:border-sky-600 focus:bg-white transition text-slate-900"
+              className="w-full pl-8 pr-3 py-1.5 sm:py-2 text-xs font-bold bg-sky-50/70 border border-sky-200 rounded-xl focus:outline-none focus:border-sky-600 focus:bg-white transition text-slate-900"
             />
           </div>
 
-          {/* Quick Date Range Pills with Smooth Scroll */}
-          <div className="flex items-center gap-1.5 bg-sky-100/80 p-1.5 rounded-2xl border border-sky-200 text-xs sm:text-sm overflow-x-auto max-w-full">
+          {/* Quick Date Range Pills without Scrollbar */}
+          <div className="flex flex-wrap sm:flex-nowrap items-center justify-center gap-1 bg-sky-100/80 p-1 rounded-xl border border-sky-200 text-[11px] sm:text-xs">
             <button
               onClick={() => handleQuickDateSelect('ALL')}
-              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black transition whitespace-nowrap cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-lg font-bold transition whitespace-nowrap cursor-pointer ${
                 quickDate === 'ALL' ? 'bg-white text-sky-950 shadow-xs border border-sky-200' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
@@ -391,7 +391,7 @@ export const UserBalanceView = () => {
             </button>
             <button
               onClick={() => handleQuickDateSelect('TODAY')}
-              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black transition whitespace-nowrap cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-lg font-bold transition whitespace-nowrap cursor-pointer ${
                 quickDate === 'TODAY' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
@@ -399,7 +399,7 @@ export const UserBalanceView = () => {
             </button>
             <button
               onClick={() => handleQuickDateSelect('YESTERDAY')}
-              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black transition whitespace-nowrap cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-lg font-bold transition whitespace-nowrap cursor-pointer ${
                 quickDate === 'YESTERDAY' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
@@ -407,7 +407,7 @@ export const UserBalanceView = () => {
             </button>
             <button
               onClick={() => handleQuickDateSelect('THIS_WEEK')}
-              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black transition whitespace-nowrap cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-lg font-bold transition whitespace-nowrap cursor-pointer ${
                 quickDate === 'THIS_WEEK' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
@@ -415,7 +415,7 @@ export const UserBalanceView = () => {
             </button>
             <button
               onClick={() => handleQuickDateSelect('THIS_MONTH')}
-              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black transition whitespace-nowrap cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-lg font-bold transition whitespace-nowrap cursor-pointer ${
                 quickDate === 'THIS_MONTH' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
@@ -423,20 +423,20 @@ export const UserBalanceView = () => {
             </button>
             <button
               onClick={() => handleQuickDateSelect('CUSTOM')}
-              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black transition whitespace-nowrap flex items-center gap-1 cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-lg font-bold transition whitespace-nowrap flex items-center gap-1 cursor-pointer ${
                 quickDate === 'CUSTOM' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
-              <Calendar className="w-3.5 h-3.5" /> Custom
+              <Calendar className="w-3 h-3" /> Custom
             </button>
           </div>
 
-          {/* User Filter Dropdown */}
-          <div className="w-full lg:w-auto">
+          {/* User Filter Dropdown - Compact Size */}
+          <div className="w-full sm:w-44 lg:w-52 shrink-0">
             <select
               value={userFilter}
               onChange={(e) => setUserFilter(e.target.value)}
-              className="w-full lg:w-64 p-2.5 sm:p-3 font-black text-xs sm:text-sm bg-sky-50 border-2 border-sky-200 rounded-2xl focus:outline-none focus:border-sky-600 text-slate-800 cursor-pointer"
+              className="w-full p-1.5 sm:p-2 font-bold text-xs bg-sky-50 border border-sky-200 rounded-xl focus:outline-none focus:border-sky-600 text-slate-800 cursor-pointer"
             >
               <option value="ALL">All Users & Drivers</option>
               <option value="STORE">🏬 Store Keeper</option>
