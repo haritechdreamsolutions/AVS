@@ -155,37 +155,45 @@ export const StockReceiveModal = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-4 sm:p-5 space-y-4 shadow-2xl max-h-[94dvh] overflow-y-auto my-auto animate-scale-in">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 lg:p-6 overflow-y-auto">
+      {/* Light Blue Themed Container - Optimized for Laptop & Responsive for Mobile */}
+      <div className="bg-gradient-to-b from-sky-50 via-white to-sky-50/90 border-2 border-sky-200 rounded-3xl max-w-full sm:max-w-3xl lg:max-w-4xl w-full p-4 sm:p-6 lg:p-7 space-y-4 sm:space-y-5 shadow-2xl max-h-[92dvh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-700">
-              <ArrowDownLeft className="w-5 h-5" />
+        <div className="flex items-center justify-between border-b border-sky-200/80 pb-3.5 sm:pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-sky-600 text-white flex items-center justify-center shadow-md shadow-sky-200 shrink-0">
+              <ArrowDownLeft className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
             </div>
             <div>
-              <h3 className="font-black text-sm sm:text-base text-slate-900">
+              <h3 className="font-black text-base sm:text-lg lg:text-xl text-slate-900 tracking-tight flex items-center gap-2">
                 Receive Stock from Supplier
+                <span className="text-[11px] sm:text-xs px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 font-extrabold border border-sky-300 uppercase">
+                  INWARD
+                </span>
               </h3>
-              <p className="text-[11px] font-medium text-slate-500">சப்ளையர் வரவு & கொள்முதல் கணக்கீடு</p>
+              <p className="text-[11px] sm:text-xs font-bold text-sky-700 mt-0.5">சப்ளையர் வரவு & கொள்முதல் கணக்கீடு</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100">
-            <X className="w-5 h-5" />
+          <button 
+            onClick={onClose} 
+            className="p-2 rounded-2xl text-slate-400 hover:text-slate-700 hover:bg-sky-100 transition-colors cursor-pointer"
+            title="Close"
+          >
+            <X className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
         {/* Production Company / Supplier Selection */}
-        <div className="space-y-1.5 bg-blue-50/60 p-3 rounded-2xl border border-blue-100">
-          <label className="text-[11px] font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
-            <Building2 className="w-3.5 h-3.5 text-blue-600" />
-            Production Company / சப்ளையர் கம்பெனி
+        <div className="space-y-2 bg-sky-100/70 p-3.5 sm:p-4 rounded-2xl border-2 border-sky-200 shadow-2xs">
+          <label className="text-xs sm:text-sm font-black text-sky-900 uppercase tracking-wider flex items-center gap-1.5">
+            <Building2 className="w-4 h-4 text-sky-600" />
+            PRODUCTION COMPANY / சப்ளையர் கம்பெனி
           </label>
           <select
             value={selectedSupplierId}
             onChange={(e) => setSelectedSupplierId(e.target.value)}
-            className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+            className="w-full bg-white border-2 border-sky-200 hover:border-sky-400 focus:border-sky-600 rounded-2xl px-4 py-3 text-sm sm:text-base font-black text-slate-900 focus:outline-none transition-all shadow-xs cursor-pointer"
           >
             {activeSuppliers.map(s => (
               <option key={s.id} value={s.id}>
@@ -203,7 +211,7 @@ export const StockReceiveModal = ({ onClose }) => {
                 placeholder="Enter Company / Supplier Name..."
                 value={customSupplierName}
                 onChange={(e) => setCustomSupplierName(e.target.value)}
-                className="w-full bg-white border border-blue-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-white border-2 border-sky-300 focus:border-sky-600 rounded-2xl px-4 py-2.5 text-sm sm:text-base font-black text-slate-900 focus:outline-none shadow-xs"
                 autoFocus
               />
             </div>
@@ -211,20 +219,20 @@ export const StockReceiveModal = ({ onClose }) => {
         </div>
 
         {/* Quantities & Price Calculation Table */}
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
-              Quantities to Receive (வரவு அளவு)
+            <label className="text-xs sm:text-sm font-black text-slate-700 uppercase tracking-wider">
+              QUANTITIES TO RECEIVE (வரவு அளவு)
             </label>
-            <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
-              <Tag className="w-3 h-3 text-blue-600" />
+            <span className="text-xs font-extrabold text-sky-800 bg-sky-100/90 px-3 py-1 rounded-full border border-sky-200 flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5 text-sky-600" />
               Company Buy Rate Applied
             </span>
           </div>
           
-          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+          <div className="space-y-3 max-h-72 sm:max-h-96 lg:max-h-[420px] overflow-y-auto pr-1 sm:pr-2">
             {activeProducts.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-6">No active products available to receive.</p>
+              <p className="text-sm text-slate-400 text-center py-8">No active products available to receive.</p>
             ) : (
               activeProducts.map(prod => {
                 const rate = getProductBuyRate(prod);
@@ -236,33 +244,34 @@ export const StockReceiveModal = ({ onClose }) => {
                 return (
                   <div 
                     key={prod.id} 
-                    className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-2xl border transition-all gap-2.5 ${
+                    className={`flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 rounded-2xl border-2 gap-3.5 transition-all ${
                       isUnassignedWithQty
-                        ? 'bg-rose-50/90 border-rose-300 ring-1 ring-rose-300 shadow-xs'
+                        ? 'bg-rose-50/90 border-rose-400 ring-2 ring-rose-300 shadow-sm'
                         : qty > 0 
-                          ? 'bg-blue-50/60 border-blue-300 shadow-xs' 
-                          : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200'
+                          ? 'bg-sky-50 border-sky-400 shadow-sm ring-1 ring-sky-300' 
+                          : 'bg-white border-sky-200/80 hover:border-sky-300 shadow-2xs'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    {/* Left: Product Details */}
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <ProductImage 
                         src={resolveProductImageUrl(prod)} 
                         alt={prod.display_name} 
-                        size={40} 
+                        size={48} 
                         icon={prod.icon || '📦'} 
                       />
                       <div className="truncate">
-                        <span className="font-extrabold text-slate-900 block truncate text-xs">
+                        <span className="font-black text-slate-900 block truncate text-sm sm:text-base">
                           {prod.display_name}
                         </span>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono mt-0.5">
-                          <span>Stock: {prod.warehouse_stock_units || 0} {prod.selling_unit}</span>
-                          <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 font-mono mt-1">
+                          <span className="font-bold text-slate-500">Stock: {prod.warehouse_stock_units || 0} {prod.selling_unit}</span>
+                          <span className={`font-black px-2 py-0.5 rounded-lg text-xs border ${
                             rate > 0 
-                              ? 'text-blue-800 bg-blue-100 border border-blue-200' 
+                              ? 'text-sky-900 bg-sky-100/80 border-sky-300' 
                               : isUnassignedWithQty
-                                ? 'text-rose-700 bg-rose-100 border border-rose-300 font-black'
-                                : 'text-slate-400 bg-slate-100 border border-slate-200'
+                                ? 'text-rose-700 bg-rose-100 border-rose-300'
+                                : 'text-slate-400 bg-slate-100 border-slate-200'
                           }`}>
                             {rate > 0 ? `Buy Rate: ₹${rate.toFixed(2)}` : '⚠️ Buy Rate Not Set (₹0.00)'}
                           </span>
@@ -270,32 +279,33 @@ export const StockReceiveModal = ({ onClose }) => {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-200/60">
+                    {/* Right: Quantity Input & Line Total */}
+                    <div className="flex items-center justify-between sm:justify-end gap-3.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-sky-100">
                       {/* Line total amount display */}
                       {qty > 0 && (
                         <div className="text-right">
-                          <span className="text-[10px] font-bold text-slate-400 block">Total:</span>
-                          <span className={`text-xs font-black font-mono ${rate > 0 ? 'text-blue-900' : 'text-rose-600'}`}>
+                          <span className="text-[10px] sm:text-xs font-bold text-slate-400 block">Total:</span>
+                          <span className={`text-xs sm:text-sm lg:text-base font-black font-mono ${rate > 0 ? 'text-sky-900' : 'text-rose-600'}`}>
                             {rate > 0 ? `₹${itemTotal.toFixed(2)}` : 'Rate Required'}
                           </span>
                         </div>
                       )}
 
                       {/* Quantity Input */}
-                      <div className="flex items-center gap-1.5 font-mono shrink-0">
+                      <div className="flex items-center gap-2 font-mono shrink-0 bg-sky-100/60 p-1.5 rounded-2xl border border-sky-300">
                         <input
                           type="number"
                           min="0"
                           value={productQuantities[prod.id] || ''}
                           placeholder="0"
                           onChange={(e) => handleQtyChange(prod.id, e.target.value)}
-                          className={`w-16 bg-white border rounded-xl px-2.5 py-1.5 text-right font-black text-sm shadow-sm focus:outline-none ${
+                          className={`w-20 sm:w-24 h-9 sm:h-10 bg-white border-2 rounded-xl px-2.5 text-center font-black text-sm sm:text-base shadow-inner focus:outline-none ${
                             isUnassignedWithQty 
                               ? 'border-rose-400 text-rose-800 focus:border-rose-600 ring-1 ring-rose-200' 
-                              : 'border-slate-300 text-slate-900 focus:border-blue-500'
+                              : 'border-sky-300 text-slate-900 focus:border-sky-600'
                           }`}
                         />
-                        <span className="text-slate-600 font-bold text-[11px] w-9 text-left">
+                        <span className="text-slate-800 font-black text-xs sm:text-sm min-w-10 px-1 text-center">
                           {prod.selling_unit || 'Tray'}
                         </span>
                       </div>
@@ -309,28 +319,28 @@ export const StockReceiveModal = ({ onClose }) => {
 
         {/* MISSING BUY RATE WARNING ALERT BANNER */}
         {hasMissingRates && (
-          <div className="bg-rose-50 border border-rose-300 text-rose-800 px-3.5 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-2xs animate-shake">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <div className="bg-rose-50 border-2 border-rose-300 text-rose-800 px-4 py-3 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2.5 shadow-xs animate-shake">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
             <span>விலை நிர்ணயிக்கப்படாத பொருட்களுக்கு Stock Receive செய்ய முடியாது. Owner Login-ல் Buy Rate பதிவு செய்யவும்!</span>
           </div>
         )}
 
         {/* REAL-TIME TOTAL SUMMARY BANNER */}
-        <div className="bg-slate-900 text-white p-3.5 rounded-2xl flex items-center justify-between shadow-md">
-          <div className="space-y-0.5">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+        <div className="bg-gradient-to-r from-slate-900 via-sky-950 to-slate-900 text-white p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl border border-sky-900">
+          <div className="space-y-0.5 text-center sm:text-left w-full sm:w-auto">
+            <span className="text-xs font-bold text-sky-300 uppercase tracking-wider block">
               Total Inward Quantity
             </span>
-            <p className="text-base font-black text-white">
-              {totalItemsCount} <span className="text-xs text-slate-300 font-normal">Trays/Units</span>
+            <p className="text-lg sm:text-xl font-black text-white">
+              {totalItemsCount} <span className="text-xs sm:text-sm text-sky-200 font-normal">Trays/Units</span>
             </p>
           </div>
 
-          <div className="text-right space-y-0.5">
-            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
+          <div className="text-center sm:text-right space-y-0.5 w-full sm:w-auto">
+            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider block">
               Total Purchase Amount (கொள்முதல் தொகை)
             </span>
-            <p className="text-lg font-black text-emerald-300 font-mono">
+            <p className="text-xl sm:text-2xl font-black text-emerald-300 font-mono">
               ₹{totalPurchaseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </div>
@@ -340,10 +350,19 @@ export const StockReceiveModal = ({ onClose }) => {
         <button
           onClick={handleSave}
           disabled={saving || activeProducts.length === 0 || totalItemsCount === 0 || hasMissingRates}
-          className="touch-btn touch-btn-primary w-full text-sm font-extrabold flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 shadow-lg shadow-blue-500/20 py-3 rounded-2xl"
+          className="touch-btn touch-btn-primary w-full text-sm sm:text-base font-black flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 shadow-lg shadow-sky-300/60 py-3.5 sm:py-4 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white transition-all cursor-pointer"
         >
-          <Save className="w-4 h-4" />
-          {saving ? 'SAVING STOCK...' : (hasMissingRates ? 'SET BUY RATE IN OWNER LOGIN TO RECEIVE' : 'CONFIRM STOCK RECEIVE')}
+          {saving ? (
+            <>
+              <Save className="w-5 h-5 animate-spin" />
+              <span>SAVING STOCK...</span>
+            </>
+          ) : (
+            <>
+              <Save className="w-5 h-5 stroke-[2.5]" />
+              <span>{hasMissingRates ? 'SET BUY RATE IN OWNER LOGIN TO RECEIVE' : 'CONFIRM STOCK RECEIVE'}</span>
+            </>
+          )}
         </button>
       </div>
     </div>
