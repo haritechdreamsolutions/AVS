@@ -12,6 +12,7 @@ import { StockAllocationModal } from './StockAllocationModal';
 import { StockReturnModal } from './StockReturnModal';
 import { AddShopModal } from '../common/AddShopModal';
 import { StoreDirectBillingModal } from './StoreDirectBillingModal';
+import { StoreShopBillingModal } from './StoreShopBillingModal';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { ThermalBillModal } from '../Employee/ThermalBillModal';
 import { SalesRecordsView } from '../Owner/SalesRecordsView';
@@ -19,7 +20,7 @@ import { sortProductsCustom } from '../../utils/productOrderHelper';
 
 export const KeeperDashboard = () => {
   const { products = [], summary, employees, stockMovements } = useApp();
-  const [activeModal, setActiveModal] = useState(null); // SETTLEMENT, RECEIVE, ALLOCATE, RETURN_DRIVER, ADD_SHOP, DIRECT_SALE, ADJUST_STOCK, SALES_HISTORY
+  const [activeModal, setActiveModal] = useState(null); // SETTLEMENT, RECEIVE, ALLOCATE, RETURN_DRIVER, ADD_SHOP, DIRECT_SALE, SHOP_BILL, ADJUST_STOCK, SALES_HISTORY
   const [completedBill, setCompletedBill] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
@@ -76,19 +77,37 @@ export const KeeperDashboard = () => {
             </div>
           </div>
 
-          <button
-            onClick={() => setActiveModal('DIRECT_SALE')}
-            className="w-full md:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg glow-green transition-transform hover:scale-[1.02] active:scale-95 shrink-0 cursor-pointer min-h-[46px]"
-          >
-            <ShoppingCart className="w-4 h-4 stroke-[2.5]" />
-            Direct Store Sale
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+            <button
+              onClick={() => setActiveModal('SHOP_BILL')}
+              className="flex-1 md:flex-none px-5 py-3 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-600/30 transition-transform hover:scale-[1.02] active:scale-95 shrink-0 cursor-pointer min-h-[46px]"
+            >
+              <Store className="w-4 h-4 stroke-[2.5]" />
+              Shop Bill
+            </button>
+
+            <button
+              onClick={() => setActiveModal('DIRECT_SALE')}
+              className="flex-1 md:flex-none px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg glow-green transition-transform hover:scale-[1.02] active:scale-95 shrink-0 cursor-pointer min-h-[46px]"
+            >
+              <ShoppingCart className="w-4 h-4 stroke-[2.5]" />
+              Direct Store Sale
+            </button>
+          </div>
         </div>
 
         {/* Level 2: Operations Quick Toolbar */}
         <div className="relative z-10 grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 pt-1 w-full">
           <span className="text-[11px] font-extrabold uppercase text-slate-400 tracking-wider mr-1 hidden sm:inline-block">Quick Actions:</span>
           
+          <button
+            onClick={() => setActiveModal('SHOP_BILL')}
+            className="px-3.5 py-2.5 rounded-xl bg-sky-600/90 hover:bg-sky-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-sky-400/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
+          >
+            <Store className="w-4 h-4" />
+            Shop Bill
+          </button>
+
           <button
             onClick={() => setActiveModal('ADD_SHOP')}
             className="px-3.5 py-2.5 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-purple-400/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
@@ -379,6 +398,12 @@ export const KeeperDashboard = () => {
       </div>
 
       {/* Modals */}
+      {activeModal === 'SHOP_BILL' && (
+        <StoreShopBillingModal
+          onClose={() => setActiveModal(null)}
+          onBillGenerated={(sale) => setCompletedBill(sale)}
+        />
+      )}
       {activeModal === 'DIRECT_SALE' && (
         <StoreDirectBillingModal 
           onClose={() => setActiveModal(null)}
