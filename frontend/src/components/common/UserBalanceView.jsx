@@ -158,7 +158,7 @@ export const UserBalanceView = () => {
     const map = new Map();
     map.set('STORE', {
       id: 'STORE',
-      name: 'Store Keeper (கவுண்டர் நேரடி விற்பனை)',
+      name: 'Store Keeper (Counter Direct)',
       icon: '🏬'
     });
 
@@ -317,13 +317,6 @@ export const UserBalanceView = () => {
   return (
     <div className="space-y-4 sm:space-y-5 pb-8 bg-sky-50/50 p-2 sm:p-4 rounded-3xl">
       
-      {/* Top Stylish Header Banner - Simplified and Clean */}
-      <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-sky-900 via-indigo-950 to-sky-900 text-white text-center shadow-lg border-2 border-sky-800">
-        <h2 className="text-sm sm:text-lg lg:text-xl font-black tracking-wide text-white drop-shadow-xs">
-          USER BALANCE & CREDIT SUMMARY (பயனாளர் வரவு & பாக்கி)
-        </h2>
-      </div>
-
       {/* TOP 4 FINANCIAL KPI SUMMARY CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         
@@ -369,17 +362,17 @@ export const UserBalanceView = () => {
 
       </div>
 
-      {/* FILTER CONTROLS PANEL */}
+      {/* FILTER CONTROLS PANEL (English Only) */}
       <div className="glass-panel p-3.5 sm:p-5 rounded-3xl bg-white border-2 border-sky-200 space-y-3.5 shadow-sm">
         
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           
-          {/* Tamil Search Bar */}
+          {/* English Search Bar */}
           <div className="relative w-full lg:w-80">
             <Search className="w-4 h-4 text-sky-600 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
-              placeholder="பயனாளர், கடை, பில் எண் தேடுக..."
+              placeholder="Search User, Shop, Bill #..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 sm:py-3 text-xs sm:text-sm font-black bg-sky-50/70 border-2 border-sky-200 rounded-2xl focus:outline-none focus:border-sky-600 focus:bg-white transition text-slate-900"
@@ -387,14 +380,14 @@ export const UserBalanceView = () => {
           </div>
 
           {/* Quick Date Range Pills with Smooth Scroll */}
-          <div className="flex items-center gap-1.5 bg-sky-100/80 p-1.5 rounded-2xl border border-sky-200 text-xs sm:text-sm overflow-x-auto max-w-full scrollbar-thin scrollbar-thumb-sky-300">
+          <div className="flex items-center gap-1.5 bg-sky-100/80 p-1.5 rounded-2xl border border-sky-200 text-xs sm:text-sm overflow-x-auto max-w-full">
             <button
               onClick={() => handleQuickDateSelect('ALL')}
               className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl font-black transition whitespace-nowrap cursor-pointer ${
                 quickDate === 'ALL' ? 'bg-white text-sky-950 shadow-xs border border-sky-200' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
-              அனைத்து தேதிகள்
+              All Dates
             </button>
             <button
               onClick={() => handleQuickDateSelect('TODAY')}
@@ -402,7 +395,7 @@ export const UserBalanceView = () => {
                 quickDate === 'TODAY' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
-              இன்று
+              Today
             </button>
             <button
               onClick={() => handleQuickDateSelect('YESTERDAY')}
@@ -410,7 +403,7 @@ export const UserBalanceView = () => {
                 quickDate === 'YESTERDAY' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
-              நேற்று
+              Yesterday
             </button>
             <button
               onClick={() => handleQuickDateSelect('THIS_WEEK')}
@@ -418,7 +411,7 @@ export const UserBalanceView = () => {
                 quickDate === 'THIS_WEEK' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
-              இந்த வாரம்
+              This Week
             </button>
             <button
               onClick={() => handleQuickDateSelect('THIS_MONTH')}
@@ -426,7 +419,7 @@ export const UserBalanceView = () => {
                 quickDate === 'THIS_MONTH' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
-              இந்த மாதம்
+              This Month
             </button>
             <button
               onClick={() => handleQuickDateSelect('CUSTOM')}
@@ -434,7 +427,7 @@ export const UserBalanceView = () => {
                 quickDate === 'CUSTOM' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
-              <Calendar className="w-3.5 h-3.5" /> தனிப்பயன்
+              <Calendar className="w-3.5 h-3.5" /> Custom
             </button>
           </div>
 
@@ -445,7 +438,7 @@ export const UserBalanceView = () => {
               onChange={(e) => setUserFilter(e.target.value)}
               className="w-full lg:w-64 p-2.5 sm:p-3 font-black text-xs sm:text-sm bg-sky-50 border-2 border-sky-200 rounded-2xl focus:outline-none focus:border-sky-600 text-slate-800 cursor-pointer"
             >
-              <option value="ALL">அனைத்து பயனாளர்கள்</option>
+              <option value="ALL">All Users & Drivers</option>
               <option value="STORE">🏬 Store Keeper</option>
               {availableUsers.filter(u => u.id !== 'STORE').map(u => (
                 <option key={u.id} value={u.id}>🚚 {u.name}</option>
@@ -459,7 +452,7 @@ export const UserBalanceView = () => {
         {quickDate === 'CUSTOM' && (
           <div className="pt-3 border-t border-sky-100 flex flex-wrap items-center gap-3 text-xs sm:text-sm bg-sky-50/70 p-3 rounded-2xl border border-sky-200">
             <span className="font-black text-slate-800 flex items-center gap-1">
-              <Calendar className="w-4 h-4 text-sky-600" /> தேதி வரம்பு:
+              <Calendar className="w-4 h-4 text-sky-600" /> Date Range:
             </span>
             <div className="flex items-center gap-2">
               <label className="font-bold text-slate-600">From:</label>
@@ -497,7 +490,7 @@ export const UserBalanceView = () => {
               onClick={handleClearFilters}
               className="text-xs sm:text-sm font-black text-rose-600 hover:text-rose-800 hover:underline flex items-center gap-1 cursor-pointer"
             >
-              <RotateCcw className="w-3.5 h-3.5" /> ரீசெட் செய்க
+              <RotateCcw className="w-3.5 h-3.5" /> Reset Filters
             </button>
           </div>
         )}
@@ -522,7 +515,7 @@ export const UserBalanceView = () => {
               {userSummaries.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="p-10 text-center bg-sky-50/40">
-                    <p className="font-black text-sm sm:text-base text-slate-700">பயனாளர் பதிவுகள் ஏதுமில்லை (No Records Found)</p>
+                    <p className="font-black text-sm sm:text-base text-slate-700">No User Records Found</p>
                   </td>
                 </tr>
               ) : (
@@ -572,7 +565,7 @@ export const UserBalanceView = () => {
         <div className="block md:hidden divide-y divide-sky-100">
           {userSummaries.length === 0 ? (
             <div className="p-6 text-center bg-sky-50/50">
-              <p className="font-black text-xs text-slate-700">பதிவுகள் ஏதுமில்லை (No Records Found)</p>
+              <p className="font-black text-xs text-slate-700">No Records Found</p>
             </div>
           ) : (
             userSummaries.map(({ user, totalSales, totalReceived, totalBalance, oldCreditCollected }) => (
