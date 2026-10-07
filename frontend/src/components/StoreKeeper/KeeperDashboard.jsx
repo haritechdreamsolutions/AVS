@@ -417,21 +417,24 @@ export const KeeperDashboard = () => {
         <StockAdjustmentModal onClose={() => setActiveModal(null)} />
       )}
       {activeModal === 'SALES_HISTORY' && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-6xl w-full max-h-[94vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between p-4 px-6 border-b border-slate-200 bg-slate-900 text-white shrink-0">
-              <div className="flex items-center gap-2.5">
-                <FileText className="w-5 h-5 text-blue-400" />
-                <h3 className="font-black text-base text-white">Sales Invoices & Receipt Reprint History</h3>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 lg:p-6 overflow-y-auto">
+          <div className="bg-gradient-to-b from-sky-50 via-white to-sky-50/90 border-2 border-sky-200 rounded-3xl max-w-full sm:max-w-6xl lg:max-w-7xl w-full max-h-[94vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between p-4 px-6 border-b border-sky-200 bg-sky-900 text-white shrink-0 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center shadow-xs">
+                  <FileText className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <h3 className="font-black text-base sm:text-lg text-white">Sales Invoices & Receipt Reprint History</h3>
               </div>
               <button
                 onClick={() => setActiveModal(null)}
-                className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition"
+                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-sky-100 hover:text-white flex items-center justify-center transition cursor-pointer"
+                title="Close"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-slate-50/50">
+            <div className="flex-1 p-3 sm:p-5 lg:p-6 overflow-y-auto bg-sky-50/40">
               <SalesRecordsView />
             </div>
           </div>

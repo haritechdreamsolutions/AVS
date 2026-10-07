@@ -27,6 +27,26 @@ const PRODUCT_IMAGES = {
   20: { image: '/images/aquafresh_water_2l.png', sizeBadge: '2 Ltr' }
 };
 
+// Helper function to format any date string into DD-MM-YYYY format
+const formatDMY = (dateStr) => {
+  if (!dateStr) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+    const [y, m, d] = dateStr.substring(0, 10).split('-');
+    return `${d}-${m}-${y}`;
+  }
+  if (/^\d{2}-\d{2}-\d{4}/.test(dateStr)) {
+    return dateStr.substring(0, 10);
+  }
+  const dt = new Date(dateStr);
+  if (!isNaN(dt.getTime())) {
+    const d = String(dt.getDate()).padStart(2, '0');
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const y = dt.getFullYear();
+    return `${d}-${m}-${y}`;
+  }
+  return dateStr;
+};
+
 // Helper function to format JS Date object into YYYY-MM-DD string
 const formatYMD = (dateObj) => {
   if (!dateObj || isNaN(dateObj.getTime())) return '';
@@ -307,93 +327,93 @@ export const SalesRecordsView = () => {
   }, [quickDate, fromDate, toDate, sellerFilter, paymentFilter, salesSource, shopFilter, minAmount, maxAmount, paymentStatus, searchQuery]);
 
   const renderPaymentBadge = (sale) => {
-    const mode = (sale.payment_mode || 'CASH').toUpperCase();
+    const mode = (typeof sale === 'string' ? sale : (sale?.payment_mode || 'CASH')).toUpperCase();
     if (mode === 'CASH') {
       return (
-        <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
-          <DollarSign className="w-3 h-3 text-emerald-600" /> CASH
+        <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1.5 shadow-2xs">
+          <DollarSign className="w-3.5 h-3.5 text-emerald-600" /> CASH
         </span>
       );
     }
-    if (mode === 'GPAY') {
+    if (mode === 'GPAY' || mode === 'UPI' || mode === 'ONLINE') {
       return (
-        <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-300 inline-flex items-center gap-1">
-          <Smartphone className="w-3 h-3 text-blue-600" /> GPAY
+        <span className="px-3 py-1 rounded-full text-xs font-black bg-sky-100 text-sky-800 border border-sky-300 inline-flex items-center gap-1.5 shadow-2xs">
+          <Smartphone className="w-3.5 h-3.5 text-sky-600" /> GPAY
         </span>
       );
     }
-    if (mode === 'CREDIT') {
+    if (mode === 'CREDIT' || mode === 'DUE') {
       return (
-        <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1">
-          <CreditCard className="w-3 h-3 text-amber-600" /> CREDIT
+        <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1.5 shadow-2xs">
+          <CreditCard className="w-3.5 h-3.5 text-amber-600" /> CREDIT
         </span>
       );
     }
     if (mode === 'SPLIT') {
       return (
-        <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-300 inline-flex items-center gap-1">
-          <ArrowRightLeft className="w-3 h-3 text-purple-600" /> SPLIT (C:₹{sale.cash_paid || 0} | G:₹{sale.gpay_paid || 0})
+        <span className="px-3 py-1 rounded-full text-xs font-black bg-indigo-100 text-indigo-800 border border-indigo-300 inline-flex items-center gap-1.5 shadow-2xs">
+          <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" /> SPLIT
         </span>
       );
     }
-    return <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-slate-100 text-slate-800 border border-slate-300">{mode}</span>;
+    return <span className="px-3 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-800 border border-slate-300 shadow-2xs">{mode}</span>;
   };
 
   const renderSellerBadge = (sale) => {
     const isStore = sale.is_store_direct_sale || Number(sale.employee_id) === 6 || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'));
     if (isStore) {
       return (
-        <div className="flex items-center gap-1.5">
-          <div className="w-6 h-6 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs border border-purple-200 shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold text-sm border border-sky-200 shrink-0 shadow-2xs">
             🏬
           </div>
           <div>
-            <span className="font-extrabold text-slate-900 text-xs block leading-tight">Store Keeper</span>
-            <span className="text-[9px] text-purple-700 font-bold bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 inline-block">Store Counter</span>
+            <span className="font-black text-slate-900 text-xs sm:text-sm block leading-tight">Store Keeper</span>
+            <span className="text-[10px] text-sky-800 font-extrabold bg-sky-100 px-2 py-0.5 rounded-lg border border-sky-200 inline-block mt-0.5">Store Counter</span>
           </div>
         </div>
       );
     }
     return (
-      <div className="flex items-center gap-1.5">
-        <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs border border-blue-200 shrink-0">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold text-sm border border-sky-200 shrink-0 shadow-2xs">
           🚚
         </div>
         <div>
-          <span className="font-extrabold text-slate-900 text-xs block leading-tight">{sale.employee_name || 'Driver'}</span>
-          <span className="text-[9px] text-slate-500 font-mono block">{sale.vehicle_no || 'Vehicle'}</span>
+          <span className="font-black text-slate-900 text-xs sm:text-sm block leading-tight">{sale.employee_name || 'Driver'}</span>
+          <span className="text-[10px] text-slate-500 font-mono font-bold block">{sale.vehicle_no || 'Vehicle'}</span>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="space-y-5 pb-6">
+    <div className="space-y-4 sm:space-y-5 pb-6">
       
       {/* Top Banner */}
-      <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-slate-950 via-slate-900 to-purple-950 text-white border border-slate-800 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="p-4 sm:p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-sky-950 to-slate-900 text-white border-2 border-sky-900 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-sky-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
         <div className="relative z-10">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center text-purple-300 shrink-0">
-              <ShoppingBag className="w-6 h-6" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-sky-600 text-white flex items-center justify-center shadow-md shadow-sky-200 shrink-0">
+              <ShoppingBag className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
             </div>
             <div>
-              <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2 tracking-tight">
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-black text-white flex items-center gap-2 tracking-tight">
                 SALES & BILLING RECORDS
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-400/30">
-                  🔴 Live Real-Time Feed
+                <span className="text-[10px] sm:text-xs bg-emerald-500/20 text-emerald-300 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-400/30">
+                  🔴 Live Feed
                 </span>
               </h2>
-              <p className="text-xs text-slate-300 font-medium mt-0.5">Real-time Sales Log from Store Counter & Employee Delivery Routes</p>
+              <p className="text-[11px] sm:text-xs text-sky-200 font-bold mt-0.5">Real-time Sales Log from Store Counter & Employee Delivery Routes</p>
             </div>
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-wrap items-center gap-2">
-          <span className="font-mono font-black text-sm text-emerald-400 bg-emerald-500/10 px-3.5 py-2 rounded-2xl border border-emerald-400/30">
-            Filtered Revenue: ₹{metrics.totalRevenue.toLocaleString()}
+        <div className="relative z-10 flex flex-wrap items-center gap-2.5">
+          <span className="font-mono font-black text-xs sm:text-sm text-emerald-300 bg-emerald-500/15 px-3.5 py-2 rounded-2xl border border-emerald-400/30 shadow-xs">
+            Revenue: ₹{metrics.totalRevenue.toLocaleString()}
           </span>
           <button
             onClick={() => generateSalesRecordsPDFReport({ 
@@ -401,116 +421,116 @@ export const SalesRecordsView = () => {
               dateRangeText: activeDatePreset !== 'CUSTOM' ? activeDatePreset : `${fromDate || ''} - ${toDate || ''}`,
               companyInfo: companySettings
             })}
-            className="px-3.5 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs flex items-center gap-1.5 border border-white/20 transition cursor-pointer"
+            className="px-3.5 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-black text-xs flex items-center gap-1.5 border border-white/20 transition cursor-pointer"
           >
-            <Download className="w-4 h-4" /> Download PDF Report
+            <Download className="w-4 h-4" /> Download PDF
           </button>
         </div>
       </div>
 
-      {/* DYNAMIC KPI SUMMARY CARDS (FOLLOWS ACTIVE FILTERS STRICTLY) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-emerald-500 border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-tight block">
+      {/* DYNAMIC KPI SUMMARY CARDS */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="glass-card p-4 sm:p-5 rounded-2xl bg-white border-l-4 border-sky-600 border-2 border-sky-100 shadow-xs">
+          <span className="text-[11px] sm:text-xs font-black text-slate-600 uppercase tracking-tight block">
             Total Bills Generated {activeFiltersCount > 0 && '(Filtered)'}
           </span>
-          <div className="font-mono font-black text-2xl text-slate-900 mt-1">
-            {metrics.totalBills} <span className="text-xs text-slate-500 font-bold">Bills</span>
+          <div className="font-mono font-black text-xl sm:text-2xl text-slate-900 mt-1">
+            {metrics.totalBills} <span className="text-xs sm:text-sm text-slate-500 font-bold">Bills</span>
           </div>
         </div>
 
-        <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-blue-500 border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-tight block">
+        <div className="glass-card p-4 sm:p-5 rounded-2xl bg-white border-l-4 border-emerald-500 border-2 border-sky-100 shadow-xs">
+          <span className="text-[11px] sm:text-xs font-black text-slate-600 uppercase tracking-tight block">
             Total Sales Revenue {activeFiltersCount > 0 && '(Filtered)'}
           </span>
-          <div className="font-mono font-black text-2xl text-emerald-600 mt-1">
+          <div className="font-mono font-black text-xl sm:text-2xl text-emerald-600 mt-1">
             ₹{metrics.totalRevenue.toLocaleString()}
           </div>
         </div>
 
-        <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-purple-500 border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-tight block">
+        <div className="glass-card p-4 sm:p-5 rounded-2xl bg-white border-l-4 border-indigo-500 border-2 border-sky-100 shadow-xs">
+          <span className="text-[11px] sm:text-xs font-black text-slate-600 uppercase tracking-tight block">
             Direct Counter Sales {activeFiltersCount > 0 && '(Filtered)'}
           </span>
-          <div className="font-mono font-black text-2xl text-purple-600 mt-1">
+          <div className="font-mono font-black text-xl sm:text-2xl text-indigo-600 mt-1">
             ₹{metrics.storeRevenue.toLocaleString()}
           </div>
         </div>
 
-        <div className="glass-card p-4 rounded-2xl bg-white border-l-4 border-indigo-500 border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-tight block">
+        <div className="glass-card p-4 sm:p-5 rounded-2xl bg-white border-l-4 border-blue-500 border-2 border-sky-100 shadow-xs">
+          <span className="text-[11px] sm:text-xs font-black text-slate-600 uppercase tracking-tight block">
             Driver Route Sales {activeFiltersCount > 0 && '(Filtered)'}
           </span>
-          <div className="font-mono font-black text-2xl text-indigo-600 mt-1">
+          <div className="font-mono font-black text-xl sm:text-2xl text-blue-600 mt-1">
             ₹{metrics.driverRevenue.toLocaleString()}
           </div>
         </div>
       </div>
 
       {/* ADVANCED FILTER CONTROL PANEL */}
-      <div className="glass-panel p-5 rounded-3xl bg-white border border-slate-200 space-y-4 shadow-sm">
+      <div className="glass-panel p-4 sm:p-5 rounded-3xl bg-white border-2 border-sky-200 space-y-3.5 shadow-sm">
         
         {/* ROW 1: SEARCH BAR + QUICK DATE PILLS + ADVANCED TOGGLE */}
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
           
           {/* Structured Search Input */}
-          <div className="relative w-full lg:w-72">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <div className="relative w-full lg:w-80">
+            <Search className="w-4 h-4 text-sky-600 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search Bill #, Shop, Employee..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:border-purple-500 focus:bg-white transition"
+              className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm font-black bg-sky-50/50 border-2 border-sky-200 rounded-2xl focus:outline-none focus:border-sky-600 focus:bg-white transition shadow-2xs"
             />
           </div>
 
           {/* Quick Date Pills Bar */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs overflow-x-auto max-w-full">
+          <div className="flex items-center gap-1.5 bg-sky-100/70 p-1 rounded-2xl border border-sky-200 text-xs overflow-x-auto max-w-full">
             <button
               onClick={() => handleQuickDateSelect('ALL')}
-              className={`px-3 py-1.5 rounded-xl font-extrabold transition whitespace-nowrap ${
-                quickDate === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1.5 rounded-xl font-black transition whitespace-nowrap cursor-pointer ${
+                quickDate === 'ALL' ? 'bg-white text-sky-950 shadow-xs border border-sky-200' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
               All Dates
             </button>
             <button
               onClick={() => handleQuickDateSelect('TODAY')}
-              className={`px-3 py-1.5 rounded-xl font-extrabold transition whitespace-nowrap ${
-                quickDate === 'TODAY' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1.5 rounded-xl font-black transition whitespace-nowrap cursor-pointer ${
+                quickDate === 'TODAY' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
               Today
             </button>
             <button
               onClick={() => handleQuickDateSelect('YESTERDAY')}
-              className={`px-3 py-1.5 rounded-xl font-extrabold transition whitespace-nowrap ${
-                quickDate === 'YESTERDAY' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1.5 rounded-xl font-black transition whitespace-nowrap cursor-pointer ${
+                quickDate === 'YESTERDAY' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
               Yesterday
             </button>
             <button
               onClick={() => handleQuickDateSelect('THIS_WEEK')}
-              className={`px-3 py-1.5 rounded-xl font-extrabold transition whitespace-nowrap ${
-                quickDate === 'THIS_WEEK' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1.5 rounded-xl font-black transition whitespace-nowrap cursor-pointer ${
+                quickDate === 'THIS_WEEK' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
               This Week
             </button>
             <button
               onClick={() => handleQuickDateSelect('THIS_MONTH')}
-              className={`px-3 py-1.5 rounded-xl font-extrabold transition whitespace-nowrap ${
-                quickDate === 'THIS_MONTH' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1.5 rounded-xl font-black transition whitespace-nowrap cursor-pointer ${
+                quickDate === 'THIS_MONTH' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
               This Month
             </button>
             <button
               onClick={() => handleQuickDateSelect('CUSTOM')}
-              className={`px-3 py-1.5 rounded-xl font-extrabold transition whitespace-nowrap flex items-center gap-1 ${
-                quickDate === 'CUSTOM' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1.5 rounded-xl font-black transition whitespace-nowrap flex items-center gap-1 cursor-pointer ${
+                quickDate === 'CUSTOM' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:text-slate-900'
               }`}
             >
               <Calendar className="w-3.5 h-3.5" /> Custom Range
@@ -520,23 +540,23 @@ export const SalesRecordsView = () => {
           {/* Toggle Advanced Filters Button */}
           <button
             onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
-            className={`px-3.5 py-2 rounded-2xl text-xs font-extrabold flex items-center gap-1.5 border transition ${
+            className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black flex items-center gap-1.5 border-2 transition cursor-pointer ${
               isAdvancedOpen || activeFiltersCount > 0
-                ? 'bg-purple-50 text-purple-900 border-purple-300'
-                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                ? 'bg-sky-100 text-sky-900 border-sky-300'
+                : 'bg-white text-slate-700 border-sky-200 hover:bg-sky-50'
             }`}
           >
-            <SlidersHorizontal className="w-4 h-4 text-purple-600" />
+            <SlidersHorizontal className="w-4 h-4 text-sky-600" />
             Filters {activeFiltersCount > 0 && `(${activeFiltersCount})`}
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isAdvancedOpen ? 'rotate-180' : ''}`} />
           </button>
         </div>
 
-        {/* CUSTOM DATE RANGE PICKER (VISIBLE WHEN QUICKDATE IS CUSTOM OR ADVANCED IS OPEN) */}
+        {/* CUSTOM DATE RANGE PICKER */}
         {(quickDate === 'CUSTOM' || isAdvancedOpen) && (
-          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-3 text-xs bg-purple-50/50 p-3 rounded-2xl border border-purple-100">
-            <span className="font-extrabold text-slate-700 flex items-center gap-1">
-              <Calendar className="w-4 h-4 text-purple-600" /> Date Range:
+          <div className="pt-2 border-t border-sky-100 flex flex-wrap items-center gap-3 text-xs bg-sky-50/60 p-3 rounded-2xl border border-sky-200">
+            <span className="font-black text-slate-700 flex items-center gap-1">
+              <Calendar className="w-4 h-4 text-sky-600" /> Date Range:
             </span>
             <div className="flex items-center gap-2">
               <label className="font-bold text-slate-500">From:</label>
@@ -544,7 +564,7 @@ export const SalesRecordsView = () => {
                 type="date"
                 value={fromDate}
                 onChange={(e) => { setFromDate(e.target.value); setQuickDate('CUSTOM'); }}
-                className="p-1.5 font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-purple-500"
+                className="p-2 font-bold bg-white border-2 border-sky-200 rounded-xl focus:outline-none focus:border-sky-600 text-xs"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -553,11 +573,11 @@ export const SalesRecordsView = () => {
                 type="date"
                 value={toDate}
                 onChange={(e) => { setToDate(e.target.value); setQuickDate('CUSTOM'); }}
-                className="p-1.5 font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-purple-500"
+                className="p-2 font-bold bg-white border-2 border-sky-200 rounded-xl focus:outline-none focus:border-sky-600 text-xs"
               />
             </div>
             {dateError && (
-              <span className="text-rose-600 font-extrabold text-[11px] flex items-center gap-1">
+              <span className="text-rose-600 font-black text-xs flex items-center gap-1">
                 <AlertTriangle className="w-3.5 h-3.5" /> {dateError}
               </span>
             )}
@@ -566,15 +586,15 @@ export const SalesRecordsView = () => {
 
         {/* COLLAPSIBLE ADVANCED FILTERS PANEL */}
         {isAdvancedOpen && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-3 border-t border-slate-100 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-3 border-t border-sky-100 text-xs">
             
             {/* 1. Seller / Generated By */}
             <div>
-              <label className="font-extrabold text-slate-700 block mb-1">Seller / Generated By</label>
+              <label className="font-black text-slate-700 block mb-1">Seller / Generated By</label>
               <select
                 value={sellerFilter}
                 onChange={(e) => setSellerFilter(e.target.value)}
-                className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-purple-500"
+                className="w-full p-2.5 font-bold bg-white border-2 border-sky-200 rounded-xl focus:outline-none focus:border-sky-600"
               >
                 <option value="ALL">All Sellers & Roles</option>
                 <option value="STORE">🏬 Store Keeper (Counter)</option>
@@ -586,11 +606,11 @@ export const SalesRecordsView = () => {
 
             {/* 2. Payment Method */}
             <div>
-              <label className="font-extrabold text-slate-700 block mb-1">Payment Method</label>
+              <label className="font-black text-slate-700 block mb-1">Payment Method</label>
               <select
                 value={paymentFilter}
                 onChange={(e) => setPaymentFilter(e.target.value)}
-                className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-purple-500"
+                className="w-full p-2.5 font-bold bg-white border-2 border-sky-200 rounded-xl focus:outline-none focus:border-sky-600"
               >
                 <option value="ALL">All Payment Modes</option>
                 <option value="CASH">💵 Cash Only</option>
@@ -602,11 +622,11 @@ export const SalesRecordsView = () => {
 
             {/* 3. Sales Source */}
             <div>
-              <label className="font-extrabold text-slate-700 block mb-1">Sales Source</label>
+              <label className="font-black text-slate-700 block mb-1">Sales Source</label>
               <select
                 value={salesSource}
                 onChange={(e) => setSalesSource(e.target.value)}
-                className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-purple-500"
+                className="w-full p-2.5 font-bold bg-white border-2 border-sky-200 rounded-xl focus:outline-none focus:border-sky-600"
               >
                 <option value="ALL">All Sales Sources</option>
                 <option value="DIRECT">🏬 Direct Counter Sale</option>
@@ -616,11 +636,11 @@ export const SalesRecordsView = () => {
 
             {/* 4. Customer / Shop */}
             <div>
-              <label className="font-extrabold text-slate-700 block mb-1">Shop / Customer</label>
+              <label className="font-black text-slate-700 block mb-1">Shop / Customer</label>
               <select
                 value={shopFilter}
                 onChange={(e) => setShopFilter(e.target.value)}
-                className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-purple-500"
+                className="w-full p-2.5 font-bold bg-white border-2 border-sky-200 rounded-xl focus:outline-none focus:border-sky-600"
               >
                 <option value="ALL">All Shops & Customers</option>
                 {availableShops.map(sh => (
@@ -631,14 +651,14 @@ export const SalesRecordsView = () => {
 
             {/* 5. Minimum & Maximum Amount */}
             <div className="sm:col-span-2">
-              <label className="font-extrabold text-slate-700 block mb-1">Invoice Amount Range (₹)</label>
+              <label className="font-black text-slate-700 block mb-1">Invoice Amount Range (₹)</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
                   placeholder="Min ₹ (e.g. 500)"
                   value={minAmount}
                   onChange={(e) => setMinAmount(e.target.value)}
-                  className="w-1/2 p-2 font-mono font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-purple-500"
+                  className="w-1/2 p-2.5 font-mono font-bold bg-white border-2 border-sky-200 rounded-xl focus:outline-none focus:border-sky-600"
                 />
                 <span className="font-black text-slate-400">→</span>
                 <input
@@ -646,7 +666,7 @@ export const SalesRecordsView = () => {
                   placeholder="Max ₹ (e.g. 5000)"
                   value={maxAmount}
                   onChange={(e) => setMaxAmount(e.target.value)}
-                  className="w-1/2 p-2 font-mono font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-purple-500"
+                  className="w-1/2 p-2.5 font-mono font-bold bg-white border-2 border-sky-200 rounded-xl focus:outline-none focus:border-sky-600"
                 />
               </div>
               {amountError && <span className="text-[10px] text-rose-600 font-bold block mt-1">{amountError}</span>}
@@ -654,11 +674,11 @@ export const SalesRecordsView = () => {
 
             {/* 6. Payment Status */}
             <div>
-              <label className="font-extrabold text-slate-700 block mb-1">Payment Status</label>
+              <label className="font-black text-slate-700 block mb-1">Payment Status</label>
               <select
                 value={paymentStatus}
                 onChange={(e) => setPaymentStatus(e.target.value)}
-                className="w-full p-2 font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-purple-500"
+                className="w-full p-2.5 font-bold bg-white border-2 border-sky-200 rounded-xl focus:outline-none focus:border-sky-600"
               >
                 <option value="ALL">All Payment Statuses</option>
                 <option value="PAID">🟢 Fully Paid</option>
@@ -672,77 +692,77 @@ export const SalesRecordsView = () => {
 
         {/* ACTIVE FILTER CHIPS & CLEAR ALL BAR */}
         {activeFiltersCount > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-sky-100 text-xs">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-extrabold text-slate-500 uppercase text-[10px] mr-1">Active Filters:</span>
+              <span className="font-black text-sky-800 uppercase text-[10px] mr-1">Active Filters:</span>
               
               {(fromDate || toDate) && (
-                <span className="px-2.5 py-1 rounded-full bg-purple-100 text-purple-900 font-bold text-[11px] border border-purple-200 flex items-center gap-1">
+                <span className="px-3 py-1 rounded-full bg-sky-100 text-sky-900 font-black text-xs border border-sky-200 flex items-center gap-1">
                   📅 Date: {fromDate || 'Start'} → {toDate || 'End'}
-                  <button onClick={() => { setFromDate(''); setToDate(''); setQuickDate('ALL'); }} className="hover:text-purple-600">
+                  <button onClick={() => { setFromDate(''); setToDate(''); setQuickDate('ALL'); }} className="hover:text-sky-600 cursor-pointer">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
 
               {sellerFilter !== 'ALL' && (
-                <span className="px-2.5 py-1 rounded-full bg-purple-100 text-purple-900 font-bold text-[11px] border border-purple-200 flex items-center gap-1">
+                <span className="px-3 py-1 rounded-full bg-sky-100 text-sky-900 font-black text-xs border border-sky-200 flex items-center gap-1">
                   👤 Seller: {sellerFilter === 'STORE' ? 'Store Keeper' : (availableSellers.find(s => s.id === sellerFilter)?.name || sellerFilter)}
-                  <button onClick={() => setSellerFilter('ALL')} className="hover:text-purple-600">
+                  <button onClick={() => setSellerFilter('ALL')} className="hover:text-sky-600 cursor-pointer">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
 
               {paymentFilter !== 'ALL' && (
-                <span className="px-2.5 py-1 rounded-full bg-purple-100 text-purple-900 font-bold text-[11px] border border-purple-200 flex items-center gap-1">
+                <span className="px-3 py-1 rounded-full bg-sky-100 text-sky-900 font-black text-xs border border-sky-200 flex items-center gap-1">
                   💳 Payment: {paymentFilter}
-                  <button onClick={() => setPaymentFilter('ALL')} className="hover:text-purple-600">
+                  <button onClick={() => setPaymentFilter('ALL')} className="hover:text-sky-600 cursor-pointer">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
 
               {salesSource !== 'ALL' && (
-                <span className="px-2.5 py-1 rounded-full bg-purple-100 text-purple-900 font-bold text-[11px] border border-purple-200 flex items-center gap-1">
+                <span className="px-3 py-1 rounded-full bg-sky-100 text-sky-900 font-black text-xs border border-sky-200 flex items-center gap-1">
                   🚚 Source: {salesSource === 'DIRECT' ? 'Direct Counter' : 'Driver Route'}
-                  <button onClick={() => setSalesSource('ALL')} className="hover:text-purple-600">
+                  <button onClick={() => setSalesSource('ALL')} className="hover:text-sky-600 cursor-pointer">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
 
               {shopFilter !== 'ALL' && (
-                <span className="px-2.5 py-1 rounded-full bg-purple-100 text-purple-900 font-bold text-[11px] border border-purple-200 flex items-center gap-1">
+                <span className="px-3 py-1 rounded-full bg-sky-100 text-sky-900 font-black text-xs border border-sky-200 flex items-center gap-1">
                   🏪 Shop: {availableShops.find(sh => sh.id === shopFilter)?.name || shopFilter}
-                  <button onClick={() => setShopFilter('ALL')} className="hover:text-purple-600">
+                  <button onClick={() => setShopFilter('ALL')} className="hover:text-sky-600 cursor-pointer">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
 
               {(minAmount !== '' || maxAmount !== '') && (
-                <span className="px-2.5 py-1 rounded-full bg-purple-100 text-purple-900 font-bold text-[11px] border border-purple-200 flex items-center gap-1">
+                <span className="px-3 py-1 rounded-full bg-sky-100 text-sky-900 font-black text-xs border border-sky-200 flex items-center gap-1">
                   💰 Amount: ₹{minAmount || '0'} → ₹{maxAmount || '∞'}
-                  <button onClick={() => { setMinAmount(''); setMaxAmount(''); }} className="hover:text-purple-600">
+                  <button onClick={() => { setMinAmount(''); setMaxAmount(''); }} className="hover:text-sky-600 cursor-pointer">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
 
               {paymentStatus !== 'ALL' && (
-                <span className="px-2.5 py-1 rounded-full bg-purple-100 text-purple-900 font-bold text-[11px] border border-purple-200 flex items-center gap-1">
+                <span className="px-3 py-1 rounded-full bg-sky-100 text-sky-900 font-black text-xs border border-sky-200 flex items-center gap-1">
                   Status: {paymentStatus}
-                  <button onClick={() => setPaymentStatus('ALL')} className="hover:text-purple-600">
+                  <button onClick={() => setPaymentStatus('ALL')} className="hover:text-sky-600 cursor-pointer">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
 
               {searchQuery.trim() && (
-                <span className="px-2.5 py-1 rounded-full bg-purple-100 text-purple-900 font-bold text-[11px] border border-purple-200 flex items-center gap-1">
+                <span className="px-3 py-1 rounded-full bg-sky-100 text-sky-900 font-black text-xs border border-sky-200 flex items-center gap-1">
                   🔍 Search: "{searchQuery}"
-                  <button onClick={() => setSearchQuery('')} className="hover:text-purple-600">
+                  <button onClick={() => setSearchQuery('')} className="hover:text-sky-600 cursor-pointer">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -751,7 +771,7 @@ export const SalesRecordsView = () => {
 
             <button
               onClick={handleClearAllFilters}
-              className="text-xs font-black text-rose-600 hover:text-rose-800 hover:underline flex items-center gap-1 shrink-0"
+              className="text-xs font-black text-rose-600 hover:text-rose-800 hover:underline flex items-center gap-1 shrink-0 cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" /> Clear All Filters
             </button>
@@ -761,38 +781,37 @@ export const SalesRecordsView = () => {
       </div>
 
       {/* FILTER SUMMARY BAR */}
-      <div className="flex items-center justify-between px-2 text-xs font-bold text-slate-600">
+      <div className="flex items-center justify-between px-2 text-xs sm:text-sm font-bold text-slate-700">
         <span>
-          Showing <span className="text-purple-700 font-extrabold">{filteredSales.length}</span> of <span className="text-slate-900">{sales.length}</span> Total Bills
+          Showing <span className="text-sky-800 font-black">{filteredSales.length}</span> of <span className="text-slate-900 font-black">{sales.length}</span> Total Bills
         </span>
         <span>
-          Filtered Sales Revenue: <span className="text-emerald-700 font-mono font-black text-sm">₹{metrics.totalRevenue.toLocaleString()}</span>
+          Filtered Sales Revenue: <span className="text-emerald-700 font-mono font-black text-sm sm:text-base">₹{metrics.totalRevenue.toLocaleString()}</span>
         </span>
       </div>
 
       {/* MAIN BILLING TABLE & MOBILE CARD PANEL */}
-      <div className="glass-panel rounded-3xl bg-white border border-slate-200 overflow-hidden shadow-sm">
+      <div className="glass-panel rounded-3xl bg-white border-2 border-sky-200 overflow-hidden shadow-sm">
         
         {/* DESKTOP TABLE VIEW */}
         <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
+          <table className="w-full text-left text-xs sm:text-sm border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 font-extrabold text-slate-700 bg-slate-50 uppercase tracking-wider">
-                <th className="p-3.5 pl-5">Bill No & Time</th>
-                <th className="p-3.5">Bill Generated By</th>
-                <th className="p-3.5">Customer / Shop Name</th>
-                <th className="p-3.5 text-center">Items Count</th>
-                <th className="p-3.5 text-right">Total Amount</th>
-                <th className="p-3.5 text-center">Payment Method</th>
-                <th className="p-3.5 pr-5 text-center">Action Details</th>
+              <tr className="border-b-2 border-sky-200 font-black text-slate-800 bg-sky-50/90 uppercase tracking-wider text-xs">
+                <th className="p-4 pl-5">Bill No & Date</th>
+                <th className="p-4">Bill Generated By</th>
+                <th className="p-4">Shop Name</th>
+                <th className="p-4 text-right">Total Amount</th>
+                <th className="p-4 text-center">Payment Method</th>
+                <th className="p-4 pr-5 text-center">Action Details</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-sky-100">
               {filteredSales.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-12 text-center bg-slate-50/50">
+                  <td colSpan="6" className="p-12 text-center bg-sky-50/30">
                     <div className="max-w-sm mx-auto space-y-3">
-                      <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center mx-auto text-xl font-bold border border-purple-200">
+                      <div className="w-12 h-12 rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center mx-auto text-xl font-bold border border-sky-200">
                         🔍
                       </div>
                       <h4 className="font-black text-base text-slate-900">No Sales Bills Found</h4>
@@ -802,7 +821,7 @@ export const SalesRecordsView = () => {
                       {activeFiltersCount > 0 && (
                         <button
                           onClick={handleClearAllFilters}
-                          className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs rounded-xl shadow-xs transition"
+                          className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl shadow-xs transition cursor-pointer"
                         >
                           Clear All Filters
                         </button>
@@ -812,47 +831,42 @@ export const SalesRecordsView = () => {
                 </tr>
               ) : (
                 filteredSales.map((sale, idx) => {
-                  const itemsCount = (sale.items || []).reduce((acc, i) => acc + (Number(i.qty) || 0), 0);
+                  const billDate = formatDMY(sale.date || sale.sale_date || sale.created_at) || 'Today';
 
                   return (
-                    <tr key={sale.bill_no || idx} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="p-3.5 pl-5">
-                        <span className="font-mono font-black text-sm text-purple-700 block">
+                    <tr key={sale.bill_no || idx} className="hover:bg-sky-50/60 transition-colors">
+                      <td className="p-4 pl-5">
+                        <span className="font-mono font-black text-sm sm:text-base text-sky-700 block">
                           #{sale.bill_no}
                         </span>
-                        <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                          <Calendar className="w-3 h-3 text-slate-400" /> {sale.date || 'Today'} • {sale.time || 'Live'}
+                        <span className="text-xs text-slate-600 font-mono font-bold flex items-center gap-1 mt-0.5">
+                          <Calendar className="w-3.5 h-3.5 text-sky-500" /> {billDate} • {sale.time || 'Live'}
                         </span>
                       </td>
-                      <td className="p-3.5">{renderSellerBadge(sale)}</td>
-                      <td className="p-3.5">
-                        <span className="font-extrabold text-slate-900 text-xs block">
+                      <td className="p-4">{renderSellerBadge(sale)}</td>
+                      <td className="p-4">
+                        <span className="font-black text-slate-900 text-sm sm:text-base block">
                           {sale.shop_name || sale.customer_name || 'Direct Walk-in Customer'}
                         </span>
                         {sale.shop_id && (
-                          <span className="text-[9px] text-slate-400 font-mono">Shop ID #{sale.shop_id}</span>
+                          <span className="text-[10px] text-slate-400 font-mono font-bold">Shop ID #{sale.shop_id}</span>
                         )}
                       </td>
-                      <td className="p-3.5 text-center font-mono font-bold">
-                        <span className="px-2.5 py-0.5 bg-slate-100 text-slate-800 rounded-full border border-slate-200">
-                          {itemsCount} Units
-                        </span>
-                      </td>
-                      <td className="p-3.5 text-right font-mono font-black text-sm text-slate-900">
+                      <td className="p-4 text-right font-mono font-black text-sm sm:text-base text-slate-900">
                         ₹{Number(sale.total_amount || 0).toLocaleString()}
                       </td>
-                      <td className="p-3.5 text-center">{renderPaymentBadge(sale)}</td>
-                      <td className="p-3.5 pr-5 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className="p-4 text-center">{renderPaymentBadge(sale)}</td>
+                      <td className="p-4 pr-5 text-center">
+                        <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => setSelectedSaleDetails(sale)}
-                            className="p-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-extrabold text-[11px] flex items-center gap-1 transition border border-purple-200"
+                            className="px-3 py-1.5 rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-900 font-black text-xs flex items-center gap-1.5 transition border border-sky-300 cursor-pointer shadow-2xs"
                           >
                             <Eye className="w-3.5 h-3.5" /> View
                           </button>
                           <button
                             onClick={() => setPrintThermalBill(sale)}
-                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-[11px] flex items-center gap-1 transition border border-slate-200"
+                            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs flex items-center gap-1.5 transition border border-slate-300 cursor-pointer shadow-2xs"
                             title="Print Invoice"
                           >
                             <Printer className="w-3.5 h-3.5 text-slate-600" /> Print
@@ -868,53 +882,57 @@ export const SalesRecordsView = () => {
         </div>
 
         {/* MOBILE CARD VIEW */}
-        <div className="block md:hidden divide-y divide-slate-100">
+        <div className="block md:hidden divide-y divide-sky-100">
           {filteredSales.length === 0 ? (
-            <div className="p-8 text-center bg-slate-50 space-y-2">
+            <div className="p-8 text-center bg-sky-50/50 space-y-2">
               <span className="text-xl">🔍</span>
               <p className="font-bold text-xs text-slate-700">No Sales Invoices Found</p>
             </div>
           ) : (
-            filteredSales.map((sale, idx) => (
-              <div key={sale.bill_no || idx} className="p-4 space-y-3 bg-white">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-black text-sm text-purple-700">#{sale.bill_no}</span>
-                    {renderPaymentBadge(sale.payment_mode)}
-                  </div>
-                  <span className="font-mono font-black text-base text-emerald-600">
-                    ₹{Number(sale.total_amount || 0).toLocaleString()}
-                  </span>
-                </div>
+            filteredSales.map((sale, idx) => {
+              const billDate = formatDMY(sale.date || sale.sale_date || sale.created_at) || 'Today';
 
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-extrabold text-slate-900">
-                    {sale.shop_name || sale.customer_name || 'Walk-in Customer'}
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {sale.date} {sale.time}
-                  </span>
-                </div>
+              return (
+                <div key={sale.bill_no || idx} className="p-4 space-y-3 bg-white">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-black text-sm sm:text-base text-sky-700">#{sale.bill_no}</span>
+                      {renderPaymentBadge(sale)}
+                    </div>
+                    <span className="font-mono font-black text-base text-emerald-600">
+                      ₹{Number(sale.total_amount || 0).toLocaleString()}
+                    </span>
+                  </div>
 
-                <div className="flex items-center justify-between pt-1">
-                  <div>{renderSellerBadge(sale)}</div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setSelectedSaleDetails(sale)}
-                      className="px-3 py-2 rounded-xl bg-purple-50 text-purple-700 font-extrabold text-xs border border-purple-200 flex items-center gap-1 min-h-[44px]"
-                    >
-                      <Eye className="w-4 h-4" /> View
-                    </button>
-                    <button
-                      onClick={() => setPrintThermalBill(sale)}
-                      className="p-2.5 rounded-xl bg-slate-100 text-slate-700 font-extrabold text-xs border border-slate-200 min-h-[44px] min-w-[44px] flex items-center justify-center"
-                    >
-                      <Printer className="w-4 h-4" />
-                    </button>
+                  <div className="flex items-center justify-between text-xs sm:text-sm">
+                    <span className="font-black text-slate-900">
+                      {sale.shop_name || sale.customer_name || 'Walk-in Customer'}
+                    </span>
+                    <span className="text-xs text-slate-500 font-mono font-bold">
+                      {billDate} {sale.time}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <div>{renderSellerBadge(sale)}</div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedSaleDetails(sale)}
+                        className="px-3 py-2 rounded-xl bg-sky-100 text-sky-900 font-black text-xs border border-sky-300 flex items-center gap-1 min-h-[40px] cursor-pointer"
+                      >
+                        <Eye className="w-4 h-4" /> View
+                      </button>
+                      <button
+                        onClick={() => setPrintThermalBill(sale)}
+                        className="p-2.5 rounded-xl bg-slate-100 text-slate-800 font-black text-xs border border-slate-300 min-h-[40px] min-w-[40px] flex items-center justify-center cursor-pointer"
+                      >
+                        <Printer className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
