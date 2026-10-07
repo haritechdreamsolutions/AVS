@@ -8,6 +8,7 @@ import {
 import { toast } from 'sonner';
 import { generateSupplierInwardPDFReport } from '../../utils/pdfReportGenerator';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
+import { getOperationalUnit } from '../../utils/unitHelper';
 
 export const OwnerSuppliersView = () => {
   const { 
@@ -277,6 +278,38 @@ export const OwnerSuppliersView = () => {
     );
   }, [suppliers, directorySearch]);
 
+  // Helper to extract tray and piece rates for a product from rates JSON
+  const getProductConfiguredRates = (ratesObj, prod) => {
+    if (!ratesObj || !prod) return { trayRate: 0, pieceRate: 0, hasRate: false };
+    const val = ratesObj[prod.id];
+    const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
+    const opUnit = getOperationalUnit(prod);
+
+    if (val === undefined || val === null || val === '') {
+      return { trayRate: 0, pieceRate: 0, hasRate: false };
+    }
+
+    if (typeof val === 'object') {
+      const t = Number(val.tray_rate !== undefined ? val.tray_rate : (val.rate || 0));
+      const p = val.piece_rate !== undefined && val.piece_rate !== '' && !isNaN(Number(val.piece_rate))
+        ? Number(val.piece_rate)
+        : (t > 0 && opUnit.isPieceBased ? parseFloat((t / ppu).toFixed(2)) : 0);
+      return {
+        trayRate: t,
+        pieceRate: p,
+        hasRate: t > 0 || p > 0
+      };
+    }
+
+    const num = Number(val);
+    const p = num > 0 && opUnit.isPieceBased ? parseFloat((num / ppu).toFixed(2)) : 0;
+    return {
+      trayRate: num,
+      pieceRate: p,
+      hasRate: num > 0
+    };
+  };
+
   // Modal Open Handlers
   const handleOpenAddModal = () => {
     setEditingSupplier(null);
@@ -289,8 +322,11 @@ export const OwnerSuppliersView = () => {
     setNotes('');
     setIsActive(true);
 
-    // Clean empty rates so placeholder "0" displays cleanly
-    setProductRates({});
+    const initialRates = {};
+    activeProducts.forEach(p => {
+      initialRates[p.id] = { tray_rate: '', piece_rate: '' };
+    });
+    setProductRates(initialRates);
     setIsModalOpen(true);
   };
 
@@ -305,28 +341,33 @@ export const OwnerSuppliersView = () => {
     setNotes(supplier.notes || '');
     setIsActive(supplier.is_active !== false);
 
-    // Load supplier's saved rates or empty string so placeholder 0 shows
     const savedRates = supplier.product_rates || {};
     const initialRates = {};
     activeProducts.forEach(p => {
-      initialRates[p.id] = (savedRates[p.id] !== undefined && savedRates[p.id] !== null) ? savedRates[p.id] : '';
+      const ppu = Math.max(1, Number(p.pieces_per_unit || 1));
+      const opUnit = getOperationalUnit(p);
+      const raw = savedRates[p.id];
+      if (raw !== undefined && raw !== null && raw !== '') {
+        if (typeof raw === 'object') {
+          const t = raw.tray_rate !== undefined ? raw.tray_rate : (raw.rate || '');
+          const pRate = raw.piece_rate !== undefined ? raw.piece_rate : '';
+          initialRates[p.id] = {
+            tray_rate: t,
+            piece_rate: pRate !== '' ? pRate : (t && Number(t) > 0 && opUnit.isPieceBased ? (Number(t) / ppu).toFixed(2) : '')
+          };
+        } else {
+          const num = Number(raw);
+          initialRates[p.id] = {
+            tray_rate: raw,
+            piece_rate: num > 0 && opUnit.isPieceBased ? (num / ppu).toFixed(2) : ''
+          };
+        }
+      } else {
+        initialRates[p.id] = { tray_rate: '', piece_rate: '' };
+      }
     });
     setProductRates(initialRates);
     setIsModalOpen(true);
-  };
-
-  const handleRateChange = (productId, val) => {
-    setProductRates(prev => ({
-      ...prev,
-      [productId]: val
-    }));
-  };
-
-  const handleQuickRateChange = (productId, val) => {
-    setQuickRates(prev => ({
-      ...prev,
-      [productId]: val
-    }));
   };
 
   const handleOpenQuickRates = (supplier) => {
@@ -334,9 +375,70 @@ export const OwnerSuppliersView = () => {
     const savedRates = supplier.product_rates || {};
     const initialRates = {};
     activeProducts.forEach(p => {
-      initialRates[p.id] = (savedRates[p.id] !== undefined && savedRates[p.id] !== null) ? savedRates[p.id] : '';
+      const ppu = Math.max(1, Number(p.pieces_per_unit || 1));
+      const opUnit = getOperationalUnit(p);
+      const raw = savedRates[p.id];
+      if (raw !== undefined && raw !== null && raw !== '') {
+        if (typeof raw === 'object') {
+          const t = raw.tray_rate !== undefined ? raw.tray_rate : (raw.rate || '');
+          const pRate = raw.piece_rate !== undefined ? raw.piece_rate : '';
+          initialRates[p.id] = {
+            tray_rate: t,
+            piece_rate: pRate !== '' ? pRate : (t && Number(t) > 0 && opUnit.isPieceBased ? (Number(t) / ppu).toFixed(2) : '')
+          };
+        } else {
+          const num = Number(raw);
+          initialRates[p.id] = {
+            tray_rate: raw,
+            piece_rate: num > 0 && opUnit.isPieceBased ? (num / ppu).toFixed(2) : ''
+          };
+        }
+      } else {
+        initialRates[p.id] = { tray_rate: '', piece_rate: '' };
+      }
     });
     setQuickRates(initialRates);
+  };
+
+  const handleTrayRateChange = (prod, val, isQuick = false) => {
+    const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
+    const opUnit = getOperationalUnit(prod);
+    const setter = isQuick ? setQuickRates : setProductRates;
+
+    setter(prev => {
+      const currentProd = prev[prod.id] || {};
+      const oldTray = typeof currentProd === 'object' ? currentProd.tray_rate : currentProd;
+      const oldPiece = typeof currentProd === 'object' ? currentProd.piece_rate : '';
+      
+      let autoPiece = oldPiece;
+      const oldAuto = oldTray && Number(oldTray) > 0 ? (Number(oldTray) / ppu).toFixed(2) : '';
+      if (opUnit.isPieceBased && (oldPiece === '' || oldPiece === oldAuto)) {
+        autoPiece = val && Number(val) > 0 ? (Number(val) / ppu).toFixed(2) : '';
+      }
+
+      return {
+        ...prev,
+        [prod.id]: {
+          tray_rate: val,
+          piece_rate: autoPiece
+        }
+      };
+    });
+  };
+
+  const handlePieceRateChange = (prod, val, isQuick = false) => {
+    const setter = isQuick ? setQuickRates : setProductRates;
+    setter(prev => {
+      const currentProd = prev[prod.id] || {};
+      const oldTray = typeof currentProd === 'object' ? currentProd.tray_rate : currentProd;
+      return {
+        ...prev,
+        [prod.id]: {
+          tray_rate: oldTray !== undefined ? oldTray : '',
+          piece_rate: val
+        }
+      };
+    });
   };
 
   const handleSaveQuickRates = async (e) => {
@@ -940,14 +1042,15 @@ export const OwnerSuppliersView = () => {
                       ) : (
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 max-h-48 overflow-y-auto pr-1">
                           {activeProducts.map(prod => {
-                            const rateVal = rates[prod.id];
-                            const hasRate = rateVal !== undefined && rateVal !== null && rateVal !== '' && Number(rateVal) > 0;
+                            const opUnit = getOperationalUnit(prod);
+                            const isTray = opUnit.isPieceBased;
+                            const ratesInfo = getProductConfiguredRates(rates, prod);
 
                             return (
                               <div 
                                 key={prod.id}
                                 className={`p-2 rounded-xl border transition-all text-xs ${
-                                  hasRate 
+                                  ratesInfo.hasRate 
                                     ? 'bg-white border-sky-300 shadow-2xs' 
                                     : 'bg-white/60 border-sky-200/70 text-sky-800/70'
                                 }`}
@@ -955,12 +1058,29 @@ export const OwnerSuppliersView = () => {
                                 <div className="font-extrabold text-[#002244] truncate text-[11px]" title={prod.display_name}>
                                   {prod.display_name}
                                 </div>
-                                <div className="flex items-center justify-between mt-1">
-                                  <span className="text-[10px] font-bold text-sky-700">{prod.selling_unit || 'Tray'}</span>
-                                  <span className={`font-black text-xs font-mono ${hasRate ? 'text-blue-800' : 'text-sky-700'}`}>
-                                    {hasRate ? `₹${Number(rateVal).toFixed(2)}` : '₹0.00'}
-                                  </span>
-                                </div>
+                                {isTray ? (
+                                  <div className="flex flex-col gap-0.5 mt-1">
+                                    <div className="flex items-center justify-between text-[10px]">
+                                      <span className="text-sky-700 font-bold">Tray:</span>
+                                      <span className={`font-black font-mono ${ratesInfo.trayRate > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
+                                        {ratesInfo.trayRate > 0 ? `₹${ratesInfo.trayRate.toFixed(2)}` : '₹0.00'}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[10px]">
+                                      <span className="text-indigo-700 font-bold">Piece:</span>
+                                      <span className={`font-black font-mono ${ratesInfo.pieceRate > 0 ? 'text-indigo-900' : 'text-slate-400'}`}>
+                                        {ratesInfo.pieceRate > 0 ? `₹${ratesInfo.pieceRate.toFixed(2)}` : '₹0.00'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between mt-1">
+                                    <span className="text-[10px] font-bold text-sky-700">{prod.selling_unit || 'Case'}</span>
+                                    <span className={`font-black text-xs font-mono ${ratesInfo.trayRate > 0 ? 'text-blue-900' : 'text-slate-400'}`}>
+                                      {ratesInfo.trayRate > 0 ? `₹${ratesInfo.trayRate.toFixed(2)}` : '₹0.00'}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -1049,31 +1169,41 @@ export const OwnerSuppliersView = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-sky-100 bg-white/70">
-                    {activeProducts.map(prod => (
-                      <tr key={prod.id} className="hover:bg-sky-50/70 transition-colors">
-                        <td className="p-3 font-black text-[#002244] sticky left-0 bg-white/90 z-10">
-                          {prod.display_name}
-                        </td>
-                        <td className="p-3 text-sky-800 font-bold">
-                          {prod.selling_unit || 'Tray'}
-                        </td>
-                        {suppliers.map(s => {
-                          const rateVal = s.product_rates?.[prod.id];
-                          const hasRate = rateVal !== undefined && rateVal !== null && rateVal !== '' && Number(rateVal) > 0;
-                          return (
-                            <td key={s.id} className="p-3 text-right font-mono font-bold">
-                              {hasRate ? (
-                                <span className="text-blue-900 font-black bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
-                                  ₹{Number(rateVal).toFixed(2)}
-                                </span>
-                              ) : (
-                                <span className="text-sky-700/60 font-medium">₹0.00</span>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
+                    {activeProducts.map(prod => {
+                      const opUnit = getOperationalUnit(prod);
+                      const isTray = opUnit.isPieceBased;
+                      return (
+                        <tr key={prod.id} className="hover:bg-sky-50/70 transition-colors">
+                          <td className="p-3 font-black text-[#002244] sticky left-0 bg-white/90 z-10">
+                            {prod.display_name}
+                          </td>
+                          <td className="p-3 text-sky-800 font-bold">
+                            {prod.selling_unit || 'Tray'}
+                          </td>
+                          {suppliers.map(s => {
+                            const ratesInfo = getProductConfiguredRates(s.product_rates, prod);
+                            return (
+                              <td key={s.id} className="p-3 text-right font-mono font-bold">
+                                {ratesInfo.hasRate ? (
+                                  <div className="flex flex-col items-end gap-0.5">
+                                    <span className="text-blue-900 font-black bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                                      ₹{ratesInfo.trayRate.toFixed(2)} {isTray ? '/Tray' : ''}
+                                    </span>
+                                    {isTray && ratesInfo.pieceRate > 0 && (
+                                      <span className="text-indigo-700 font-extrabold text-[10px]">
+                                        ₹{ratesInfo.pieceRate.toFixed(2)}/Pcs
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-sky-700/60 font-medium">₹0.00</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1171,10 +1301,10 @@ export const OwnerSuppliersView = () => {
                   <div>
                     <h4 className="text-xs font-black text-[#002244] uppercase tracking-wider flex items-center gap-1.5">
                       <DollarSign className="w-4 h-4 text-sky-600" />
-                      2. Product Buy Rates / கொள்முதல் விலை (₹ per Tray/Unit)
+                      2. Product Buy Rates / கொள்முதல் விலை (Tray & Piece Rates)
                     </h4>
                     <p className="text-[11px] text-sky-900/90 font-medium">
-                      Store Keeper stock receive பண்ணும்போது இந்த விலை தானாக apply ஆகும்.
+                      Store Keeper stock receive பண்ணும்போது Tray மற்றும் Piece-க்கு இந்த விலை தானாக apply ஆகும்.
                     </p>
                   </div>
                   <span className="text-[10px] font-black bg-white text-sky-800 px-2.5 py-1 rounded-lg border border-sky-200 shadow-2xs">
@@ -1182,42 +1312,84 @@ export const OwnerSuppliersView = () => {
                   </span>
                 </div>
 
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                   {activeProducts.length === 0 ? (
                     <p className="text-xs text-sky-700 text-center py-4">No active products available.</p>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {activeProducts.map(prod => (
-                        <div 
-                          key={prod.id}
-                          className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-sky-200 shadow-2xs gap-2"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-base shrink-0">{prod.icon || '🥛'}</span>
-                            <div className="truncate">
-                              <span className="font-extrabold text-xs text-[#002244] block truncate">
-                                {prod.display_name}
-                              </span>
-                              <span className="text-[11px] font-extrabold text-sky-950 tracking-wide block">
-                                Unit: {prod.selling_unit || 'Tray'}
-                              </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {activeProducts.map(prod => {
+                        const opUnit = getOperationalUnit(prod);
+                        const isTray = opUnit.isPieceBased;
+                        const currentVal = productRates[prod.id];
+                        const trayVal = typeof currentVal === 'object' ? (currentVal.tray_rate ?? '') : (currentVal ?? '');
+                        const pieceVal = typeof currentVal === 'object' ? (currentVal.piece_rate ?? '') : '';
+
+                        return (
+                          <div 
+                            key={prod.id}
+                            className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-2.5 rounded-2xl border border-sky-200 shadow-2xs gap-2"
+                          >
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <span className="text-base shrink-0">{prod.icon || '🥛'}</span>
+                              <div className="truncate">
+                                <span className="font-extrabold text-xs text-[#002244] block truncate">
+                                  {prod.display_name}
+                                </span>
+                                <span className="text-[10px] font-bold text-sky-700 block">
+                                  {prod.selling_unit || 'Tray'} ({prod.pieces_per_unit || 1} Pcs/Tray)
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0 justify-end">
+                              {isTray ? (
+                                <>
+                                  {/* Tray Rate Box */}
+                                  <div className="flex items-center gap-1 bg-sky-50 px-2 py-1 rounded-xl border border-sky-300">
+                                    <span className="text-[10px] font-extrabold text-sky-900">₹/Tray</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      placeholder="0"
+                                      value={trayVal}
+                                      onChange={(e) => handleTrayRateChange(prod, e.target.value)}
+                                      className="w-16 bg-white border border-sky-300 focus:border-sky-500 rounded px-1.5 py-0.5 text-right text-xs font-black text-blue-900 focus:outline-none"
+                                    />
+                                  </div>
+
+                                  {/* Piece Rate Box */}
+                                  <div className="flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-xl border border-indigo-200">
+                                    <span className="text-[10px] font-extrabold text-indigo-900">₹/Pcs</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      placeholder="0"
+                                      value={pieceVal}
+                                      onChange={(e) => handlePieceRateChange(prod, e.target.value)}
+                                      className="w-14 bg-white border border-indigo-300 focus:border-indigo-500 rounded px-1 py-0.5 text-right text-xs font-black text-indigo-900 focus:outline-none"
+                                    />
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="flex items-center gap-1 bg-sky-50 px-2.5 py-1 rounded-xl border border-sky-300">
+                                  <span className="text-[10px] font-extrabold text-sky-900">₹/{prod.selling_unit || 'Unit'}</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder="0"
+                                    value={trayVal}
+                                    onChange={(e) => handleTrayRateChange(prod, e.target.value)}
+                                    className="w-20 bg-white border border-sky-300 focus:border-sky-500 rounded px-1.5 py-0.5 text-right text-xs font-black text-blue-900 focus:outline-none"
+                                  />
+                                </div>
+                              )}
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-1 shrink-0">
-                            <span className="text-xs font-bold text-sky-700">₹</span>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              placeholder="0"
-                              value={productRates[prod.id] !== undefined ? productRates[prod.id] : ''}
-                              onChange={(e) => handleRateChange(prod.id, e.target.value)}
-                              className="w-20 bg-sky-50/50 border border-sky-300 focus:border-sky-500 rounded-lg px-2 py-1 text-right text-xs font-black text-blue-900 focus:outline-none"
-                            />
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1292,37 +1464,76 @@ export const OwnerSuppliersView = () => {
 
             <form onSubmit={handleSaveQuickRates} className="space-y-4">
               <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                {activeProducts.map(prod => (
-                  <div 
-                    key={prod.id}
-                    className="flex items-center justify-between bg-sky-50/70 p-2.5 rounded-xl border border-sky-200 gap-2"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-base">{prod.icon || '🥛'}</span>
-                      <div className="truncate">
-                        <span className="font-extrabold text-xs text-[#002244] block truncate">
-                          {prod.display_name}
-                        </span>
-                        <span className="text-[11px] font-extrabold text-sky-950 tracking-wide block">
-                          Unit: {prod.selling_unit || 'Tray'}
-                        </span>
+                {activeProducts.map(prod => {
+                  const opUnit = getOperationalUnit(prod);
+                  const isTray = opUnit.isPieceBased;
+                  const currentVal = quickRates[prod.id];
+                  const trayVal = typeof currentVal === 'object' ? (currentVal.tray_rate ?? '') : (currentVal ?? '');
+                  const pieceVal = typeof currentVal === 'object' ? (currentVal.piece_rate ?? '') : '';
+
+                  return (
+                    <div 
+                      key={prod.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between bg-sky-50/70 p-2.5 rounded-xl border border-sky-200 gap-2"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="text-base">{prod.icon || '🥛'}</span>
+                        <div className="truncate">
+                          <span className="font-extrabold text-xs text-[#002244] block truncate">
+                            {prod.display_name}
+                          </span>
+                          <span className="text-[10px] font-bold text-sky-700 block">
+                            {prod.selling_unit || 'Tray'} ({prod.pieces_per_unit || 1} Pcs)
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0 justify-end">
+                        {isTray ? (
+                          <>
+                            <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-sky-300">
+                              <span className="text-[10px] font-bold text-sky-800">₹/Tray</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0"
+                                value={trayVal}
+                                onChange={(e) => handleTrayRateChange(prod, e.target.value, true)}
+                                className="w-16 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5 text-right text-xs font-black text-blue-900 focus:outline-none"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-indigo-200">
+                              <span className="text-[10px] font-bold text-indigo-800">₹/Pcs</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0"
+                                value={pieceVal}
+                                onChange={(e) => handlePieceRateChange(prod, e.target.value, true)}
+                                className="w-14 bg-indigo-50/50 border border-indigo-200 rounded px-1 py-0.5 text-right text-xs font-black text-indigo-900 focus:outline-none"
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-sky-300">
+                            <span className="text-[10px] font-bold text-sky-800">₹/{prod.selling_unit || 'Case'}</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0"
+                              value={trayVal}
+                              onChange={(e) => handleTrayRateChange(prod, e.target.value, true)}
+                              className="w-20 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5 text-right text-xs font-black text-blue-900 focus:outline-none"
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-xs font-bold text-sky-700">₹</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0"
-                        value={quickRates[prod.id] !== undefined ? quickRates[prod.id] : ''}
-                        onChange={(e) => handleQuickRateChange(prod.id, e.target.value)}
-                        className="w-24 bg-white border border-sky-300 focus:border-sky-500 rounded-lg px-2 py-1.5 text-right text-xs font-black text-blue-900 focus:outline-none shadow-2xs"
-                      />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-sky-200">

@@ -90,30 +90,45 @@ export const StockReceiveModal = ({ onClose }) => {
     };
   };
 
-  // Get effective buy rate for a product strictly based on owner configured company rate
-  const getProductBuyRate = (prod) => {
+  // Get effective buy rates for a product strictly based on owner configured company rates
+  const getProductBuyRates = (prod) => {
+    if (!prod) return { trayRate: 0, pieceRate: 0 };
+    const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
+    const opUnit = getOperationalUnit(prod);
+
     if (customRates[prod.id] !== undefined && customRates[prod.id] !== '') {
-      return Number(customRates[prod.id]);
+      const num = Number(customRates[prod.id]);
+      const p = num > 0 && opUnit.isPieceBased ? parseFloat((num / ppu).toFixed(2)) : 0;
+      return { trayRate: num, pieceRate: p };
     }
+
     if (currentSupplier) {
       const companyRates = currentSupplier.product_rates || {};
       const rateVal = companyRates[prod.id];
-      if (rateVal !== undefined && rateVal !== null && rateVal !== '' && !isNaN(Number(rateVal))) {
-        return Number(rateVal);
+      if (rateVal !== undefined && rateVal !== null && rateVal !== '') {
+        if (typeof rateVal === 'object') {
+          const t = Number(rateVal.tray_rate !== undefined ? rateVal.tray_rate : (rateVal.rate || 0));
+          const p = rateVal.piece_rate !== undefined && rateVal.piece_rate !== '' && !isNaN(Number(rateVal.piece_rate))
+            ? Number(rateVal.piece_rate)
+            : (t > 0 && opUnit.isPieceBased ? parseFloat((t / ppu).toFixed(2)) : 0);
+          return { trayRate: t, pieceRate: p };
+        }
+        const num = Number(rateVal);
+        const p = num > 0 && opUnit.isPieceBased ? parseFloat((num / ppu).toFixed(2)) : 0;
+        return { trayRate: num, pieceRate: p };
       }
-      return 0;
     }
-    return 0;
+    return { trayRate: 0, pieceRate: 0 };
   };
 
   // Handlers for Tray & Piece inputs (Milk, Curd, Butter Milk)
   const handleTrayChange = (prod, val) => {
     const clean = String(val ?? '').replace(/[^\d]/g, '');
     const numTrays = clean === '' ? '' : parseInt(clean, 10);
-    const rate = getProductBuyRate(prod);
+    const { trayRate } = getProductBuyRates(prod);
 
-    if (numTrays > 0 && rate <= 0) {
-      toast.warning(`Buy Rate is not assigned for "${prod.display_name}". Please set rate in Owner Login.`, { id: `rate-warn-${prod.id}`, duration: 4000 });
+    if (numTrays > 0 && trayRate <= 0) {
+      toast.warning(`Tray Buy Rate is not assigned for "${prod.display_name}". Please set rate in Owner Login.`, { id: `rate-warn-${prod.id}`, duration: 4000 });
     }
 
     setAllocations(prev => {
@@ -138,10 +153,10 @@ export const StockReceiveModal = ({ onClose }) => {
   const handlePieceChange = (prod, val) => {
     const clean = String(val ?? '').replace(/[^\d]/g, '');
     const numPieces = clean === '' ? '' : parseInt(clean, 10);
-    const rate = getProductBuyRate(prod);
+    const { pieceRate } = getProductBuyRates(prod);
 
-    if (numPieces > 0 && rate <= 0) {
-      toast.warning(`Buy Rate is not assigned for "${prod.display_name}". Please set rate in Owner Login.`, { id: `rate-warn-${prod.id}`, duration: 4000 });
+    if (numPieces > 0 && pieceRate <= 0) {
+      toast.warning(`Piece Buy Rate is not assigned for "${prod.display_name}". Please set rate in Owner Login.`, { id: `rate-warn-${prod.id}`, duration: 4000 });
     }
 
     setAllocations(prev => {
@@ -167,9 +182,9 @@ export const StockReceiveModal = ({ onClose }) => {
   const handleSingleQtyChange = (prod, val) => {
     const clean = String(val ?? '').replace(/[^\d]/g, '');
     const num = clean === '' ? '' : parseInt(clean, 10);
-    const rate = getProductBuyRate(prod);
+    const { trayRate } = getProductBuyRates(prod);
 
-    if (num > 0 && rate <= 0) {
+    if (num > 0 && trayRate <= 0) {
       toast.warning(`Buy Rate is not assigned for "${prod.display_name}". Please set rate in Owner Login.`, { id: `rate-warn-${prod.id}`, duration: 4000 });
     }
 
@@ -186,7 +201,7 @@ export const StockReceiveModal = ({ onClose }) => {
     });
   };
 
-  // Totals calculations
+  // Totals calculations: (Tray Count * Tray Rate) + (Piece Count * Piece Rate)
   const { totalItemsCount, totalPurchaseAmount, hasMissingRates } = useMemo(() => {
     let count = 0;
     let amount = 0;
@@ -196,7 +211,7 @@ export const StockReceiveModal = ({ onClose }) => {
       const opUnit = getOperationalUnit(prod);
       const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
       const alloc = allocations[prod.id] || {};
-      const rate = getProductBuyRate(prod);
+      const { trayRate, pieceRate } = getProductBuyRates(prod);
 
       if (opUnit.isPieceBased) {
         const t = Number(alloc.trays || 0);
@@ -205,15 +220,16 @@ export const StockReceiveModal = ({ onClose }) => {
         if (totalPcs > 0) {
           const qtyInSellingUnits = totalPcs / ppu;
           count += qtyInSellingUnits;
-          if (rate <= 0) missing = true;
-          amount += (qtyInSellingUnits * rate);
+          if (t > 0 && trayRate <= 0) missing = true;
+          if (p > 0 && pieceRate <= 0) missing = true;
+          amount += (t * trayRate) + (p * pieceRate);
         }
       } else {
         const q = Number(alloc.qty || 0);
         if (q > 0) {
           count += q;
-          if (rate <= 0) missing = true;
-          amount += (q * rate);
+          if (trayRate <= 0) missing = true;
+          amount += (q * trayRate);
         }
       }
     });
@@ -243,7 +259,7 @@ export const StockReceiveModal = ({ onClose }) => {
       if (!prod) continue;
       const opUnit = getOperationalUnit(prod);
       const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
-      const rate = getProductBuyRate(prod);
+      const { trayRate, pieceRate } = getProductBuyRates(prod);
 
       if (opUnit.isPieceBased) {
         const numTrays = Number(alloc?.trays || 0);
@@ -251,13 +267,15 @@ export const StockReceiveModal = ({ onClose }) => {
         const totalPcs = (numTrays * ppu) + numPieces;
         if (totalPcs > 0) {
           const qtyInSellingUnits = parseFloat((totalPcs / ppu).toFixed(4));
+          const itemTotal = (numTrays * trayRate) + (numPieces * pieceRate);
           items.push({
             product_id: pid,
             product_name: prod.display_name,
             quantity: qtyInSellingUnits,
             unit: prod.selling_unit || 'Tray',
-            rate: rate,
-            total_amount: qtyInSellingUnits * rate,
+            rate: trayRate,
+            piece_rate: pieceRate,
+            total_amount: itemTotal,
             inward_trays: numTrays,
             inward_pieces: numPieces,
             total_pieces: totalPcs
@@ -271,8 +289,9 @@ export const StockReceiveModal = ({ onClose }) => {
             product_name: prod.display_name,
             quantity: qty,
             unit: prod.selling_unit || 'Case',
-            rate: rate,
-            total_amount: qty * rate,
+            rate: trayRate,
+            piece_rate: 0,
+            total_amount: qty * trayRate,
             inward_trays: 0,
             inward_pieces: qty * ppu,
             total_pieces: qty * ppu
@@ -287,7 +306,7 @@ export const StockReceiveModal = ({ onClose }) => {
     }
 
     // STRICT VALIDATION: Block submission if any product with quantity > 0 has no buy rate assigned
-    const unratedItems = items.filter(i => !i.rate || Number(i.rate) <= 0);
+    const unratedItems = items.filter(i => (!i.rate || Number(i.rate) <= 0) && (!i.piece_rate || Number(i.piece_rate) <= 0));
     if (unratedItems.length > 0) {
       const names = unratedItems.map(i => i.product_name).join(', ');
       toast.error(`Cannot receive stock! Buy Rate is not assigned for: "${names}". Please assign Buy Rate in Owner Login.`, { duration: 6000 });
@@ -396,7 +415,7 @@ export const StockReceiveModal = ({ onClose }) => {
                 const isTrayBased = opUnit.isPieceBased; // Milk, Curd, Butter Milk
                 const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
                 const whStock = formatWarehouseStock(prod);
-                const rate = getProductBuyRate(prod);
+                const { trayRate, pieceRate } = getProductBuyRates(prod);
 
                 const alloc = allocations[prod.id] || {};
                 const currentTrays = alloc.trays !== undefined ? alloc.trays : '';
@@ -407,13 +426,13 @@ export const StockReceiveModal = ({ onClose }) => {
                   ? (Number(currentTrays || 0) > 0 || Number(currentPieces || 0) > 0)
                   : Number(currentQty || 0) > 0;
 
-                const itemPieces = isTrayBased 
-                  ? ((Number(currentTrays || 0) * ppu) + Number(currentPieces || 0))
-                  : (Number(currentQty || 0) * ppu);
-                
-                const itemUnits = isTrayBased ? (itemPieces / ppu) : Number(currentQty || 0);
-                const itemTotal = itemUnits * rate;
-                const isUnassignedWithQty = isAllocated && rate <= 0;
+                const itemTotal = isTrayBased
+                  ? ((Number(currentTrays || 0) * trayRate) + (Number(currentPieces || 0) * pieceRate))
+                  : (Number(currentQty || 0) * trayRate);
+
+                const isUnassignedWithQty = isTrayBased 
+                  ? ((Number(currentTrays || 0) > 0 && trayRate <= 0) || (Number(currentPieces || 0) > 0 && pieceRate <= 0))
+                  : (Number(currentQty || 0) > 0 && trayRate <= 0);
 
                 return (
                   <div 
@@ -440,15 +459,27 @@ export const StockReceiveModal = ({ onClose }) => {
                         </span>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 font-mono mt-1">
                           <span className="font-bold text-slate-600">{whStock.text}</span>
-                          <span className={`font-black px-2 py-0.5 rounded-lg text-xs border ${
-                            rate > 0 
-                              ? 'text-sky-900 bg-sky-100/80 border-sky-300' 
-                              : isUnassignedWithQty
-                                ? 'text-rose-700 bg-rose-100 border-rose-300'
-                                : 'text-slate-400 bg-slate-100 border-slate-200'
-                          }`}>
-                            {rate > 0 ? `Buy Rate: ₹${rate.toFixed(2)}` : '⚠️ Buy Rate Not Set (₹0.00)'}
-                          </span>
+                          {isTrayBased ? (
+                            <span className={`font-black px-2 py-0.5 rounded-lg text-xs border ${
+                              trayRate > 0 || pieceRate > 0
+                                ? 'text-sky-900 bg-sky-100/80 border-sky-300' 
+                                : isUnassignedWithQty
+                                  ? 'text-rose-700 bg-rose-100 border-rose-300'
+                                  : 'text-slate-400 bg-slate-100 border-slate-200'
+                            }`}>
+                              {trayRate > 0 || pieceRate > 0 ? `Tray: ₹${trayRate.toFixed(2)} | Pcs: ₹${pieceRate.toFixed(2)}` : '⚠️ Buy Rate Not Set'}
+                            </span>
+                          ) : (
+                            <span className={`font-black px-2 py-0.5 rounded-lg text-xs border ${
+                              trayRate > 0 
+                                ? 'text-sky-900 bg-sky-100/80 border-sky-300' 
+                                : isUnassignedWithQty
+                                  ? 'text-rose-700 bg-rose-100 border-rose-300'
+                                  : 'text-slate-400 bg-slate-100 border-slate-200'
+                            }`}>
+                              {trayRate > 0 ? `Buy Rate: ₹${trayRate.toFixed(2)}` : '⚠️ Buy Rate Not Set (₹0.00)'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -459,8 +490,8 @@ export const StockReceiveModal = ({ onClose }) => {
                       {isAllocated && (
                         <div className="text-right">
                           <span className="text-[10px] sm:text-xs font-bold text-slate-400 block">Total:</span>
-                          <span className={`text-xs sm:text-sm lg:text-base font-black font-mono ${rate > 0 ? 'text-sky-900' : 'text-rose-600'}`}>
-                            {rate > 0 ? `₹${itemTotal.toFixed(2)}` : 'Rate Required'}
+                          <span className={`text-xs sm:text-sm lg:text-base font-black font-mono ${!isUnassignedWithQty ? 'text-sky-900' : 'text-rose-600'}`}>
+                            {!isUnassignedWithQty ? `₹${itemTotal.toFixed(2)}` : 'Rate Required'}
                           </span>
                         </div>
                       )}
