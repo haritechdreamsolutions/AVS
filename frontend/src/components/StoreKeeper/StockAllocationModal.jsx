@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useApp, apiFetch, API_URL } from '../../context/AppContext';
-import { ArrowUpRight, X, Save, User, Truck, ShieldAlert, CheckCircle2, Minus, Plus } from 'lucide-react';
+import { ArrowUpRight, X, Save, User, Truck, ShieldAlert, CheckCircle2, Minus, Plus, Package, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { ProductImage } from '../common/ProductImage';
 import { resolveProductImageUrl } from '../../utils/productImageHelper';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
+import { getOperationalUnit } from '../../utils/unitHelper';
 
 export const StockAllocationModal = ({ onClose }) => {
   const { products = [], employees = [], drivers: contextDrivers = [], allocateStock, fetchWarehouseStock } = useApp();
   const [employeeId, setEmployeeId] = useState('');
-  const [allocations, setAllocations] = useState({});
+  const [allocations, setAllocations] = useState({}); // { [prodId]: { trays: number|'', pieces: number|'', qty: number|'' } }
   const [saving, setSaving] = useState(false);
 
   const [directDrivers, setDirectDrivers] = useState(null);
@@ -43,46 +44,149 @@ export const StockAllocationModal = ({ onClose }) => {
 
   const selectedDriver = drivers.find(d => String(d.id) === String(employeeId) || String(d.employee_id) === String(employeeId));
 
-  const handleQtyChange = (prod, val) => {
-    const whUnits = Math.max(0, Number(prod.warehouse_stock_units || 0));
-    const unitName = prod.selling_unit || 'Tray';
-
-    if (val === '' || val === null || val === undefined) {
-      setAllocations(prev => {
-        const next = { ...prev };
-        delete next[prod.id];
-        return next;
-      });
-      return;
+  // Helper: Format warehouse stock into Tray & Loose Pieces or Standard Units
+  const formatWarehouseStock = (prod) => {
+    const opUnit = getOperationalUnit(prod);
+    const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
+    const totalPieces = Math.round(Number(prod.warehouse_stock_units || 0) * ppu);
+    
+    if (totalPieces <= 0) {
+      return {
+        text: `Warehouse: 0 ${prod.selling_unit || 'Tray'} (0 Pcs)`,
+        isOutOfStock: true,
+        totalPieces: 0,
+        trays: 0,
+        pieces: 0,
+        units: 0
+      };
     }
 
-    const clean = String(val).replace(/[^\d]/g, '');
-    if (clean === '') {
-      setAllocations(prev => {
-        const next = { ...prev };
-        delete next[prod.id];
-        return next;
-      });
-      return;
+    if (opUnit.isPieceBased) {
+      const trays = Math.floor(totalPieces / ppu);
+      const loosePcs = totalPieces % ppu;
+      let text = '';
+      if (trays > 0 && loosePcs > 0) {
+        text = `Warehouse: ${trays} Tray ${loosePcs} Pcs (${totalPieces} Pcs)`;
+      } else if (trays > 0) {
+        text = `Warehouse: ${trays} Tray (${totalPieces} Pcs)`;
+      } else {
+        text = `Warehouse: ${loosePcs} Pcs (${totalPieces} Pcs)`;
+      }
+      return {
+        text,
+        isOutOfStock: false,
+        totalPieces,
+        trays,
+        pieces: loosePcs,
+        units: trays
+      };
     }
 
-    let num = parseInt(clean, 10);
-    if (isNaN(num) || num < 0) {
-      num = 0;
-    }
+    // Non-tray items (Case, Box, Bottle, etc.)
+    const whUnits = Number(prod.warehouse_stock_units || 0);
+    return {
+      text: `Warehouse: ${whUnits} ${prod.selling_unit || 'Case'} (${totalPieces} Pcs)`,
+      isOutOfStock: whUnits <= 0,
+      totalPieces,
+      units: whUnits
+    };
+  };
 
-    if (num > whUnits) {
-      num = whUnits;
-      toast.warning(`Maximum available quantity for ${prod.display_name} is ${whUnits} ${unitName}.`);
+  // Handlers for Tray & Piece inputs (Milk, Curd, Butter Milk)
+  const handleTrayChange = (prod, val) => {
+    const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
+    const whStock = formatWarehouseStock(prod);
+    const clean = String(val ?? '').replace(/[^\d]/g, '');
+    const currentPieces = Number(allocations[prod.id]?.pieces || 0);
+    let numTrays = clean === '' ? '' : parseInt(clean, 10);
+    
+    if (numTrays !== '' && !isNaN(numTrays)) {
+      const proposedTotalPcs = (numTrays * ppu) + currentPieces;
+      if (proposedTotalPcs > whStock.totalPieces) {
+        const maxPossibleTrays = Math.floor((whStock.totalPieces - currentPieces) / ppu);
+        numTrays = Math.max(0, maxPossibleTrays);
+        toast.warning(`Maximum available stock for ${prod.display_name} is ${whStock.totalPieces} Pcs.`);
+      }
     }
-
+    
     setAllocations(prev => {
-      if (num <= 0) {
+      const prevProd = prev[prod.id] || {};
+      const next = {
+        ...prev,
+        [prod.id]: {
+          ...prevProd,
+          trays: numTrays,
+          pieces: prevProd.pieces !== undefined ? prevProd.pieces : ''
+        }
+      };
+      const t = next[prod.id].trays;
+      const p = next[prod.id].pieces;
+      if ((t === '' || t === 0) && (p === '' || p === 0)) {
+        delete next[prod.id];
+      }
+      return next;
+    });
+  };
+
+  const handlePieceChange = (prod, val) => {
+    const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
+    const whStock = formatWarehouseStock(prod);
+    const clean = String(val ?? '').replace(/[^\d]/g, '');
+    const currentTrays = Number(allocations[prod.id]?.trays || 0);
+    let numPieces = clean === '' ? '' : parseInt(clean, 10);
+    
+    if (numPieces !== '' && !isNaN(numPieces)) {
+      const proposedTotalPcs = (currentTrays * ppu) + numPieces;
+      if (proposedTotalPcs > whStock.totalPieces) {
+        const maxPossiblePcs = Math.max(0, whStock.totalPieces - (currentTrays * ppu));
+        numPieces = maxPossiblePcs;
+        toast.warning(`Maximum available stock for ${prod.display_name} is ${whStock.totalPieces} Pcs.`);
+      }
+    }
+    
+    setAllocations(prev => {
+      const prevProd = prev[prod.id] || {};
+      const next = {
+        ...prev,
+        [prod.id]: {
+          ...prevProd,
+          trays: prevProd.trays !== undefined ? prevProd.trays : '',
+          pieces: numPieces
+        }
+      };
+      const t = next[prod.id].trays;
+      const p = next[prod.id].pieces;
+      if ((t === '' || t === 0) && (p === '' || p === 0)) {
+        delete next[prod.id];
+      }
+      return next;
+    });
+  };
+
+  // Handler for Single Unit Input (Non-Tray items like Case, Box, Bottle)
+  const handleSingleQtyChange = (prod, val) => {
+    const whUnits = Math.max(0, Number(prod.warehouse_stock_units || 0));
+    const unitName = prod.selling_unit || 'Case';
+    const clean = String(val ?? '').replace(/[^\d]/g, '');
+    let num = clean === '' ? '' : parseInt(clean, 10);
+    
+    if (num !== '' && !isNaN(num)) {
+      if (num > whUnits) {
+        num = whUnits;
+        toast.warning(`Maximum available quantity for ${prod.display_name} is ${whUnits} ${unitName}.`);
+      }
+    }
+    
+    setAllocations(prev => {
+      if (num === '' || num === 0) {
         const next = { ...prev };
         delete next[prod.id];
         return next;
       }
-      return { ...prev, [prod.id]: num };
+      return {
+        ...prev,
+        [prod.id]: { qty: num }
+      };
     });
   };
 
@@ -93,16 +197,43 @@ export const StockAllocationModal = ({ onClose }) => {
       return;
     }
 
-    const items = Object.entries(allocations)
-      .filter(([_, q]) => Number(q) > 0)
-      .map(([pid, q]) => {
-        const prod = products.find(p => p.id === Number(pid));
-        return {
-          product_id: Number(pid),
-          quantity: Number(q),
-          unit: prod ? (prod.selling_unit || 'Tray') : 'Tray'
-        };
-      });
+    const items = [];
+    for (const [pidStr, alloc] of Object.entries(allocations)) {
+      const pid = Number(pidStr);
+      const prod = products.find(p => p.id === pid);
+      if (!prod) continue;
+      const opUnit = getOperationalUnit(prod);
+      const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
+
+      if (opUnit.isPieceBased) {
+        const numTrays = Number(alloc?.trays || 0);
+        const numPieces = Number(alloc?.pieces || 0);
+        const totalPcs = (numTrays * ppu) + numPieces;
+        if (totalPcs > 0) {
+          const qtyInSellingUnits = parseFloat((totalPcs / ppu).toFixed(4));
+          items.push({
+            product_id: pid,
+            quantity: qtyInSellingUnits,
+            unit: prod.selling_unit || 'Tray',
+            allocated_trays: numTrays,
+            allocated_pieces: numPieces,
+            total_pieces: totalPcs
+          });
+        }
+      } else {
+        const qty = Number(alloc?.qty || 0);
+        if (qty > 0) {
+          items.push({
+            product_id: pid,
+            quantity: qty,
+            unit: prod.selling_unit || 'Case',
+            allocated_trays: 0,
+            allocated_pieces: qty * ppu,
+            total_pieces: qty * ppu
+          });
+        }
+      }
+    }
 
     if (items.length === 0) {
       toast.error('Please enter allocation quantity for at least 1 product');
@@ -118,7 +249,7 @@ export const StockAllocationModal = ({ onClose }) => {
         toast.error(`Quantity for "${p?.display_name || 'Product'}" must be greater than 0`);
         return;
       }
-      if (it.quantity > available) {
+      if (it.quantity > available + 0.0001) {
         toast.error(`Maximum available quantity for ${p?.display_name || 'Product'} is ${available} ${unitName}. Cannot allocate ${it.quantity} ${unitName}.`);
         return;
       }
@@ -155,30 +286,46 @@ export const StockAllocationModal = ({ onClose }) => {
   // Only products with active status sorted by custom business order
   const availableProducts = sortProductsCustom((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
 
-  const totalAllocatedItems = Object.values(allocations).reduce((acc, q) => acc + (q > 0 ? q : 0), 0);
+  // Compute total allocated items for validation and counter
+  const totalAllocatedItems = Object.entries(allocations).reduce((acc, [pidStr, alloc]) => {
+    const prod = products.find(p => p.id === Number(pidStr));
+    const opUnit = getOperationalUnit(prod);
+    if (opUnit.isPieceBased) {
+      const t = Number(alloc?.trays || 0);
+      const pcs = Number(alloc?.pieces || 0);
+      return acc + (t > 0 || pcs > 0 ? 1 : 0);
+    }
+    return acc + (Number(alloc?.qty || 0) > 0 ? 1 : 0);
+  }, 0);
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-4 sm:p-5 space-y-4 shadow-2xl max-h-[92dvh] overflow-y-auto my-auto">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      {/* Light Blue Themed Container */}
+      <div className="bg-gradient-to-b from-sky-50 via-white to-sky-50/80 border border-sky-200 rounded-3xl max-w-2xl w-full p-4 sm:p-6 space-y-4 shadow-2xl max-h-[94dvh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="flex items-center justify-between border-b border-sky-100 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center shadow-sm">
-              <ArrowUpRight className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-2xl bg-sky-600 text-white flex items-center justify-center shadow-md shadow-sky-200">
+              <ArrowUpRight className="w-5 h-5 stroke-[2.5]" />
             </div>
             <div>
-              <h3 className="font-black text-sm text-slate-900 tracking-tight">
+              <h3 className="font-black text-sm sm:text-base text-slate-900 tracking-tight flex items-center gap-1.5">
                 Stock Allocate Driver
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-extrabold border border-sky-200 uppercase">
+                  POS
+                </span>
               </h3>
-              <p className="text-[10px] text-indigo-600 font-extrabold uppercase tracking-widest">
-                WAREHOUSE ➔ DRIVER VEHICLE
+              <p className="text-[10px] text-sky-700 font-extrabold uppercase tracking-widest flex items-center gap-1">
+                <span>WAREHOUSE</span>
+                <span>➔</span>
+                <span>DRIVER VEHICLE</span>
               </p>
             </div>
           </div>
           <button 
             onClick={onClose} 
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-sky-100/80 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -186,12 +333,12 @@ export const StockAllocationModal = ({ onClose }) => {
 
         {/* Driver Selection */}
         <div className="space-y-1.5">
-          <label className="text-xs font-black text-slate-600 uppercase flex items-center gap-1.5">
-            <User className="w-3.5 h-3.5 text-indigo-600" />
+          <label className="text-xs font-black text-slate-700 uppercase flex items-center gap-1.5">
+            <User className="w-3.5 h-3.5 text-sky-600" />
             SELECT DRIVER / EMPLOYEE *
           </label>
           {drivers.length === 0 ? (
-            <div className="text-xs text-amber-700 bg-amber-50/80 p-3 rounded-2xl border border-amber-200 font-bold flex items-start gap-2">
+            <div className="text-xs text-amber-800 bg-amber-50/90 p-3 rounded-2xl border border-amber-200 font-bold flex items-start gap-2">
               <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <span>No active Driver users found. Create an active Driver from <strong>Owner → Users Master</strong>.</span>
             </div>
@@ -199,7 +346,7 @@ export const StockAllocationModal = ({ onClose }) => {
             <select
               value={employeeId}
               onChange={(e) => setEmployeeId(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 hover:border-indigo-400 focus:border-indigo-600 rounded-2xl px-3.5 py-2.5 text-xs font-black text-slate-900 focus:outline-none transition-all"
+              className="w-full bg-white border border-sky-200 hover:border-sky-400 focus:border-sky-600 rounded-2xl px-3.5 py-2.5 text-xs font-black text-slate-900 focus:outline-none transition-all shadow-2xs cursor-pointer"
             >
               <option value="">-- Select Driver --</option>
               {drivers.map(emp => (
@@ -213,60 +360,74 @@ export const StockAllocationModal = ({ onClose }) => {
 
         {/* Selected Driver Summary (Only shown after driver is selected) */}
         {selectedDriver && (
-          <div className="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-3 grid grid-cols-3 gap-2 text-center animate-fadeIn">
+          <div className="bg-sky-100/70 border border-sky-200/90 rounded-2xl p-3 grid grid-cols-3 gap-2 text-center animate-fadeIn shadow-2xs">
             <div>
-              <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">DRIVER</span>
+              <span className="text-[10px] text-sky-700 font-extrabold uppercase tracking-wider block">DRIVER</span>
               <span className="font-black text-xs text-slate-900 truncate block">{selectedDriver.full_name}</span>
             </div>
             <div>
-              <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">EMPLOYEE CODE</span>
-              <span className="font-mono font-bold text-xs text-slate-700 block">{selectedDriver.employee_code || `EMP-${selectedDriver.id}`}</span>
+              <span className="text-[10px] text-sky-700 font-extrabold uppercase tracking-wider block">EMPLOYEE CODE</span>
+              <span className="font-mono font-bold text-xs text-slate-800 block">{selectedDriver.employee_code || `EMP-${selectedDriver.id}`}</span>
             </div>
             <div>
-              <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">VEHICLE</span>
-              <span className="font-mono font-black text-xs text-indigo-700 block">{selectedDriver.vehicle_number || 'TN32S2002'}</span>
+              <span className="text-[10px] text-sky-700 font-extrabold uppercase tracking-wider block">VEHICLE</span>
+              <span className="font-mono font-black text-xs text-sky-900 block">{selectedDriver.vehicle_number || 'TN32S2002'}</span>
             </div>
           </div>
         )}
 
         {/* Current Warehouse Stock Section */}
         {!selectedDriver ? (
-          <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-6 text-center text-xs text-slate-400 font-bold space-y-1">
-            <Truck className="w-6 h-6 mx-auto text-slate-300 mb-1" />
-            <p className="text-slate-600 font-extrabold">Select a driver to view available warehouse stock.</p>
+          <div className="bg-white/80 border border-dashed border-sky-200 rounded-2xl p-6 text-center text-xs text-slate-400 font-bold space-y-1">
+            <Truck className="w-7 h-7 mx-auto text-sky-400 mb-1" />
+            <p className="text-slate-700 font-extrabold">Select a driver to view available warehouse stock.</p>
             <p className="text-[11px] text-slate-400">Warehouse stock inputs will be enabled once a driver is chosen.</p>
           </div>
         ) : (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-black text-slate-600 uppercase flex items-center gap-1.5">
-                <Truck className="w-3.5 h-3.5 text-indigo-600" />
+              <label className="text-xs font-black text-slate-700 uppercase flex items-center gap-1.5">
+                <Truck className="w-3.5 h-3.5 text-sky-600" />
                 CURRENT WAREHOUSE STOCK
               </label>
-              <span className="text-[11px] font-bold text-slate-400">
+              <span className="text-[11px] font-extrabold text-sky-800 bg-sky-100/80 px-2 py-0.5 rounded-full border border-sky-200">
                 {availableProducts.length} Product{availableProducts.length !== 1 ? 's' : ''}
               </span>
             </div>
             
-            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-64 sm:max-h-72 overflow-y-auto pr-1">
               {availableProducts.length === 0 ? (
                 <p className="text-xs text-slate-400 text-center py-6">No products available in database.</p>
               ) : (
                 availableProducts.map(prod => {
-                  const whUnits = Number(prod.warehouse_stock_units || 0);
-                  const isOutOfStock = whUnits <= 0;
-                  const currentAlloc = allocations[prod.id] || '';
+                  const opUnit = getOperationalUnit(prod);
+                  const isTrayBased = opUnit.isPieceBased; // Milk, Curd, Butter Milk
+                  const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
+                  const whStock = formatWarehouseStock(prod);
+                  const isOutOfStock = whStock.isOutOfStock;
+
+                  const alloc = allocations[prod.id] || {};
+                  const currentTrays = alloc.trays !== undefined ? alloc.trays : '';
+                  const currentPieces = alloc.pieces !== undefined ? alloc.pieces : '';
+                  const currentQty = alloc.qty !== undefined ? alloc.qty : '';
+
+                  const isAllocated = isTrayBased 
+                    ? (Number(currentTrays || 0) > 0 || Number(currentPieces || 0) > 0)
+                    : Number(currentQty || 0) > 0;
 
                   return (
                     <div 
                       key={prod.id} 
-                      className={`flex justify-between items-center p-3 rounded-2xl border text-xs gap-3 transition-all ${
+                      className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-2xl border text-xs gap-3 transition-all ${
                         isOutOfStock 
-                          ? 'bg-slate-50/50 border-slate-200 opacity-60' 
-                          : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                          ? 'bg-slate-50/60 border-slate-200 opacity-60' 
+                          : isAllocated 
+                            ? 'bg-sky-50 border-sky-400 shadow-xs'
+                            : 'bg-white border-sky-100 hover:border-sky-300'
                       }`}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
+                      {/* Left: Product Info & Formatted Stock */}
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <ProductImage 
                           src={resolveProductImageUrl(prod)} 
                           alt={prod.display_name} 
@@ -274,52 +435,138 @@ export const StockAllocationModal = ({ onClose }) => {
                           icon={prod.icon || '📦'} 
                         />
                         <div className="truncate">
-                          <span className="font-black text-slate-900 block truncate text-xs">{prod.display_name}</span>
-                          <span className={`text-[10px] font-mono block ${whUnits > 0 ? 'text-slate-500 font-bold' : 'text-rose-500 font-black'}`}>
-                            Warehouse: {whUnits} {prod.selling_unit || 'Tray'} ({Math.round(whUnits * (prod.pieces_per_unit || 1))} Pcs)
+                          <span className="font-black text-slate-900 block truncate text-xs">
+                            {prod.display_name}
+                          </span>
+                          <span className={`text-[10px] font-mono block ${!isOutOfStock ? 'text-sky-800 font-bold' : 'text-rose-500 font-black'}`}>
+                            {whStock.text}
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1 font-mono shrink-0">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase hidden sm:inline mr-0.5">Allocate</span>
-                        <button
-                          type="button"
-                          disabled={isOutOfStock || !currentAlloc || Number(currentAlloc) <= 0}
-                          onClick={() => handleQtyChange(prod, (Number(currentAlloc) || 0) - 1)}
-                          className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <input
-                          type="number"
-                          min="0"
-                          max={whUnits}
-                          disabled={isOutOfStock}
-                          value={currentAlloc}
-                          placeholder="0"
-                          onKeyDown={(e) => {
-                            if (['-', '+', 'e', 'E', '.'].includes(e.key)) {
-                              e.preventDefault();
-                            }
-                          }}
-                          onPaste={(e) => {
-                            e.preventDefault();
-                            const pasted = e.clipboardData.getData('text');
-                            handleQtyChange(prod, pasted);
-                          }}
-                          onChange={(e) => handleQtyChange(prod, e.target.value)}
-                          className="w-14 bg-white border border-slate-300 rounded-xl px-1.5 py-1 text-center text-slate-900 font-black text-xs focus:outline-none focus:border-indigo-600 disabled:bg-slate-100 disabled:cursor-not-allowed"
-                        />
-                        <button
-                          type="button"
-                          disabled={isOutOfStock || Number(currentAlloc) >= whUnits}
-                          onClick={() => handleQtyChange(prod, (Number(currentAlloc) || 0) + 1)}
-                          className="w-6 h-6 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                        <span className="text-slate-600 font-extrabold text-[11px] min-w-10 ml-0.5">{prod.selling_unit || 'Tray'}</span>
+                      {/* Right: Allocation Input Controls */}
+                      <div className="flex items-center justify-end gap-2 shrink-0">
+                        {isTrayBased ? (
+                          /* DUAL INPUT CONTROLS: 1st Box = Tray, 2nd Box = Pieces */
+                          <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
+                            
+                            {/* Box 1: Tray Count */}
+                            <div className="flex items-center gap-1 bg-sky-50/80 p-1 rounded-xl border border-sky-200">
+                              <span className="text-[9px] font-black text-sky-800 uppercase px-1">TRAY</span>
+                              <button
+                                type="button"
+                                disabled={isOutOfStock || !currentTrays || Number(currentTrays) <= 0}
+                                onClick={() => handleTrayChange(prod, (Number(currentTrays) || 0) - 1)}
+                                className="w-5 h-5 rounded-md bg-white hover:bg-sky-100 text-slate-700 flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                              >
+                                <Minus className="w-2.5 h-2.5" />
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                max={whStock.trays}
+                                disabled={isOutOfStock}
+                                value={currentTrays}
+                                placeholder="0"
+                                onKeyDown={(e) => {
+                                  if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault();
+                                }}
+                                onPaste={(e) => {
+                                  e.preventDefault();
+                                  handleTrayChange(prod, e.clipboardData.getData('text'));
+                                }}
+                                onChange={(e) => handleTrayChange(prod, e.target.value)}
+                                className="w-11 bg-white border border-sky-300 rounded-lg px-1 py-0.5 text-center text-slate-900 font-black font-mono text-xs focus:outline-none focus:border-sky-600 disabled:bg-slate-100 disabled:cursor-not-allowed shadow-2xs"
+                              />
+                              <button
+                                type="button"
+                                disabled={isOutOfStock || ((Number(currentTrays) || 0) + 1) * ppu + Number(currentPieces || 0) > whStock.totalPieces}
+                                onClick={() => handleTrayChange(prod, (Number(currentTrays) || 0) + 1)}
+                                className="w-5 h-5 rounded-md bg-sky-600 hover:bg-sky-700 text-white flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                              >
+                                <Plus className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+
+                            {/* Box 2: Piece Count */}
+                            <div className="flex items-center gap-1 bg-sky-50/80 p-1 rounded-xl border border-sky-200">
+                              <span className="text-[9px] font-black text-indigo-800 uppercase px-1">PCS</span>
+                              <button
+                                type="button"
+                                disabled={isOutOfStock || !currentPieces || Number(currentPieces) <= 0}
+                                onClick={() => handlePieceChange(prod, (Number(currentPieces) || 0) - 1)}
+                                className="w-5 h-5 rounded-md bg-white hover:bg-sky-100 text-slate-700 flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                              >
+                                <Minus className="w-2.5 h-2.5" />
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                max={whStock.totalPieces}
+                                disabled={isOutOfStock}
+                                value={currentPieces}
+                                placeholder="0"
+                                onKeyDown={(e) => {
+                                  if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault();
+                                }}
+                                onPaste={(e) => {
+                                  e.preventDefault();
+                                  handlePieceChange(prod, e.clipboardData.getData('text'));
+                                }}
+                                onChange={(e) => handlePieceChange(prod, e.target.value)}
+                                className="w-11 bg-white border border-sky-300 rounded-lg px-1 py-0.5 text-center text-slate-900 font-black font-mono text-xs focus:outline-none focus:border-sky-600 disabled:bg-slate-100 disabled:cursor-not-allowed shadow-2xs"
+                              />
+                              <button
+                                type="button"
+                                disabled={isOutOfStock || Number(currentTrays || 0) * ppu + (Number(currentPieces || 0) + 1) > whStock.totalPieces}
+                                onClick={() => handlePieceChange(prod, (Number(currentPieces) || 0) + 1)}
+                                className="w-5 h-5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                              >
+                                <Plus className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+
+                          </div>
+                        ) : (
+                          /* SINGLE INPUT CONTROLS: For Non-Tray items (Water Bottle, Box, Case, etc.) */
+                          <div className="flex items-center gap-1 font-mono">
+                            <span className="text-[10px] text-sky-800 font-bold uppercase hidden sm:inline mr-0.5">Allocate</span>
+                            <button
+                              type="button"
+                              disabled={isOutOfStock || !currentQty || Number(currentQty) <= 0}
+                              onClick={() => handleSingleQtyChange(prod, (Number(currentQty) || 0) - 1)}
+                              className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <input
+                              type="number"
+                              min="0"
+                              max={whStock.units}
+                              disabled={isOutOfStock}
+                              value={currentQty}
+                              placeholder="0"
+                              onKeyDown={(e) => {
+                                if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault();
+                              }}
+                              onPaste={(e) => {
+                                e.preventDefault();
+                                handleSingleQtyChange(prod, e.clipboardData.getData('text'));
+                              }}
+                              onChange={(e) => handleSingleQtyChange(prod, e.target.value)}
+                              className="w-14 bg-white border border-sky-300 rounded-xl px-1.5 py-1 text-center text-slate-900 font-black text-xs focus:outline-none focus:border-sky-600 disabled:bg-slate-100 disabled:cursor-not-allowed shadow-2xs"
+                            />
+                            <button
+                              type="button"
+                              disabled={isOutOfStock || Number(currentQty) >= whStock.units}
+                              onClick={() => handleSingleQtyChange(prod, (Number(currentQty) || 0) + 1)}
+                              className="w-6 h-6 rounded-lg bg-sky-600 hover:bg-sky-700 text-white flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                            <span className="text-slate-700 font-extrabold text-[11px] min-w-10 ml-0.5">{prod.selling_unit || 'Case'}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -333,7 +580,7 @@ export const StockAllocationModal = ({ onClose }) => {
         <button
           onClick={handleSave}
           disabled={saving || !selectedDriver || totalAllocatedItems === 0}
-          className="touch-btn touch-btn-primary w-full text-xs font-black bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-2xl flex items-center justify-center gap-2 uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-indigo-200"
+          className="touch-btn touch-btn-primary w-full text-xs font-black bg-sky-600 hover:bg-sky-700 text-white py-3 rounded-2xl flex items-center justify-center gap-2 uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-sky-200 cursor-pointer"
         >
           {saving ? (
             <>
@@ -343,7 +590,7 @@ export const StockAllocationModal = ({ onClose }) => {
           ) : (
             <>
               <CheckCircle2 className="w-4 h-4" />
-              <span>CONFIRM VEHICLE ALLOCATION</span>
+              <span>CONFIRM VEHICLE ALLOCATION ({totalAllocatedItems} {totalAllocatedItems === 1 ? 'Product' : 'Products'})</span>
             </>
           )}
         </button>
@@ -351,3 +598,5 @@ export const StockAllocationModal = ({ onClose }) => {
     </div>
   );
 };
+
+export default StockAllocationModal;
