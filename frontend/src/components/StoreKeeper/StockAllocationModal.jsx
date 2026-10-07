@@ -50,18 +50,17 @@ export const StockAllocationModal = ({ onClose }) => {
     const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
     const totalPieces = Math.round(Number(prod.warehouse_stock_units || 0) * ppu);
     
-    if (totalPieces <= 0) {
-      return {
-        text: `Warehouse: 0 ${prod.selling_unit || 'Tray'} (0 Pcs)`,
-        isOutOfStock: true,
-        totalPieces: 0,
-        trays: 0,
-        pieces: 0,
-        units: 0
-      };
-    }
-
     if (opUnit.isPieceBased) {
+      if (totalPieces <= 0) {
+        return {
+          text: `Warehouse: 0 ${prod.selling_unit || 'Tray'} (0 Pcs)`,
+          isOutOfStock: true,
+          totalPieces: 0,
+          trays: 0,
+          pieces: 0,
+          units: 0
+        };
+      }
       const trays = Math.floor(totalPieces / ppu);
       const loosePcs = totalPieces % ppu;
       let text = '';
@@ -82,10 +81,10 @@ export const StockAllocationModal = ({ onClose }) => {
       };
     }
 
-    // Non-tray items (Case, Box, Bottle, etc.)
+    // Non-tray items (Case, Box, Bottle, etc.) - Show only unit count without pieces
     const whUnits = Number(prod.warehouse_stock_units || 0);
     return {
-      text: `Warehouse: ${whUnits} ${prod.selling_unit || 'Case'} (${totalPieces} Pcs)`,
+      text: `Warehouse: ${whUnits} ${prod.selling_unit || 'Case'}`,
       isOutOfStock: whUnits <= 0,
       totalPieces,
       units: whUnits
