@@ -90,6 +90,9 @@ export const AdminProductsMasterView = () => {
     icon: '🥛'
   });
 
+  // Validation Form Errors State
+  const [formErrors, setFormErrors] = useState({});
+
   // Automatically keep formData.category_id synchronized with existing activeCategories
   useEffect(() => {
     if (activeCategories.length > 0) {
@@ -350,6 +353,7 @@ export const AdminProductsMasterView = () => {
       if (res.success) {
         toast.success(`🎉 Product '${res.product.display_name}' created successfully under '${res.product.category || categoryName}'!`);
         setActiveTab('list');
+        setFormErrors({});
         // Reset form
         setFormData({
           name: '',
