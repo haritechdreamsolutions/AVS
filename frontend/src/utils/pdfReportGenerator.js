@@ -575,31 +575,60 @@ export const generateSalesRecordsPDFReport = async ({
   doc.text(`Sales Transactions (${sales.length} Bills)`, 14, currentY);
   currentY += 4;
 
-  const totalRevenue = sales.reduce((s, b) => s + Number(b.grand_total || b.total_amount || 0), 0);
-  const totalReceived = sales.reduce((s, b) => s + Number(b.received_amount || 0), 0);
-  const totalBalance = sales.reduce((s, b) => s + Number(b.balance_amount || 0), 0);
+  const totalRevenue = sales.reduce((s, b) => s + Number(b.total_amount || b.grand_total || 0), 0);
+  let totalReceived = 0;
+  let totalBalance = 0;
 
-  const rows = sales.map(b => [
-    b.bill_number || `BILL-${b.id}`,
-    b.created_at ? new Date(b.created_at).toLocaleDateString('en-IN') : 'Today',
-    b.shop_name || 'Counter Sale',
-    b.seller_name || b.driver_name || 'Staff',
-    b.payment_mode || 'CASH',
-    b.payment_status || 'PAID',
-    formatINR(b.grand_total || b.total_amount || 0),
-    formatINR(b.received_amount || 0),
-    formatINR(b.balance_amount || 0)
-  ]);
+  const rows = sales.map(b => {
+    const billNo = b.bill_no || b.bill_number || `INV-${b.id}`;
+    let dateStr = 'Today';
+    if (b.date) dateStr = b.date;
+    else if (b.sale_date) dateStr = String(b.sale_date).substring(0, 10);
+    else if (b.created_at) dateStr = new Date(b.created_at).toLocaleDateString('en-IN');
+    
+    // Format to DD-MM-YYYY
+    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+      const [y, m, d] = dateStr.substring(0, 10).split('-');
+      dateStr = `${d}-${m}-${y}`;
+    }
+
+    const shopName = b.shop_name || b.customer_name || 'Walk-in Customer';
+    const soldBy = b.employee_name || b.seller_name || b.driver_name || (b.is_store_direct_sale ? 'Store Keeper' : 'Staff');
+    const paymentMode = (b.payment_mode || 'CASH').toUpperCase();
+    const totalAmt = Number(b.total_amount || b.grand_total || 0);
+    
+    let received = Number(b.received_amount !== undefined ? b.received_amount : (Number(b.cash_paid || 0) + Number(b.gpay_paid || 0)));
+    if (received === 0 && paymentMode !== 'CREDIT' && paymentMode !== 'DUE') {
+      received = totalAmt;
+    }
+    const balance = Math.max(0, Number(b.balance_amount !== undefined ? b.balance_amount : (b.balance !== undefined ? b.balance : (totalAmt - received))));
+    const status = balance <= 0 ? 'PAID' : (received > 0 ? 'PARTIAL' : 'CREDIT');
+
+    totalReceived += received;
+    totalBalance += balance;
+
+    return [
+      billNo,
+      dateStr,
+      shopName,
+      soldBy,
+      paymentMode,
+      status,
+      formatINR(totalAmt),
+      formatINR(received),
+      formatINR(balance)
+    ];
+  });
 
   autoTable(doc, {
     startY: currentY,
     theme: 'grid',
-    head: [['Bill Number', 'Date', 'Customer / Shop', 'Sold By', 'Payment Mode', 'Status', 'Total (INR)', 'Received (INR)', 'Balance (INR)']],
+    head: [['Bill Number', 'Date', 'Shop / Customer', 'Sold By', 'Payment Mode', 'Status', 'Total (INR)', 'Received (INR)', 'Balance (INR)']],
     body: rows,
     foot: [['Total Sales', '', '', '', '', '', formatINR(totalRevenue), formatINR(totalReceived), formatINR(totalBalance)]],
-    headStyles: { fillColor: [16, 185, 129], textColor: 255, fontSize: 8 },
+    headStyles: { fillColor: [14, 116, 144], textColor: 255, fontSize: 8, fontStyle: 'bold' },
     bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
-    footStyles: { fillColor: [241, 245, 249], textColor: [16, 185, 129], fontStyle: 'bold', fontSize: 8.5 },
+    footStyles: { fillColor: [240, 249, 255], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: 8.5 },
     columnStyles: {
       0: { fontStyle: 'bold' },
       6: { halign: 'right', fontStyle: 'bold' },

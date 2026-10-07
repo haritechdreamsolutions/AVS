@@ -6,6 +6,7 @@ import {
   Store, Calendar, Clock, X, ChevronRight, CheckCircle2, 
   Layers, RotateCcw, AlertTriangle, ChevronDown, SlidersHorizontal, Download 
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { ThermalBillModal } from '../Employee/ThermalBillModal';
 import { generateSalesRecordsPDFReport } from '../../utils/pdfReportGenerator';
 
@@ -416,12 +417,30 @@ export const SalesRecordsView = () => {
             Revenue: ₹{metrics.totalRevenue.toLocaleString()}
           </span>
           <button
-            onClick={() => generateSalesRecordsPDFReport({ 
-              sales: filteredBills,
-              dateRangeText: activeDatePreset !== 'CUSTOM' ? activeDatePreset : `${fromDate || ''} - ${toDate || ''}`,
-              companyInfo: companySettings
-            })}
-            className="px-3.5 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-black text-xs flex items-center gap-1.5 border border-white/20 transition cursor-pointer"
+            onClick={async () => {
+              try {
+                if (!filteredSales || filteredSales.length === 0) {
+                  toast.error('No sales records found to export for the selected filter.');
+                  return;
+                }
+                const dateLabel = quickDate !== 'CUSTOM' 
+                  ? (quickDate === 'ALL' ? 'All Dates' : quickDate.replace(/_/g, ' ')) 
+                  : `${fromDate || 'Start'} to ${toDate || 'End'}`;
+                
+                toast.info('Generating Sales Report PDF...');
+                await generateSalesRecordsPDFReport({ 
+                  sales: filteredSales,
+                  period: quickDate,
+                  dateRangeText: dateLabel,
+                  companyInfo: { name: 'AVS AGENCIES', address: 'Villupuram, Tamil Nadu' }
+                });
+                toast.success('🎉 Sales PDF Report downloaded successfully!');
+              } catch (err) {
+                console.error('PDF download error:', err);
+                toast.error('Failed to generate PDF: ' + (err.message || 'Unknown error'));
+              }
+            }}
+            className="px-3.5 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-black text-xs flex items-center gap-1.5 border border-white/20 transition cursor-pointer active:scale-95"
           >
             <Download className="w-4 h-4" /> Download PDF
           </button>
