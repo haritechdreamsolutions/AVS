@@ -453,16 +453,10 @@ export const KeeperDashboard = () => {
       {activeModal === 'USER_BALANCE' && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 lg:p-6 overflow-y-auto">
           <div className="bg-gradient-to-b from-sky-50 via-white to-sky-50/90 border-2 border-sky-200 rounded-3xl max-w-full sm:max-w-6xl lg:max-w-7xl w-full max-h-[94vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between p-4 px-6 border-b-2 border-sky-200 bg-sky-900 text-white shrink-0 shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-teal-600 text-white flex items-center justify-center shadow-xs">
-                  <Wallet className="w-5 h-5 stroke-[2.5]" />
-                </div>
-                <div>
-                  <h3 className="font-black text-base sm:text-lg text-white uppercase tracking-tight">User Balance & Credit Summary</h3>
-                  <span className="text-xs text-teal-200 font-bold">Store Keeper & Drivers Ledger</span>
-                </div>
-              </div>
+            <div className="flex items-center justify-between p-3.5 px-6 border-b-2 border-sky-200 bg-sky-950 text-white shrink-0 shadow-xs">
+              <h3 className="font-black text-sm sm:text-base text-white tracking-wide">
+                USER BALANCE & CREDIT SUMMARY (பயனாளர் வரவு & பாக்கி)
+              </h3>
               <button
                 onClick={() => setActiveModal(null)}
                 className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-sky-100 hover:text-white flex items-center justify-center transition cursor-pointer"
