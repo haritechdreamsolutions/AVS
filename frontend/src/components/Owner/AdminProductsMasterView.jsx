@@ -259,8 +259,8 @@ export const AdminProductsMasterView = () => {
       return updated;
     });
 
-    if (formErrors[field]) {
-      setFormErrors(prev => ({ ...prev, [field]: null }));
+    if (formErrors?.[field]) {
+      setFormErrors(prev => ({ ...(prev || {}), [field]: null }));
     }
   };
 
@@ -980,9 +980,9 @@ export const AdminProductsMasterView = () => {
                   placeholder="e.g. Milk, Water, Curd"
                   value={formData.name}
                   onChange={(e) => handleFormChange('name', e.target.value)}
-                  className={`w-full p-2.5 font-bold bg-white border rounded-xl focus:outline-none ${formErrors.name ? 'border-rose-500' : 'border-slate-300 focus:border-blue-500'}`}
+                  className={`w-full p-2.5 font-bold bg-white border rounded-xl focus:outline-none ${formErrors?.name ? 'border-rose-500' : 'border-slate-300 focus:border-blue-500'}`}
                 />
-                {formErrors.name && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.name}</span>}
+                {formErrors?.name && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.name}</span>}
               </div>
 
               <div>
@@ -994,9 +994,9 @@ export const AdminProductsMasterView = () => {
                   placeholder="e.g. 200ml, 300ml, 500ml, 1L"
                   value={formData.pack_size}
                   onChange={(e) => handleFormChange('pack_size', e.target.value)}
-                  className={`w-full p-2.5 font-bold bg-white border rounded-xl focus:outline-none ${formErrors.pack_size ? 'border-rose-500' : 'border-slate-300 focus:border-blue-500'}`}
+                  className={`w-full p-2.5 font-bold bg-white border rounded-xl focus:outline-none ${formErrors?.pack_size ? 'border-rose-500' : 'border-slate-300 focus:border-blue-500'}`}
                 />
-                {formErrors.pack_size && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.pack_size}</span>}
+                {formErrors?.pack_size && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.pack_size}</span>}
               </div>
 
               <div>
@@ -1017,9 +1017,9 @@ export const AdminProductsMasterView = () => {
                   placeholder="e.g. MILK-200"
                   value={formData.sku}
                   onChange={(e) => handleFormChange('sku', e.target.value)}
-                  className={`w-full p-2.5 font-mono font-black uppercase bg-white border rounded-xl focus:outline-none ${formErrors.sku ? 'border-rose-500' : 'border-slate-300 focus:border-blue-500'}`}
+                  className={`w-full p-2.5 font-mono font-black uppercase bg-white border rounded-xl focus:outline-none ${formErrors?.sku ? 'border-rose-500' : 'border-slate-300 focus:border-blue-500'}`}
                 />
-                {formErrors.sku && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.sku}</span>}
+                {formErrors?.sku && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.sku}</span>}
               </div>
 
               <div>
@@ -1029,9 +1029,9 @@ export const AdminProductsMasterView = () => {
                   placeholder="e.g. 8901234500999"
                   value={formData.barcode}
                   onChange={(e) => handleFormChange('barcode', e.target.value)}
-                  className={`w-full p-2.5 font-mono font-bold bg-white border rounded-xl focus:outline-none ${formErrors.barcode ? 'border-rose-500' : 'border-slate-300 focus:border-blue-500'}`}
+                  className={`w-full p-2.5 font-mono font-bold bg-white border rounded-xl focus:outline-none ${formErrors?.barcode ? 'border-rose-500' : 'border-slate-300 focus:border-blue-500'}`}
                 />
-                {formErrors.barcode && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.barcode}</span>}
+                {formErrors?.barcode && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.barcode}</span>}
               </div>
 
               {/* DYNAMIC CATEGORY MASTER DROPDOWN + INLINE ADD ACTION */}
@@ -1051,7 +1051,7 @@ export const AdminProductsMasterView = () => {
                 <select
                   value={formData.category_id || ''}
                   onChange={(e) => handleFormChange('category_id', e.target.value)}
-                  className={`w-full p-2.5 font-bold bg-white border rounded-xl focus:outline-none ${formErrors.category ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'}`}
+                  className={`w-full p-2.5 font-bold bg-white border rounded-xl focus:outline-none ${formErrors?.category ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'}`}
                 >
                   {activeCategories.length === 0 ? (
                     <option value="">No categories available — Please create a category first</option>
@@ -1071,7 +1071,7 @@ export const AdminProductsMasterView = () => {
                     ⚠️ Create a category first before registering a product.
                   </p>
                 )}
-                {formErrors.category && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.category}</span>}
+                {formErrors?.category && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.category}</span>}
               </div>
 
               <div>
@@ -1124,9 +1124,9 @@ export const AdminProductsMasterView = () => {
                   type="number"
                   value={formData.pieces_per_unit}
                   onChange={(e) => handleFormChange('pieces_per_unit', e.target.value)}
-                  className={`w-full p-2.5 font-mono font-black bg-white border rounded-xl focus:outline-none ${formErrors.pieces_per_unit ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'}`}
+                  className={`w-full p-2.5 font-mono font-black bg-white border rounded-xl focus:outline-none ${formErrors?.pieces_per_unit ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'}`}
                 />
-                {formErrors.pieces_per_unit && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.pieces_per_unit}</span>}
+                {formErrors?.pieces_per_unit && <span className="text-[10px] text-rose-600 font-bold mt-0.5 block">{formErrors.pieces_per_unit}</span>}
               </div>
             </div>
           </div>
