@@ -18,6 +18,7 @@ import { ThermalBillModal } from '../Employee/ThermalBillModal';
 import { SalesRecordsView } from '../Owner/SalesRecordsView';
 import { UserBalanceView } from '../common/UserBalanceView';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
+import { getOperationalUnit } from '../../utils/unitHelper';
 
 export const KeeperDashboard = () => {
   const { products = [], summary, employees, stockMovements } = useApp();
@@ -269,11 +270,13 @@ export const KeeperDashboard = () => {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
               {filteredProducts.map(prod => {
-                const totalPieces = (Number(prod.warehouse_stock_units) || 0) * (Number(prod.pieces_per_unit) || 1);
-                const isTray = (prod.selling_unit || '').toLowerCase() === 'tray' || 
-                               (prod.category || prod.category_name || '').toLowerCase().includes('milk') || 
-                               (prod.category || prod.category_name || '').toLowerCase().includes('curd') || 
-                               (prod.category || prod.category_name || '').toLowerCase().includes('tray');
+                const opUnit = getOperationalUnit(prod);
+                const isTray = opUnit.isPieceBased;
+                const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
+                const totalPieces = Math.round((Number(prod.warehouse_stock_units) || 0) * ppu);
+                const trays = Math.floor(totalPieces / ppu);
+                const loosePcs = totalPieces % ppu;
+
                 return (
                   <div key={prod.id} className="relative group bg-white rounded-3xl p-3 border border-slate-200 hover:border-blue-400 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between overflow-hidden">
                     
@@ -301,19 +304,50 @@ export const KeeperDashboard = () => {
                       </h4>
                       <div className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-200">
                         <span className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Available Stock</span>
-                        <div className="flex flex-col items-end">
-                          <div className="flex items-baseline gap-1">
-                            <span className="font-mono font-black text-base text-emerald-600 leading-none">
-                              {Number(prod.warehouse_stock_units || 0)}
-                            </span>
-                            <span className="text-[10px] text-emerald-700 font-extrabold uppercase">{prod.selling_unit || 'Trays'}</span>
-                          </div>
-                          {isTray && (
+                        
+                        {isTray ? (
+                          <div className="flex flex-col items-end">
+                            <div className="flex items-baseline gap-1">
+                              {trays > 0 && (
+                                <>
+                                  <span className="font-mono font-black text-base text-emerald-600 leading-none">
+                                    {trays}
+                                  </span>
+                                  <span className="text-[10px] text-emerald-700 font-extrabold uppercase">{prod.selling_unit || 'Tray'}</span>
+                                </>
+                              )}
+                              {loosePcs > 0 && (
+                                <>
+                                  <span className={`font-mono font-black ${trays > 0 ? 'text-sm text-indigo-600 ml-1' : 'text-base text-indigo-600'} leading-none`}>
+                                    {loosePcs}
+                                  </span>
+                                  <span className="text-[10px] text-indigo-700 font-extrabold uppercase">Pcs</span>
+                                </>
+                              )}
+                              {trays === 0 && loosePcs === 0 && (
+                                <>
+                                  <span className="font-mono font-black text-base text-slate-400 leading-none">
+                                    0
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-extrabold uppercase">{prod.selling_unit || 'Tray'}</span>
+                                </>
+                              )}
+                            </div>
                             <span className="font-mono font-extrabold text-[10px] text-indigo-600 mt-0.5">
                               ({totalPieces} Pcs)
                             </span>
-                          )}
-                        </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-end">
+                            <div className="flex items-baseline gap-1">
+                              <span className="font-mono font-black text-base text-emerald-600 leading-none">
+                                {Number(prod.warehouse_stock_units || 0)}
+                              </span>
+                              <span className="text-[10px] text-emerald-700 font-extrabold uppercase">{prod.selling_unit || 'Case'}</span>
+                            </div>
+                          </div>
+                        )}
+
                       </div>
                     </div>
 
