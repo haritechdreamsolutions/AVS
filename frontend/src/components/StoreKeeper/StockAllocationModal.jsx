@@ -299,24 +299,24 @@ export const StockAllocationModal = ({ onClose }) => {
   }, 0);
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      {/* Light Blue Themed Container */}
-      <div className="bg-gradient-to-b from-sky-50 via-white to-sky-50/80 border border-sky-200 rounded-3xl max-w-2xl w-full p-4 sm:p-6 space-y-4 shadow-2xl max-h-[94dvh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 lg:p-6 overflow-y-auto">
+      {/* Light Blue Themed Container - Optimized for Laptop & Responsive for Mobile */}
+      <div className="bg-gradient-to-b from-sky-50 via-white to-sky-50/90 border-2 border-sky-200 rounded-3xl max-w-full sm:max-w-3xl lg:max-w-4xl w-full p-4 sm:p-6 lg:p-7 space-y-4 sm:space-y-5 shadow-2xl max-h-[92dvh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-sky-100 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-sky-600 text-white flex items-center justify-center shadow-md shadow-sky-200">
-              <ArrowUpRight className="w-5 h-5 stroke-[2.5]" />
+        <div className="flex items-center justify-between border-b border-sky-200/80 pb-3.5 sm:pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-sky-600 text-white flex items-center justify-center shadow-md shadow-sky-200 shrink-0">
+              <ArrowUpRight className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
             </div>
             <div>
-              <h3 className="font-black text-sm sm:text-base text-slate-900 tracking-tight flex items-center gap-1.5">
+              <h3 className="font-black text-base sm:text-lg lg:text-xl text-slate-900 tracking-tight flex items-center gap-2">
                 Stock Allocate Driver
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-extrabold border border-sky-200 uppercase">
+                <span className="text-[11px] sm:text-xs px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 font-extrabold border border-sky-300 uppercase">
                   POS
                 </span>
               </h3>
-              <p className="text-[10px] text-sky-700 font-extrabold uppercase tracking-widest flex items-center gap-1">
+              <p className="text-[11px] sm:text-xs text-sky-700 font-extrabold uppercase tracking-wider flex items-center gap-1.5 mt-0.5">
                 <span>WAREHOUSE</span>
                 <span>➔</span>
                 <span>DRIVER VEHICLE</span>
@@ -325,28 +325,29 @@ export const StockAllocationModal = ({ onClose }) => {
           </div>
           <button 
             onClick={onClose} 
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-sky-100/80 transition-colors cursor-pointer"
+            className="p-2 rounded-2xl text-slate-400 hover:text-slate-700 hover:bg-sky-100 transition-colors cursor-pointer"
+            title="Close"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
         {/* Driver Selection */}
         <div className="space-y-1.5">
-          <label className="text-xs font-black text-slate-700 uppercase flex items-center gap-1.5">
-            <User className="w-3.5 h-3.5 text-sky-600" />
+          <label className="text-xs sm:text-sm font-black text-slate-700 uppercase flex items-center gap-1.5">
+            <User className="w-4 h-4 text-sky-600" />
             SELECT DRIVER / EMPLOYEE *
           </label>
           {drivers.length === 0 ? (
-            <div className="text-xs text-amber-800 bg-amber-50/90 p-3 rounded-2xl border border-amber-200 font-bold flex items-start gap-2">
-              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs sm:text-sm text-amber-800 bg-amber-50 p-3.5 rounded-2xl border border-amber-200 font-bold flex items-start gap-2">
+              <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <span>No active Driver users found. Create an active Driver from <strong>Owner → Users Master</strong>.</span>
             </div>
           ) : (
             <select
               value={employeeId}
               onChange={(e) => setEmployeeId(e.target.value)}
-              className="w-full bg-white border border-sky-200 hover:border-sky-400 focus:border-sky-600 rounded-2xl px-3.5 py-2.5 text-xs font-black text-slate-900 focus:outline-none transition-all shadow-2xs cursor-pointer"
+              className="w-full bg-white border-2 border-sky-200 hover:border-sky-400 focus:border-sky-600 rounded-2xl px-4 py-3 text-sm sm:text-base font-black text-slate-900 focus:outline-none transition-all shadow-xs cursor-pointer"
             >
               <option value="">-- Select Driver --</option>
               {drivers.map(emp => (
@@ -360,44 +361,44 @@ export const StockAllocationModal = ({ onClose }) => {
 
         {/* Selected Driver Summary (Only shown after driver is selected) */}
         {selectedDriver && (
-          <div className="bg-sky-100/70 border border-sky-200/90 rounded-2xl p-3 grid grid-cols-3 gap-2 text-center animate-fadeIn shadow-2xs">
+          <div className="bg-sky-100/70 border-2 border-sky-200 rounded-2xl p-3.5 sm:p-4 grid grid-cols-3 gap-2 text-center animate-fadeIn shadow-2xs">
             <div>
-              <span className="text-[10px] text-sky-700 font-extrabold uppercase tracking-wider block">DRIVER</span>
-              <span className="font-black text-xs text-slate-900 truncate block">{selectedDriver.full_name}</span>
+              <span className="text-[11px] sm:text-xs text-sky-700 font-extrabold uppercase tracking-wider block">DRIVER</span>
+              <span className="font-black text-xs sm:text-sm lg:text-base text-slate-900 truncate block mt-0.5">{selectedDriver.full_name}</span>
             </div>
             <div>
-              <span className="text-[10px] text-sky-700 font-extrabold uppercase tracking-wider block">EMPLOYEE CODE</span>
-              <span className="font-mono font-bold text-xs text-slate-800 block">{selectedDriver.employee_code || `EMP-${selectedDriver.id}`}</span>
+              <span className="text-[11px] sm:text-xs text-sky-700 font-extrabold uppercase tracking-wider block">EMPLOYEE CODE</span>
+              <span className="font-mono font-bold text-xs sm:text-sm lg:text-base text-slate-800 block mt-0.5">{selectedDriver.employee_code || `EMP-${selectedDriver.id}`}</span>
             </div>
             <div>
-              <span className="text-[10px] text-sky-700 font-extrabold uppercase tracking-wider block">VEHICLE</span>
-              <span className="font-mono font-black text-xs text-sky-900 block">{selectedDriver.vehicle_number || 'TN32S2002'}</span>
+              <span className="text-[11px] sm:text-xs text-sky-700 font-extrabold uppercase tracking-wider block">VEHICLE</span>
+              <span className="font-mono font-black text-xs sm:text-sm lg:text-base text-sky-900 block mt-0.5">{selectedDriver.vehicle_number || 'TN32S2002'}</span>
             </div>
           </div>
         )}
 
         {/* Current Warehouse Stock Section */}
         {!selectedDriver ? (
-          <div className="bg-white/80 border border-dashed border-sky-200 rounded-2xl p-6 text-center text-xs text-slate-400 font-bold space-y-1">
-            <Truck className="w-7 h-7 mx-auto text-sky-400 mb-1" />
-            <p className="text-slate-700 font-extrabold">Select a driver to view available warehouse stock.</p>
-            <p className="text-[11px] text-slate-400">Warehouse stock inputs will be enabled once a driver is chosen.</p>
+          <div className="bg-white/80 border-2 border-dashed border-sky-200 rounded-2xl p-8 text-center text-xs sm:text-sm text-slate-400 font-bold space-y-1.5">
+            <Truck className="w-8 h-8 sm:w-10 sm:h-10 mx-auto text-sky-400 mb-2" />
+            <p className="text-slate-800 font-black text-sm sm:text-base">Select a driver to view available warehouse stock.</p>
+            <p className="text-xs sm:text-sm text-slate-500">Warehouse stock inputs will be enabled once a driver is chosen.</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-black text-slate-700 uppercase flex items-center gap-1.5">
-                <Truck className="w-3.5 h-3.5 text-sky-600" />
+              <label className="text-xs sm:text-sm font-black text-slate-700 uppercase flex items-center gap-1.5">
+                <Truck className="w-4 h-4 text-sky-600" />
                 CURRENT WAREHOUSE STOCK
               </label>
-              <span className="text-[11px] font-extrabold text-sky-800 bg-sky-100/80 px-2 py-0.5 rounded-full border border-sky-200">
+              <span className="text-xs sm:text-sm font-extrabold text-sky-800 bg-sky-100/90 px-3 py-1 rounded-full border border-sky-200">
                 {availableProducts.length} Product{availableProducts.length !== 1 ? 's' : ''}
               </span>
             </div>
             
-            <div className="space-y-2 max-h-64 sm:max-h-72 overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-72 sm:max-h-96 lg:max-h-[420px] overflow-y-auto pr-1 sm:pr-2">
               {availableProducts.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-6">No products available in database.</p>
+                <p className="text-sm text-slate-400 text-center py-8">No products available in database.</p>
               ) : (
                 availableProducts.map(prod => {
                   const opUnit = getOperationalUnit(prod);
@@ -418,48 +419,50 @@ export const StockAllocationModal = ({ onClose }) => {
                   return (
                     <div 
                       key={prod.id} 
-                      className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-2xl border text-xs gap-3 transition-all ${
+                      className={`flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 rounded-2xl border-2 gap-3.5 transition-all ${
                         isOutOfStock 
                           ? 'bg-slate-50/60 border-slate-200 opacity-60' 
                           : isAllocated 
-                            ? 'bg-sky-50 border-sky-400 shadow-xs'
-                            : 'bg-white border-sky-100 hover:border-sky-300'
+                            ? 'bg-sky-50 border-sky-400 shadow-sm ring-1 ring-sky-300'
+                            : 'bg-white border-sky-200/80 hover:border-sky-300 shadow-2xs'
                       }`}
                     >
                       {/* Left: Product Info & Formatted Stock */}
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         <ProductImage 
                           src={resolveProductImageUrl(prod)} 
                           alt={prod.display_name} 
-                          size={40} 
+                          size={48} 
                           icon={prod.icon || '📦'} 
                         />
                         <div className="truncate">
-                          <span className="font-black text-slate-900 block truncate text-xs">
+                          <span className="font-black text-slate-900 block truncate text-sm sm:text-base">
                             {prod.display_name}
                           </span>
-                          <span className={`text-[10px] font-mono block ${!isOutOfStock ? 'text-sky-800 font-bold' : 'text-rose-500 font-black'}`}>
+                          <span className={`text-xs sm:text-sm font-mono block mt-0.5 ${!isOutOfStock ? 'text-sky-800 font-extrabold' : 'text-rose-500 font-black'}`}>
                             {whStock.text}
                           </span>
                         </div>
                       </div>
 
                       {/* Right: Allocation Input Controls */}
-                      <div className="flex items-center justify-end gap-2 shrink-0">
+                      <div className="flex items-center justify-end gap-2.5 shrink-0">
                         {isTrayBased ? (
                           /* DUAL INPUT CONTROLS: 1st Box = Tray, 2nd Box = Pieces */
-                          <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
+                          <div className="flex items-center gap-2 sm:gap-3.5 flex-wrap sm:flex-nowrap w-full sm:w-auto justify-end">
                             
                             {/* Box 1: Tray Count */}
-                            <div className="flex items-center gap-1 bg-sky-50/80 p-1 rounded-xl border border-sky-200">
-                              <span className="text-[9px] font-black text-sky-800 uppercase px-1">TRAY</span>
+                            <div className="flex items-center gap-1.5 sm:gap-2 bg-sky-100/70 p-1.5 sm:p-2 rounded-2xl border border-sky-300">
+                              <span className="text-[10px] sm:text-xs font-black text-sky-900 uppercase px-2 py-0.5 bg-sky-200/80 rounded-lg">
+                                TRAY
+                              </span>
                               <button
                                 type="button"
                                 disabled={isOutOfStock || !currentTrays || Number(currentTrays) <= 0}
                                 onClick={() => handleTrayChange(prod, (Number(currentTrays) || 0) - 1)}
-                                className="w-5 h-5 rounded-md bg-white hover:bg-sky-100 text-slate-700 flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white hover:bg-sky-100 text-slate-800 flex items-center justify-center font-black text-sm transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                               >
-                                <Minus className="w-2.5 h-2.5" />
+                                <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
                               </button>
                               <input
                                 type="number"
@@ -476,28 +479,30 @@ export const StockAllocationModal = ({ onClose }) => {
                                   handleTrayChange(prod, e.clipboardData.getData('text'));
                                 }}
                                 onChange={(e) => handleTrayChange(prod, e.target.value)}
-                                className="w-11 bg-white border border-sky-300 rounded-lg px-1 py-0.5 text-center text-slate-900 font-black font-mono text-xs focus:outline-none focus:border-sky-600 disabled:bg-slate-100 disabled:cursor-not-allowed shadow-2xs"
+                                className="w-12 sm:w-16 h-8 sm:h-9 bg-white border-2 border-sky-300 rounded-xl px-1 sm:px-2 text-center text-slate-900 font-black font-mono text-sm sm:text-base focus:outline-none focus:border-sky-600 disabled:bg-slate-100 disabled:cursor-not-allowed shadow-inner"
                               />
                               <button
                                 type="button"
                                 disabled={isOutOfStock || ((Number(currentTrays) || 0) + 1) * ppu + Number(currentPieces || 0) > whStock.totalPieces}
                                 onClick={() => handleTrayChange(prod, (Number(currentTrays) || 0) + 1)}
-                                className="w-5 h-5 rounded-md bg-sky-600 hover:bg-sky-700 text-white flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-sky-600 hover:bg-sky-700 text-white flex items-center justify-center font-black text-sm transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                               >
-                                <Plus className="w-2.5 h-2.5" />
+                                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                               </button>
                             </div>
 
                             {/* Box 2: Piece Count */}
-                            <div className="flex items-center gap-1 bg-sky-50/80 p-1 rounded-xl border border-sky-200">
-                              <span className="text-[9px] font-black text-indigo-800 uppercase px-1">PCS</span>
+                            <div className="flex items-center gap-1.5 sm:gap-2 bg-indigo-50/80 p-1.5 sm:p-2 rounded-2xl border border-indigo-200">
+                              <span className="text-[10px] sm:text-xs font-black text-indigo-900 uppercase px-2 py-0.5 bg-indigo-100 rounded-lg">
+                                PCS
+                              </span>
                               <button
                                 type="button"
                                 disabled={isOutOfStock || !currentPieces || Number(currentPieces) <= 0}
                                 onClick={() => handlePieceChange(prod, (Number(currentPieces) || 0) - 1)}
-                                className="w-5 h-5 rounded-md bg-white hover:bg-sky-100 text-slate-700 flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white hover:bg-indigo-100 text-slate-800 flex items-center justify-center font-black text-sm transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                               >
-                                <Minus className="w-2.5 h-2.5" />
+                                <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
                               </button>
                               <input
                                 type="number"
@@ -514,30 +519,32 @@ export const StockAllocationModal = ({ onClose }) => {
                                   handlePieceChange(prod, e.clipboardData.getData('text'));
                                 }}
                                 onChange={(e) => handlePieceChange(prod, e.target.value)}
-                                className="w-11 bg-white border border-sky-300 rounded-lg px-1 py-0.5 text-center text-slate-900 font-black font-mono text-xs focus:outline-none focus:border-sky-600 disabled:bg-slate-100 disabled:cursor-not-allowed shadow-2xs"
+                                className="w-12 sm:w-16 h-8 sm:h-9 bg-white border-2 border-indigo-300 rounded-xl px-1 sm:px-2 text-center text-slate-900 font-black font-mono text-sm sm:text-base focus:outline-none focus:border-indigo-600 disabled:bg-slate-100 disabled:cursor-not-allowed shadow-inner"
                               />
                               <button
                                 type="button"
                                 disabled={isOutOfStock || Number(currentTrays || 0) * ppu + (Number(currentPieces || 0) + 1) > whStock.totalPieces}
                                 onClick={() => handlePieceChange(prod, (Number(currentPieces) || 0) + 1)}
-                                className="w-5 h-5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center font-black text-sm transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                               >
-                                <Plus className="w-2.5 h-2.5" />
+                                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                               </button>
                             </div>
 
                           </div>
                         ) : (
                           /* SINGLE INPUT CONTROLS: For Non-Tray items (Water Bottle, Box, Case, etc.) */
-                          <div className="flex items-center gap-1 font-mono">
-                            <span className="text-[10px] text-sky-800 font-bold uppercase hidden sm:inline mr-0.5">Allocate</span>
+                          <div className="flex items-center gap-2 bg-sky-100/70 p-1.5 sm:p-2 rounded-2xl border border-sky-300 font-mono">
+                            <span className="text-[10px] sm:text-xs font-black text-sky-900 uppercase px-2 py-0.5 bg-sky-200/80 rounded-lg">
+                              QTY
+                            </span>
                             <button
                               type="button"
                               disabled={isOutOfStock || !currentQty || Number(currentQty) <= 0}
                               onClick={() => handleSingleQtyChange(prod, (Number(currentQty) || 0) - 1)}
-                              className="w-6 h-6 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                              className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white hover:bg-sky-100 text-slate-800 flex items-center justify-center font-black text-sm transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                             >
-                              <Minus className="w-3 h-3" />
+                              <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
                             </button>
                             <input
                               type="number"
@@ -554,17 +561,17 @@ export const StockAllocationModal = ({ onClose }) => {
                                 handleSingleQtyChange(prod, e.clipboardData.getData('text'));
                               }}
                               onChange={(e) => handleSingleQtyChange(prod, e.target.value)}
-                              className="w-14 bg-white border border-sky-300 rounded-xl px-1.5 py-1 text-center text-slate-900 font-black text-xs focus:outline-none focus:border-sky-600 disabled:bg-slate-100 disabled:cursor-not-allowed shadow-2xs"
+                              className="w-16 sm:w-20 h-8 sm:h-9 bg-white border-2 border-sky-300 rounded-xl px-2 text-center text-slate-900 font-black text-sm sm:text-base focus:outline-none focus:border-sky-600 disabled:bg-slate-100 disabled:cursor-not-allowed shadow-inner"
                             />
                             <button
                               type="button"
                               disabled={isOutOfStock || Number(currentQty) >= whStock.units}
                               onClick={() => handleSingleQtyChange(prod, (Number(currentQty) || 0) + 1)}
-                              className="w-6 h-6 rounded-lg bg-sky-600 hover:bg-sky-700 text-white flex items-center justify-center font-black text-xs transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                              className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-sky-600 hover:bg-sky-700 text-white flex items-center justify-center font-black text-sm transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                             >
-                              <Plus className="w-3 h-3" />
+                              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                             </button>
-                            <span className="text-slate-700 font-extrabold text-[11px] min-w-10 ml-0.5">{prod.selling_unit || 'Case'}</span>
+                            <span className="text-slate-800 font-black text-xs sm:text-sm min-w-10 px-1">{prod.selling_unit || 'Case'}</span>
                           </div>
                         )}
                       </div>
@@ -580,16 +587,16 @@ export const StockAllocationModal = ({ onClose }) => {
         <button
           onClick={handleSave}
           disabled={saving || !selectedDriver || totalAllocatedItems === 0}
-          className="touch-btn touch-btn-primary w-full text-xs font-black bg-sky-600 hover:bg-sky-700 text-white py-3 rounded-2xl flex items-center justify-center gap-2 uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-sky-200 cursor-pointer"
+          className="touch-btn touch-btn-primary w-full text-sm sm:text-base font-black bg-sky-600 hover:bg-sky-700 text-white py-3.5 sm:py-4 rounded-2xl flex items-center justify-center gap-2 uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-sky-300/60 cursor-pointer"
         >
           {saving ? (
             <>
-              <Save className="w-4 h-4 animate-spin" />
+              <Save className="w-5 h-5 animate-spin" />
               <span>ALLOCATING TO VEHICLE...</span>
             </>
           ) : (
             <>
-              <CheckCircle2 className="w-4 h-4" />
+              <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
               <span>CONFIRM VEHICLE ALLOCATION ({totalAllocatedItems} {totalAllocatedItems === 1 ? 'Product' : 'Products'})</span>
             </>
           )}
