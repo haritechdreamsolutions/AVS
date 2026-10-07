@@ -4,7 +4,7 @@ import {
   Package, Truck, ArrowDownLeft, ArrowUpRight, RotateCcw, 
   DollarSign, Activity, UserCheck, Plus, ShoppingCart, 
   Search, Sparkles, TrendingUp, CheckCircle2, ShieldCheck, Box,
-  Wrench, FileText, X
+  Wrench, FileText, X, Store
 } from 'lucide-react';
 import { CashSettlementModal } from './CashSettlementModal';
 import { StockReceiveModal } from './StockReceiveModal';
