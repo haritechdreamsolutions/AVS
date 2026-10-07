@@ -333,7 +333,7 @@ export const StockReceiveModal = ({ onClose }) => {
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 lg:p-6 overflow-y-auto">
       {/* Light Blue Themed Container - Optimized for Laptop & Responsive for Mobile */}
-      <div className="bg-gradient-to-b from-sky-50 via-white to-sky-50/90 border-2 border-sky-200 rounded-3xl max-w-full sm:max-w-3xl lg:max-w-4xl w-full p-4 sm:p-6 lg:p-7 space-y-4 sm:space-y-5 shadow-2xl max-h-[92dvh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-gradient-to-b from-sky-50 via-white to-sky-50/90 border-2 border-sky-200 rounded-3xl max-w-full sm:max-w-3xl lg:max-w-4xl xl:max-w-5xl w-full p-4 sm:p-6 lg:p-7 space-y-4 sm:space-y-5 shadow-2xl max-h-[92dvh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150">
         
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-sky-200/80 pb-3.5 sm:pb-4">
@@ -446,33 +446,48 @@ export const StockReceiveModal = ({ onClose }) => {
                     }`}
                   >
                     {/* Left: Product Details */}
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                       <ProductImage 
                         src={resolveProductImageUrl(prod)} 
                         alt={prod.display_name} 
-                        size={48} 
+                        size={46} 
                         icon={prod.icon || '📦'} 
                       />
-                      <div className="truncate">
-                        <span className="font-black text-slate-900 block truncate text-sm sm:text-base">
+                      <div className="min-w-0 flex-1">
+                        <span className="font-black text-slate-900 block truncate text-xs sm:text-sm lg:text-base" title={prod.display_name}>
                           {prod.display_name}
                         </span>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 font-mono mt-1">
-                          <span className="font-bold text-slate-600">{whStock.text}</span>
+                        
+                        {/* Warehouse Stock & Live Buy Rates */}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          <span className="font-bold text-slate-600 text-[10px] sm:text-[11px] bg-slate-100/90 px-1.5 py-0.5 rounded-md border border-slate-200 whitespace-nowrap">
+                            {whStock.text}
+                          </span>
                           {isTrayBased ? (
-                            <span className={`font-black px-2 py-0.5 rounded-lg text-xs border ${
-                              trayRate > 0 || pieceRate > 0
-                                ? 'text-sky-900 bg-sky-100/80 border-sky-300' 
-                                : isUnassignedWithQty
-                                  ? 'text-rose-700 bg-rose-100 border-rose-300'
-                                  : 'text-slate-400 bg-slate-100 border-slate-200'
-                            }`}>
-                              {trayRate > 0 || pieceRate > 0 ? `Tray: ₹${trayRate.toFixed(2)} | Pcs: ₹${pieceRate.toFixed(2)}` : '⚠️ Buy Rate Not Set'}
-                            </span>
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className={`font-black text-[10px] sm:text-[11px] font-mono px-1.5 py-0.5 rounded-md border whitespace-nowrap ${
+                                trayRate > 0
+                                  ? 'text-sky-900 bg-sky-100/90 border-sky-300' 
+                                  : isUnassignedWithQty
+                                    ? 'text-rose-700 bg-rose-100 border-rose-300'
+                                    : 'text-slate-400 bg-slate-100 border-slate-200'
+                              }`}>
+                                Tray: ₹{trayRate > 0 ? trayRate.toFixed(2) : '0.00'}
+                              </span>
+                              <span className={`font-black text-[10px] sm:text-[11px] font-mono px-1.5 py-0.5 rounded-md border whitespace-nowrap ${
+                                pieceRate > 0
+                                  ? 'text-indigo-900 bg-indigo-100/90 border-indigo-300' 
+                                  : isUnassignedWithQty
+                                    ? 'text-rose-700 bg-rose-100 border-rose-300'
+                                    : 'text-slate-400 bg-slate-100 border-slate-200'
+                              }`}>
+                                Pcs: ₹{pieceRate > 0 ? pieceRate.toFixed(2) : '0.00'}
+                              </span>
+                            </div>
                           ) : (
-                            <span className={`font-black px-2 py-0.5 rounded-lg text-xs border ${
+                            <span className={`font-black text-[10px] sm:text-[11px] font-mono px-1.5 py-0.5 rounded-md border whitespace-nowrap ${
                               trayRate > 0 
-                                ? 'text-sky-900 bg-sky-100/80 border-sky-300' 
+                                ? 'text-sky-900 bg-sky-100/90 border-sky-300' 
                                 : isUnassignedWithQty
                                   ? 'text-rose-700 bg-rose-100 border-rose-300'
                                   : 'text-slate-400 bg-slate-100 border-slate-200'
@@ -485,13 +500,13 @@ export const StockReceiveModal = ({ onClose }) => {
                     </div>
 
                     {/* Right: Quantity Input & Line Total */}
-                    <div className="flex items-center justify-between sm:justify-end gap-3.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-sky-100">
+                    <div className="flex items-center justify-between sm:justify-end gap-2.5 sm:gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-sky-100">
                       {/* Line total amount display */}
                       {isAllocated && (
-                        <div className="text-right">
-                          <span className="text-[10px] sm:text-xs font-bold text-slate-400 block">Total:</span>
-                          <span className={`text-xs sm:text-sm lg:text-base font-black font-mono ${!isUnassignedWithQty ? 'text-sky-900' : 'text-rose-600'}`}>
-                            {!isUnassignedWithQty ? `₹${itemTotal.toFixed(2)}` : 'Rate Required'}
+                        <div className="text-right shrink-0 bg-sky-50 px-2 sm:px-2.5 py-1 rounded-xl border border-sky-200 shadow-2xs">
+                          <span className="text-[9px] sm:text-[10px] font-extrabold text-sky-800 uppercase block leading-none">Total:</span>
+                          <span className={`text-xs sm:text-sm font-black font-mono ${!isUnassignedWithQty ? 'text-sky-950' : 'text-rose-600'}`}>
+                            {!isUnassignedWithQty ? `₹${itemTotal.toFixed(2)}` : 'Rate Req.'}
                           </span>
                         </div>
                       )}
