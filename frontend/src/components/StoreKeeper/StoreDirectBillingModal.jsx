@@ -87,9 +87,12 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
     const opUnit = getOperationalUnit(prod);
     const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
     const whUnits = Number(prod.warehouse_stock_units || 0);
+    const directSaleRate = Number(prod.direct_sale_rate || 0);
+
     if (opUnit.isPieceBased) {
       const maxAvailable = Math.floor(whUnits * ppu);
-      const rate = Number(prod.piece_selling_price || (Number(prod.unit_selling_price || 0) / ppu) || 0);
+      const fallbackRate = Number(prod.piece_selling_price || (Number(prod.unit_selling_price || 0) / ppu) || 0);
+      const rate = directSaleRate > 0 ? directSaleRate : fallbackRate;
       return {
         opUnit,
         maxAvailable,
@@ -100,7 +103,8 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
       };
     } else {
       const maxAvailable = whUnits;
-      const rate = Number(prod.unit_selling_price || (Number(prod.piece_selling_price || 0) * ppu) || 0);
+      const fallbackRate = Number(prod.unit_selling_price || (Number(prod.piece_selling_price || 0) * ppu) || 0);
+      const rate = directSaleRate > 0 ? directSaleRate : fallbackRate;
       return {
         opUnit,
         maxAvailable,
@@ -426,7 +430,8 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                   image: actualImage,
                   sizeBadge: prod.selling_unit || (PRODUCT_IMAGES[prod.id]?.sizeBadge) || 'Item'
                 };
-                const availablePcs = getAvailablePieces(prod);
+                const stockInfo = getProductStockInfo(prod);
+                const availablePcs = stockInfo.maxAvailable;
                 const currentQty = cart[prod.id]?.qty || '';
 
                 return (
@@ -452,7 +457,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                               {meta.sizeBadge}
                             </span>
                             <span className="font-mono font-black text-xs sm:text-sm text-slate-900">
-                              ₹{prod.piece_selling_price || prod.unit_selling_price}/pc
+                              ₹{stockInfo.rate.toFixed(2)}/pc
                             </span>
                           </div>
 

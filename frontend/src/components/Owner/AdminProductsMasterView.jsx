@@ -83,6 +83,7 @@ export const AdminProductsMasterView = () => {
     purchase_price: 600,
     unit_selling_price: 700,
     piece_selling_price: 9.72,
+    direct_sale_rate: '',
     warehouse_stock_units: 4,
     min_stock_level: 1,
     is_active: 1,
@@ -371,6 +372,7 @@ export const AdminProductsMasterView = () => {
           purchase_price: 600,
           unit_selling_price: 700,
           piece_selling_price: 9.72,
+          direct_sale_rate: '',
           warehouse_stock_units: 4,
           min_stock_level: 1,
           is_active: 1,
@@ -1085,6 +1087,27 @@ export const AdminProductsMasterView = () => {
                   <option value={0}>🔴 Inactive (Hidden from New Sales)</option>
                 </select>
               </div>
+
+              <div>
+                <label className="font-extrabold text-slate-700 block mb-1">
+                  Direct Store Sale Rate (நேரடி கடை விற்பனை விலை) <span className="text-emerald-600 font-bold">★ Fixed</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-black text-emerald-600">₹</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={formData.direct_sale_rate !== undefined ? formData.direct_sale_rate : ''}
+                    onChange={(e) => handleFormChange('direct_sale_rate', e.target.value)}
+                    className="w-full pl-7 pr-3 p-2.5 font-mono font-black bg-emerald-50/70 border-2 border-emerald-300 focus:border-emerald-500 rounded-xl focus:outline-none text-emerald-950 shadow-2xs"
+                  />
+                </div>
+                <span className="text-[10px] text-emerald-800 font-bold block mt-1">
+                  Store Keeper Direct Store Sale-ல் ஒரு பொருளுக்கான விலை (Rate × Count)
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1410,6 +1433,12 @@ export const AdminProductsMasterView = () => {
                     <span className="text-slate-600 font-sans font-bold">Single Piece Rate:</span>
                     <span className="font-black text-emerald-800">₹{selectedProduct.piece_selling_price} / {selectedProduct.base_unit || 'Piece'}</span>
                   </div>
+                  <div className="flex justify-between border-t border-emerald-200/60 pt-1">
+                    <span className="text-slate-600 font-sans font-bold">Direct Store Sale Rate:</span>
+                    <span className="font-black text-emerald-900 bg-emerald-100/80 px-2 py-0.5 rounded border border-emerald-300">
+                      ₹{selectedProduct.direct_sale_rate !== undefined && selectedProduct.direct_sale_rate !== null && Number(selectedProduct.direct_sale_rate) > 0 ? Number(selectedProduct.direct_sale_rate).toFixed(2) : (selectedProduct.piece_selling_price || '0.00')} / Piece
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
@@ -1553,6 +1582,21 @@ export const AdminProductsMasterView = () => {
                       className="w-full p-2 border border-slate-300 rounded-xl font-mono font-bold"
                     />
                   </div>
+                  <div>
+                    <label className="font-extrabold text-emerald-800 block mb-1">Direct Store Sale Rate (₹ / Piece)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={selectedProduct.direct_sale_rate !== undefined ? selectedProduct.direct_sale_rate : ''}
+                      onChange={(e) => setSelectedProduct({ ...selectedProduct, direct_sale_rate: e.target.value })}
+                      className="w-full p-2 border-2 border-emerald-300 bg-emerald-50/60 rounded-xl font-mono font-black text-emerald-950"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
                     <label className="font-extrabold text-slate-700 block mb-1">SKU Code</label>
                     <input

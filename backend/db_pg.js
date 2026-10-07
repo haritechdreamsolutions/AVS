@@ -691,6 +691,7 @@ export async function getProducts(cid, filters) {
     purchase_price: Number(p.purchase_price || 0),
     unit_selling_price: Number(p.unit_selling_price || 0),
     piece_selling_price: Number(p.piece_selling_price || 0),
+    direct_sale_rate: Number(p.direct_sale_rate !== undefined && p.direct_sale_rate !== null ? p.direct_sale_rate : (p.piece_selling_price || 0)),
     min_stock_level: Number(p.min_stock_level || 5),
     pack_size: p.pack_size || '',
     buy_rate_uom: p.buy_rate_uom || p.selling_unit || 'Tray',
@@ -774,6 +775,7 @@ export async function addProduct(cid, d) {
 
   const categoryNameToStore = targetCategoryName || (d.category && String(d.category).trim()) || 'General';
   const imageToStore = d.image_url !== undefined ? d.image_url : (d.image || null);
+  const directSaleRate = d.direct_sale_rate !== undefined && d.direct_sale_rate !== null && d.direct_sale_rate !== '' ? Number(d.direct_sale_rate) : pieceSellingPrice;
 
   const client = await pool.connect();
   try {
@@ -786,13 +788,13 @@ export async function addProduct(cid, d) {
       `INSERT INTO products (
         company_id, category_id, category, sku, barcode, name, display_name, pack_size,
         selling_unit, base_unit, pieces_per_unit, purchase_price, buy_rate_uom,
-        unit_selling_price, selling_rate_uom, piece_selling_price,
+        unit_selling_price, selling_rate_uom, piece_selling_price, direct_sale_rate,
         min_stock_level, warehouse_stock_units, icon, image_url, is_active
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
       [
         cid, targetCategoryId, categoryNameToStore, sku, d.barcode || null, d.name.trim(), displayName, packSize,
         purchaseUnit, baseUnit, conversionFactor, buyRate, buyRateUom,
-        unitSellingPrice, sellingRateUom, pieceSellingPrice,
+        unitSellingPrice, sellingRateUom, pieceSellingPrice, directSaleRate,
         Number(d.min_stock_level) || 0, Number(d.warehouse_stock_units) || 0,
         d.icon || null, imageToStore, d.is_active !== undefined ? Boolean(d.is_active) : true
       ]
@@ -849,6 +851,7 @@ export async function updateProduct(cid, prodId, d) {
   const unitSellingPrice = d.unit_selling_price !== undefined ? Number(d.unit_selling_price) : Number(pOld.unit_selling_price);
   const sellingRateUom = d.selling_rate_uom || pOld.selling_rate_uom || purchaseUnit;
   const pieceSellingPrice = d.piece_selling_price !== undefined ? Number(d.piece_selling_price) : parseFloat((unitSellingPrice / conversionFactor).toFixed(2));
+  const directSaleRate = d.direct_sale_rate !== undefined && d.direct_sale_rate !== null && d.direct_sale_rate !== '' ? Number(d.direct_sale_rate) : (pOld.direct_sale_rate !== undefined ? Number(pOld.direct_sale_rate) : null);
   const packSize = d.pack_size !== undefined ? d.pack_size : pOld.pack_size;
 
   let targetCategoryId = null;
@@ -881,9 +884,10 @@ export async function updateProduct(cid, prodId, d) {
         selling_unit=COALESCE($8, selling_unit), base_unit=COALESCE($9, base_unit), pieces_per_unit=COALESCE($10, pieces_per_unit),
         purchase_price=COALESCE($11, purchase_price), buy_rate_uom=COALESCE($12, buy_rate_uom),
         unit_selling_price=COALESCE($13, unit_selling_price), selling_rate_uom=COALESCE($14, selling_rate_uom),
-        piece_selling_price=COALESCE($15, piece_selling_price), min_stock_level=COALESCE($16, min_stock_level),
-        icon=COALESCE($17, icon), image_url=COALESCE($18, image_url), updated_at=NOW()
-      WHERE id=$19 AND company_id=$20 RETURNING *`,
+        piece_selling_price=COALESCE($15, piece_selling_price), direct_sale_rate=COALESCE($16, direct_sale_rate),
+        min_stock_level=COALESCE($17, min_stock_level),
+        icon=COALESCE($18, icon), image_url=COALESCE($19, image_url), updated_at=NOW()
+      WHERE id=$20 AND company_id=$21 RETURNING *`,
       [
         targetCategoryId !== null ? targetCategoryId : null,
         targetCategoryName || (d.category && String(d.category).trim()) || null,
@@ -891,7 +895,7 @@ export async function updateProduct(cid, prodId, d) {
         d.name ? d.name.trim() : null, d.display_name ? d.display_name.trim() : null, packSize,
         purchaseUnit, baseUnit, conversionFactor,
         buyRate, buyRateUom,
-        unitSellingPrice, sellingRateUom, pieceSellingPrice,
+        unitSellingPrice, sellingRateUom, pieceSellingPrice, directSaleRate,
         d.min_stock_level !== undefined ? Number(d.min_stock_level) : null,
         d.icon || null, d.image_url || d.image || null,
         prodId, cid

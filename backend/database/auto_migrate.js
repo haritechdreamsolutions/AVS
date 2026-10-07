@@ -298,6 +298,7 @@ export async function runAutoMigrations() {
     await safeQuery(client, 'ALTER TABLE products ADD COLUMN IF NOT EXISTS display_name VARCHAR(150);', [], 'products.display_name');
     await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS buy_rate_uom VARCHAR(50) DEFAULT 'Tray';", [], 'products.buy_rate_uom');
     await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_rate_uom VARCHAR(50) DEFAULT 'Tray';", [], 'products.selling_rate_uom');
+    await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS direct_sale_rate NUMERIC(10,2) NOT NULL DEFAULT 0.00;", [], 'products.direct_sale_rate');
 
     // 9.5 Product UOMs Table
     await safeQuery(client, `
