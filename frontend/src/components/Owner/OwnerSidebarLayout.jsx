@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { 
   LayoutDashboard, ShoppingBag, Package, Users, Store, 
   Printer, Grid, LogOut, ShieldCheck, ChevronRight, Menu, X, Snowflake, TrendingUp, Tag, MapPin, Scale, RotateCcw,
-  DollarSign, AlertOctagon, AlertTriangle, Building2
+  DollarSign, AlertOctagon, AlertTriangle, Building2, Wallet
 } from 'lucide-react';
 
 // Lazy loading heavy Admin & Owner views to reduce initial bundle size & optimize LCP
@@ -11,6 +11,7 @@ const A4ReportView = lazy(() => import('./A4ReportView').then(m => ({ default: m
 const FeatureIconGrid = lazy(() => import('./FeatureIconGrid').then(m => ({ default: m.FeatureIconGrid })));
 const FreezerManagement = lazy(() => import('./FreezerManagement').then(m => ({ default: m.FreezerManagement })));
 const SalesRecordsView = lazy(() => import('./SalesRecordsView').then(m => ({ default: m.SalesRecordsView })));
+const UserBalanceView = lazy(() => import('../common/UserBalanceView').then(m => ({ default: m.UserBalanceView })));
 const OwnerDashboardOverview = lazy(() => import('./OwnerDashboardOverview').then(m => ({ default: m.OwnerDashboardOverview })));
 const DriverRouteManagementView = lazy(() => import('./DriverRouteManagementView').then(m => ({ default: m.DriverRouteManagementView })));
 const ShopsManagementView = lazy(() => import('./ShopsManagementView').then(m => ({ default: m.ShopsManagementView })));
@@ -45,6 +46,7 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
     { id: 'products', label: 'Products & Rates 📦', icon: <Package className="w-5 h-5 text-emerald-400" /> },
     { id: 'freezer', label: 'Freezer Assets 🧊', icon: <Snowflake className="w-5 h-5 text-cyan-400" /> },
     { id: 'sales', label: 'Sales & Bills', icon: <ShoppingBag className="w-5 h-5" /> },
+    { id: 'user_balance', label: 'User Balance 💳', icon: <Wallet className="w-5 h-5 text-teal-400" /> },
     { id: 'returns_recon', label: 'Returns & Recon ⚖️', icon: <Scale className="w-5 h-5 text-amber-400" /> },
     { id: 'driver_expenses', label: 'Driver Expenses 💰', icon: <DollarSign className="w-5 h-5 text-emerald-400" /> },
     { id: 'damage_pieces', label: 'Damage Pieces 💥', icon: <AlertOctagon className="w-5 h-5 text-rose-400" /> },
@@ -189,6 +191,11 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
           {/* SALES TAB */}
           {activeTab === 'sales' && (
             <SalesRecordsView />
+          )}
+
+          {/* USER BALANCE TAB */}
+          {activeTab === 'user_balance' && (
+            <UserBalanceView />
           )}
 
           {/* RETURNS & RECONCILIATION TAB */}

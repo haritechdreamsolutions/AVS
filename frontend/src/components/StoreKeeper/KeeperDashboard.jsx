@@ -4,7 +4,7 @@ import {
   Package, Truck, ArrowDownLeft, ArrowUpRight, RotateCcw, 
   DollarSign, Activity, UserCheck, Plus, ShoppingCart, 
   Search, Sparkles, TrendingUp, CheckCircle2, ShieldCheck, Box,
-  Wrench, FileText, X, Store
+  Wrench, FileText, X, Store, Wallet
 } from 'lucide-react';
 import { CashSettlementModal } from './CashSettlementModal';
 import { StockReceiveModal } from './StockReceiveModal';
@@ -16,11 +16,12 @@ import { StoreShopBillingModal } from './StoreShopBillingModal';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { ThermalBillModal } from '../Employee/ThermalBillModal';
 import { SalesRecordsView } from '../Owner/SalesRecordsView';
+import { UserBalanceView } from '../common/UserBalanceView';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
 
 export const KeeperDashboard = () => {
   const { products = [], summary, employees, stockMovements } = useApp();
-  const [activeModal, setActiveModal] = useState(null); // SETTLEMENT, RECEIVE, ALLOCATE, RETURN_DRIVER, ADD_SHOP, DIRECT_SALE, SHOP_BILL, ADJUST_STOCK, SALES_HISTORY
+  const [activeModal, setActiveModal] = useState(null); // SETTLEMENT, RECEIVE, ALLOCATE, RETURN_DRIVER, ADD_SHOP, DIRECT_SALE, SHOP_BILL, USER_BALANCE, ADJUST_STOCK, SALES_HISTORY
   const [completedBill, setCompletedBill] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
@@ -138,6 +139,14 @@ export const KeeperDashboard = () => {
           >
             <RotateCcw className="w-4 h-4" />
             Stock Return Driver
+          </button>
+
+          <button
+            onClick={() => setActiveModal('USER_BALANCE')}
+            className="px-3.5 py-2.5 rounded-xl bg-teal-600/90 hover:bg-teal-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-teal-400/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
+          >
+            <Wallet className="w-4 h-4" />
+            User Balance
           </button>
 
           <button
@@ -440,6 +449,33 @@ export const KeeperDashboard = () => {
       )}
       {activeModal === 'ADJUST_STOCK' && (
         <StockAdjustmentModal onClose={() => setActiveModal(null)} />
+      )}
+      {activeModal === 'USER_BALANCE' && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 lg:p-6 overflow-y-auto">
+          <div className="bg-gradient-to-b from-sky-50 via-white to-sky-50/90 border-2 border-sky-200 rounded-3xl max-w-full sm:max-w-6xl lg:max-w-7xl w-full max-h-[94vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between p-4 px-6 border-b-2 border-sky-200 bg-sky-900 text-white shrink-0 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-teal-600 text-white flex items-center justify-center shadow-xs">
+                  <Wallet className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base sm:text-lg text-white uppercase tracking-tight">User Balance & Credit Summary</h3>
+                  <span className="text-xs text-teal-200 font-bold">Store Keeper & Drivers Ledger</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveModal(null)}
+                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-sky-100 hover:text-white flex items-center justify-center transition cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 p-3 sm:p-5 lg:p-6 overflow-y-auto bg-sky-50/40">
+              <UserBalanceView />
+            </div>
+          </div>
+        </div>
       )}
       {activeModal === 'SALES_HISTORY' && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 lg:p-6 overflow-y-auto">
