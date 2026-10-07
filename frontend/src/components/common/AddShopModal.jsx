@@ -145,81 +145,94 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-3xl max-w-sm sm:max-w-md w-full p-4 sm:p-5 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto my-auto">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 lg:p-6 overflow-y-auto">
+      {/* Light Blue Themed Container - Optimized for Laptop & Responsive for Mobile */}
+      <div className="bg-gradient-to-b from-sky-50 via-white to-sky-50/90 border-2 border-sky-200 rounded-3xl max-w-full sm:max-w-2xl lg:max-w-3xl w-full p-4 sm:p-6 lg:p-7 space-y-4 sm:space-y-5 shadow-2xl max-h-[92dvh] overflow-y-auto my-auto animate-in fade-in zoom-in-95 duration-150">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div>
-            <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
-              <Store className="w-5 h-5 text-blue-600" />
-              Add New Shop (புது கடை சேர்க்க)
-            </h3>
-            {villageName && (
-              <div className="flex items-center gap-1.5 mt-1 text-xs text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
-                <MapPin className="w-3 h-3 text-amber-600 shrink-0" />
-                Village: <span className="text-slate-900 font-black">{villageName}</span>
-                <span className="text-[10px] text-amber-600 font-medium ml-auto">(Auto-assigned)</span>
-              </div>
-            )}
+        <div className="flex items-center justify-between border-b border-sky-200/80 pb-3.5 sm:pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-sky-600 text-white flex items-center justify-center shadow-md shadow-sky-200 shrink-0">
+              <Store className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
+            </div>
+            <div>
+              <h3 className="font-black text-base sm:text-lg lg:text-xl text-slate-900 tracking-tight flex items-center gap-2">
+                Add New Shop
+                <span className="text-[11px] sm:text-xs px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 font-extrabold border border-sky-300 uppercase">
+                  NEW
+                </span>
+              </h3>
+              <p className="text-[11px] sm:text-xs font-bold text-sky-700 mt-0.5">புது கடை சேர்க்க & விவரங்கள் பதிவு</p>
+              {villageName && (
+                <div className="flex items-center gap-1.5 mt-1.5 text-xs text-amber-800 font-black bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200">
+                  <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  Village: <span className="text-slate-900">{villageName}</span>
+                  <span className="text-[10px] text-amber-600 font-bold ml-auto">(Auto-assigned)</span>
+                </div>
+              )}
+            </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer">
-            <X className="w-5 h-5" />
+          <button 
+            onClick={onClose} 
+            className="p-2 rounded-2xl text-slate-400 hover:text-slate-700 hover:bg-sky-100 transition-colors cursor-pointer"
+            title="Close"
+          >
+            <X className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
         {createdShop ? (
           /* Post-creation Success Confirmation */
           <div className="py-4 space-y-4 text-center">
-            <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 border border-emerald-300 mx-auto flex items-center justify-center shadow-inner">
-              <CheckCircle2 className="w-8 h-8" />
+            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 border-2 border-emerald-300 mx-auto flex items-center justify-center shadow-inner">
+              <CheckCircle2 className="w-10 h-10" />
             </div>
             <div className="space-y-1">
-              <h4 className="font-black text-lg text-slate-900">Shop Created Successfully!</h4>
-              <p className="text-xs text-slate-500 font-medium">கடை வெற்றிகரமாக பதிவு செய்யப்பட்டது</p>
+              <h4 className="font-black text-lg sm:text-xl text-slate-900">Shop Created Successfully!</h4>
+              <p className="text-xs sm:text-sm text-slate-500 font-medium">கடை வெற்றிகரமாக பதிவு செய்யப்பட்டது</p>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-2 text-xs">
-              <div className="flex justify-between items-center pb-2 border-b border-slate-200">
-                <span className="font-bold text-slate-500 uppercase">Shop ID:</span>
-                <span className="font-mono font-black text-sm text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+            <div className="bg-sky-50 border-2 border-sky-200 rounded-2xl p-4 sm:p-5 text-left space-y-2.5 text-xs sm:text-sm shadow-2xs">
+              <div className="flex justify-between items-center pb-2.5 border-b border-sky-200">
+                <span className="font-black text-slate-600 uppercase">Shop ID:</span>
+                <span className="font-mono font-black text-sm sm:text-base text-sky-800 bg-sky-100 px-3 py-1 rounded-xl border border-sky-300">
                   {createdShop.code}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="font-bold text-slate-500">Shop Name:</span>
-                <span className="font-extrabold text-slate-900">{createdShop.name}</span>
+                <span className="font-black text-slate-600">Shop Name:</span>
+                <span className="font-black text-slate-900">{createdShop.name}</span>
               </div>
               {(createdShop.village_name || villageName) && (
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-slate-500">Village:</span>
-                  <span className="font-extrabold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
-                    <MapPin className="w-3 h-3 text-amber-600" />
+                  <span className="font-black text-slate-600">Village:</span>
+                  <span className="font-black text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-lg border border-amber-200 flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-amber-600" />
                     {createdShop.village_name || villageName}
                   </span>
                 </div>
               )}
               {createdShop.owner_name && (
                 <div className="flex justify-between">
-                  <span className="font-bold text-slate-500">Owner:</span>
-                  <span className="font-medium text-slate-800">{createdShop.owner_name}</span>
+                  <span className="font-black text-slate-600">Owner:</span>
+                  <span className="font-bold text-slate-800">{createdShop.owner_name}</span>
                 </div>
               )}
               {createdShop.phone && (
                 <div className="flex justify-between">
-                  <span className="font-bold text-slate-500">Phone:</span>
-                  <span className="font-medium text-slate-800 font-mono">{createdShop.phone}</span>
+                  <span className="font-black text-slate-600">Phone:</span>
+                  <span className="font-black text-slate-800 font-mono">{createdShop.phone}</span>
                 </div>
               )}
               {createdShop.route_name && (
                 <div className="flex justify-between">
-                  <span className="font-bold text-slate-500">Route:</span>
-                  <span className="font-medium text-slate-800">{createdShop.route_name}</span>
+                  <span className="font-black text-slate-600">Route:</span>
+                  <span className="font-bold text-slate-800">{createdShop.route_name}</span>
                 </div>
               )}
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-3 pt-2">
               <button
                 onClick={() => {
                   setCreatedShop(null);
@@ -227,36 +240,36 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
                   setOwnerName('');
                   setPhone('');
                 }}
-                className="w-1/2 py-3 px-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer transition"
+                className="w-1/2 py-3.5 px-4 rounded-2xl bg-sky-100 hover:bg-sky-200 text-sky-900 font-black text-xs sm:text-sm cursor-pointer transition border border-sky-200"
               >
                 + Add Another Shop
               </button>
               <button
                 onClick={onClose}
-                className="w-1/2 py-3 px-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer transition shadow-md shadow-blue-600/20"
+                className="w-1/2 py-3.5 px-4 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white font-black text-xs sm:text-sm cursor-pointer transition shadow-lg shadow-sky-300/60"
               >
                 Done / Close
               </button>
             </div>
           </div>
         ) : (
-          <div className="space-y-3.5">
+          <div className="space-y-4">
             {/* 1. Shop Name (Required) with Voice Recognition & Language Toggle */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <label className="text-xs font-extrabold text-slate-700 uppercase">
+                <label className="text-xs sm:text-sm font-black text-slate-700 uppercase">
                   Shop Name (கடை பெயர்) *
                 </label>
                 
                 {/* Language Switcher Buttons: தமிழ் / English */}
-                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-1 bg-sky-100/80 p-1 rounded-xl border border-sky-200">
                   <button
                     type="button"
                     onClick={() => setSpeechLang('ta-IN')}
-                    className={`px-2 py-0.5 text-[10px] font-black rounded-md transition cursor-pointer ${
+                    className={`px-2.5 py-1 text-xs font-black rounded-lg transition cursor-pointer ${
                       speechLang === 'ta-IN'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-sky-600 text-white shadow-xs'
+                        : 'text-sky-800 hover:text-slate-900'
                     }`}
                   >
                     தமிழ்
@@ -264,10 +277,10 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
                   <button
                     type="button"
                     onClick={() => setSpeechLang('en-IN')}
-                    className={`px-2 py-0.5 text-[10px] font-black rounded-md transition cursor-pointer ${
+                    className={`px-2.5 py-1 text-xs font-black rounded-lg transition cursor-pointer ${
                       speechLang === 'en-IN'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-sky-600 text-white shadow-xs'
+                        : 'text-sky-800 hover:text-slate-900'
                     }`}
                   >
                     English
@@ -281,8 +294,8 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
                   placeholder={speechLang === 'ta-IN' ? "எ.கா. லட்சுமி ஸ்டோர்" : "e.g. Lakshmi Store"}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className={`w-full bg-slate-50 border rounded-xl pl-3 pr-11 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs transition ${
-                    isListening ? 'border-rose-400 ring-2 ring-rose-200 bg-rose-50/30' : 'border-slate-300'
+                  className={`w-full bg-white border-2 rounded-2xl pl-4 pr-12 py-3 text-sm sm:text-base font-black text-slate-900 focus:outline-none transition shadow-2xs ${
+                    isListening ? 'border-rose-400 ring-2 ring-rose-200 bg-rose-50/30' : 'border-sky-200 hover:border-sky-300 focus:border-sky-600'
                   }`}
                   autoFocus
                 />
@@ -292,20 +305,20 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
                   type="button"
                   onClick={startVoiceInput}
                   title={isListening ? "Stop Listening" : (speechLang === 'ta-IN' ? "குரல் உள்ளீடு (Mic) - தமிழ்" : "Voice Input (Mic) - English")}
-                  className={`absolute right-1.5 p-1.5 rounded-lg transition-all flex items-center justify-center cursor-pointer ${
+                  className={`absolute right-2 p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer ${
                     isListening
                       ? 'bg-rose-600 text-white animate-pulse shadow-md shadow-rose-500/40 ring-2 ring-rose-300'
-                      : 'bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 hover:scale-105 active:scale-95'
+                      : 'bg-sky-100 hover:bg-sky-200 text-sky-700 border border-sky-300 hover:scale-105 active:scale-95'
                   }`}
                 >
-                  <Mic className={`w-4 h-4 ${isListening ? 'animate-bounce' : ''}`} />
+                  <Mic className={`w-4 h-4 sm:w-5 sm:h-5 ${isListening ? 'animate-bounce' : ''}`} />
                 </button>
               </div>
 
               {/* Listening Live Indicator */}
               {isListening && (
-                <div className="flex items-center gap-1.5 text-[11px] font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 animate-pulse">
-                  <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping"></span>
+                <div className="flex items-center gap-2 text-xs font-bold text-rose-600 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200 animate-pulse">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping"></span>
                   <span>
                     {speechLang === 'ta-IN' 
                       ? '🔴 கேட்கிறது... கடை பெயரை தமிழில் பேசவும்...' 
@@ -316,75 +329,78 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
             </div>
 
             {/* 2. Owner Name & Phone */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-xs font-extrabold text-slate-700 uppercase">Owner Name</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs sm:text-sm font-black text-slate-700 uppercase">Owner Name</label>
                 <input
                   type="text"
                   placeholder="e.g. Lakshmanan"
                   value={ownerName}
                   onChange={(e) => setOwnerName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
+                  className="w-full bg-white border-2 border-sky-200 hover:border-sky-300 focus:border-sky-600 rounded-2xl px-4 py-3 text-sm sm:text-base font-black text-slate-900 focus:outline-none shadow-2xs"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-extrabold text-slate-700 uppercase">Phone Number</label>
+              <div className="space-y-1.5">
+                <label className="text-xs sm:text-sm font-black text-slate-700 uppercase">Phone Number</label>
                 <input
                   type="text"
                   placeholder="e.g. 9876543210"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
+                  className="w-full bg-white border-2 border-sky-200 hover:border-sky-300 focus:border-sky-600 rounded-2xl px-4 py-3 text-sm sm:text-base font-mono font-black text-slate-900 focus:outline-none shadow-2xs"
                 />
               </div>
             </div>
 
-            {/* 3. Village Selector (Required) */}
-            {!villageId && (
-              <div className="space-y-1">
-                <label className="text-xs font-extrabold text-slate-700 uppercase flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-amber-500" />
-                  Village (கிராமம்) *
-                </label>
-                <select
-                  value={selectedVillageId}
-                  onChange={(e) => setSelectedVillageId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs cursor-pointer"
-                >
-                  <option value="" disabled>-- Select Village (Required) --</option>
-                  {activeVillages.length === 0 ? (
-                    <option value="" disabled>No active villages found. Please create a village first.</option>
-                  ) : (
-                    activeVillages.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name} ({v.code}) — Route: {v.route_name || 'Assigned'}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-            )}
+            {/* 3. Village Selector & Route Display */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              {/* Village Selector (Required) */}
+              {!villageId ? (
+                <div className="space-y-1.5">
+                  <label className="text-xs sm:text-sm font-black text-slate-700 uppercase flex items-center gap-1.5">
+                    <MapPin className="w-4 h-4 text-amber-500" />
+                    Village (கிராமம்) *
+                  </label>
+                  <select
+                    value={selectedVillageId}
+                    onChange={(e) => setSelectedVillageId(e.target.value)}
+                    className="w-full bg-white border-2 border-sky-200 hover:border-sky-400 focus:border-sky-600 rounded-2xl px-4 py-3 text-sm sm:text-base font-black text-slate-900 focus:outline-none shadow-2xs cursor-pointer"
+                  >
+                    <option value="" disabled>-- Select Village --</option>
+                    {activeVillages.length === 0 ? (
+                      <option value="" disabled>No active villages found.</option>
+                    ) : (
+                      activeVillages.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.name} ({v.code})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              ) : null}
 
-            {/* 4. Auto-Derived Route Display (Read-Only) */}
-            <div className="space-y-1">
-              <label className="text-xs font-extrabold text-slate-700 uppercase flex items-center gap-1">
-                <RouteIcon className="w-3.5 h-3.5 text-blue-500" />
-                Route (வழித்தடம் — கிராமத்தின் படி தானாக நிர்ணயிக்கப்பட்டது)
-              </label>
-              <div className="w-full bg-indigo-50/70 border border-indigo-200 rounded-xl px-3 py-2.5 text-xs font-bold text-indigo-950 flex items-center justify-between shadow-2xs">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
-                  {currentVillage?.route_name ? `${currentVillage.route_name} (${currentVillage.route_code || 'Route'})` : (villageName ? `Auto Route for ${villageName}` : 'Select a village above')}
-                </span>
-                <span className="text-[10px] font-black uppercase text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200">
-                  Auto-Derived
-                </span>
+              {/* Auto-Derived Route Display (Read-Only) */}
+              <div className={`space-y-1.5 ${villageId ? 'sm:col-span-2' : ''}`}>
+                <label className="text-xs sm:text-sm font-black text-slate-700 uppercase flex items-center gap-1.5">
+                  <RouteIcon className="w-4 h-4 text-sky-600" />
+                  Route (வழித்தடம்)
+                </label>
+                <div className="w-full bg-sky-100/70 border-2 border-sky-200 rounded-2xl px-4 py-3 text-xs sm:text-sm font-black text-sky-950 flex items-center justify-between shadow-2xs min-h-[48px]">
+                  <span className="flex items-center gap-2 truncate">
+                    <span className="w-2.5 h-2.5 rounded-full bg-sky-600 animate-pulse shrink-0"></span>
+                    <span className="truncate">{currentVillage?.route_name ? `${currentVillage.route_name} (${currentVillage.route_code || 'Route'})` : (villageName ? `Auto Route for ${villageName}` : 'Select village')}</span>
+                  </span>
+                  <span className="text-[10px] sm:text-xs font-black uppercase text-sky-800 bg-sky-200/80 px-2.5 py-0.5 rounded-lg border border-sky-300 shrink-0 ml-2">
+                    Auto-Derived
+                  </span>
+                </div>
               </div>
             </div>
 
             {/* 4. Distance (KM) */}
-            <div className="space-y-1">
-              <label className="text-xs font-extrabold text-slate-700 uppercase">Distance (KM)</label>
+            <div className="space-y-1.5">
+              <label className="text-xs sm:text-sm font-black text-slate-700 uppercase">Distance (KM)</label>
               <input
                 type="number"
                 step="0.1"
@@ -392,20 +408,20 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
                 placeholder="3.0"
                 value={distanceKm}
                 onChange={(e) => setDistanceKm(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
+                className="w-full bg-white border-2 border-sky-200 hover:border-sky-300 focus:border-sky-600 rounded-2xl px-4 py-3 text-sm sm:text-base font-mono font-black text-slate-900 focus:outline-none shadow-2xs"
               />
             </div>
 
             {/* 5. Provide Free Freezer Option */}
-            <div className="p-3 bg-cyan-50/80 border border-cyan-200/80 rounded-2xl space-y-2">
-              <label className="flex items-center gap-2 text-xs font-black text-cyan-900 cursor-pointer">
+            <div className="p-3.5 sm:p-4 bg-sky-100/60 border-2 border-sky-200 rounded-2xl space-y-2.5">
+              <label className="flex items-center gap-2.5 text-xs sm:text-sm font-black text-sky-900 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={hasFreezer}
                   onChange={(e) => setHasFreezer(e.target.checked)}
-                  className="w-4 h-4 text-cyan-600 rounded cursor-pointer"
+                  className="w-4 h-4 text-sky-600 rounded cursor-pointer"
                 />
-                <Snowflake className="w-4 h-4 text-cyan-600" />
+                <Snowflake className="w-4 h-4 text-sky-600" />
                 Provide Free Freezer Asset 🧊
               </label>
               {hasFreezer && (
@@ -414,7 +430,7 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
                   placeholder="Freezer Model / Capacity"
                   value={freezerModel}
                   onChange={(e) => setFreezerModel(e.target.value)}
-                  className="w-full bg-white border border-cyan-300 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-cyan-500 shadow-2xs"
+                  className="w-full bg-white border-2 border-sky-300 focus:border-sky-600 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-black text-slate-900 focus:outline-none shadow-2xs"
                 />
               )}
             </div>
@@ -423,9 +439,9 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
             <button
               onClick={handleSave}
               disabled={saving}
-              className="touch-btn touch-btn-primary w-full text-sm sm:text-base font-black flex items-center justify-center gap-2 uppercase tracking-wider mt-2 py-3.5 rounded-2xl shadow-lg shadow-blue-600/20 cursor-pointer transition active:scale-[0.98]"
+              className="touch-btn touch-btn-primary w-full text-sm sm:text-base font-black flex items-center justify-center gap-2 uppercase tracking-wider py-3.5 sm:py-4 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white shadow-lg shadow-sky-300/60 cursor-pointer transition active:scale-[0.98]"
             >
-              <Save className="w-5 h-5" />
+              <Save className="w-5 h-5 stroke-[2.5]" />
               {saving ? 'SAVING SHOP...' : 'SAVE NEW SHOP'}
             </button>
           </div>
