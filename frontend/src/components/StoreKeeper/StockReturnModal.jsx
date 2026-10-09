@@ -321,12 +321,72 @@ export const StockReturnModal = ({ onClose }) => {
       return itemRec;
     });
 
+    // Helper to prioritize products in standard dairy & beverage sequence
+    const getProductSortRank = (p) => {
+      const name = `${p.product_name || p.display_name || p.name || ''} ${p.category_name || p.category || ''} ${p.pack_size || ''}`.toLowerCase();
+      
+      // 1. Milk 120ml / 125ml / 100ml
+      if (name.includes('milk') && (name.includes('120') || name.includes('125') || name.includes('100')) && !name.includes('curd')) {
+        return 10;
+      }
+      // 3. TCM 500 Milk / Tea Milk
+      if ((name.includes('tcm') || name.includes('tea')) && name.includes('milk')) {
+        return 30;
+      }
+      // 2. Milk 500ml
+      if (name.includes('milk') && name.includes('500') && !name.includes('curd')) {
+        return 20;
+      }
+      // 4. Curd 120ml / 125ml / 100ml
+      if (name.includes('curd') && (name.includes('120') || name.includes('125') || name.includes('100'))) {
+        return 40;
+      }
+      // 5. Curd 500ml
+      if (name.includes('curd') && name.includes('500')) {
+        return 50;
+      }
+      // 6. Milk 1 Ltr / 1000ml
+      if (name.includes('milk') && (name.includes('1000') || name.includes('1 ltr') || name.includes('1ltr') || name.includes('1 l') || name.includes('1l') || name.includes('1 litre') || name.includes('1000ml')) && !name.includes('curd')) {
+        return 60;
+      }
+      // 7. Curd 1 Ltr / 1000ml
+      if (name.includes('curd') && (name.includes('1000') || name.includes('1 ltr') || name.includes('1ltr') || name.includes('1 l') || name.includes('1l') || name.includes('1 litre') || name.includes('1000ml'))) {
+        return 70;
+      }
+      // 8. Curd 5 Ltr / 5000ml / Bucket
+      if (name.includes('curd') && (name.includes('5000') || name.includes('5 ltr') || name.includes('5ltr') || name.includes('5 l') || name.includes('5l') || name.includes('5 litre') || name.includes('5000ml') || name.includes('bucket') || name.includes('5kg'))) {
+        return 80;
+      }
+      // 9. Cool drinks items
+      if (name.includes('cool') || name.includes('drink') || name.includes('beverage') || name.includes('soda') || name.includes('juice') || name.includes('cola') || name.includes('frooti') || name.includes('bovonto')) {
+        return 90;
+      }
+      // 10. Water items
+      if (name.includes('water') || name.includes('aqua') || name.includes('mineral')) {
+        return 100;
+      }
+      // 11. Others
+      return 110;
+    };
+
+    // Filter to ONLY items that were assigned to or traded by this driver
+    const activeItems = items.filter(it => 
+      (Number(it.alloc || 0) > 0 || Number(it.sold || 0) > 0 || Number(it.dmg || 0) > 0 || Number(it.retStock || 0) > 0)
+    );
+
+    const sortedItems = (activeItems.length > 0 ? activeItems : items).sort((a, b) => {
+      const rankA = getProductSortRank(a);
+      const rankB = getProductSortRank(b);
+      if (rankA !== rankB) return rankA - rankB;
+      return (a.product_name || a.name || '').localeCompare(b.product_name || b.name || '');
+    });
+
     const isReconciled = mismatches.length === 0;
 
     return {
       isReconciled,
       hasMismatch: !isReconciled,
-      items,
+      items: sortedItems,
       mismatches,
       totalAllocated: normalizeQuantity(totalAlloc),
       totalSold: normalizeQuantity(totalSold),

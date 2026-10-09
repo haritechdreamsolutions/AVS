@@ -5056,17 +5056,77 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
     });
   }
 
-  const mismatches = productsList.filter(p => !p.is_balanced);
+  // Helper to prioritize products in standard dairy & beverage sequence
+  function getProductSortRank(prod) {
+    const name = `${prod.product_name || prod.display_name || prod.name || ''} ${prod.category_name || prod.category || ''} ${prod.pack_size || ''}`.toLowerCase();
+    
+    // 1. Milk 120ml / 125ml / 100ml
+    if (name.includes('milk') && (name.includes('120') || name.includes('125') || name.includes('100')) && !name.includes('curd')) {
+      return 10;
+    }
+    // 3. TCM 500 Milk / Tea Milk
+    if ((name.includes('tcm') || name.includes('tea')) && name.includes('milk')) {
+      return 30;
+    }
+    // 2. Milk 500ml
+    if (name.includes('milk') && name.includes('500') && !name.includes('curd')) {
+      return 20;
+    }
+    // 4. Curd 120ml / 125ml / 100ml
+    if (name.includes('curd') && (name.includes('120') || name.includes('125') || name.includes('100'))) {
+      return 40;
+    }
+    // 5. Curd 500ml
+    if (name.includes('curd') && name.includes('500')) {
+      return 50;
+    }
+    // 6. Milk 1 Ltr / 1000ml
+    if (name.includes('milk') && (name.includes('1000') || name.includes('1 ltr') || name.includes('1ltr') || name.includes('1 l') || name.includes('1l') || name.includes('1 litre') || name.includes('1000ml')) && !name.includes('curd')) {
+      return 60;
+    }
+    // 7. Curd 1 Ltr / 1000ml
+    if (name.includes('curd') && (name.includes('1000') || name.includes('1 ltr') || name.includes('1ltr') || name.includes('1 l') || name.includes('1l') || name.includes('1 litre') || name.includes('1000ml'))) {
+      return 70;
+    }
+    // 8. Curd 5 Ltr / 5000ml / Bucket
+    if (name.includes('curd') && (name.includes('5000') || name.includes('5 ltr') || name.includes('5ltr') || name.includes('5 l') || name.includes('5l') || name.includes('5 litre') || name.includes('5000ml') || name.includes('bucket') || name.includes('5kg'))) {
+      return 80;
+    }
+    // 9. Cool drinks items
+    if (name.includes('cool') || name.includes('drink') || name.includes('beverage') || name.includes('soda') || name.includes('juice') || name.includes('cola') || name.includes('frooti') || name.includes('bovonto')) {
+      return 90;
+    }
+    // 10. Water items
+    if (name.includes('water') || name.includes('aqua') || name.includes('mineral')) {
+      return 100;
+    }
+    // 11. Others
+    return 110;
+  }
+
+  // Filter only products that were actually assigned, sold, damaged, or currently held by this driver
+  const assignedProductsList = productsList.filter(p => 
+    (Number(p.allocated || 0) > 0 || Number(p.sold || 0) > 0 || Number(p.damage || 0) > 0 || Number(p.current_stock || 0) > 0 || Number(p.current_return_stock || 0) > 0)
+  );
+
+  const finalProductsList = (assignedProductsList.length > 0 ? assignedProductsList : productsList).sort((a, b) => {
+    const rankA = getProductSortRank(a);
+    const rankB = getProductSortRank(b);
+    if (rankA !== rankB) return rankA - rankB;
+    return (a.product_name || '').localeCompare(b.product_name || '');
+  });
+
+  const mismatches = finalProductsList.filter(p => !p.is_balanced);
   const isReconciled = mismatches.length === 0;
 
   const reconciliationSummary = {
     is_reconciled: isReconciled,
     has_mismatch: !isReconciled,
-    total_products: productsList.length,
-    total_allocated: normalizeQuantity(productsList.reduce((s, p) => s + p.allocated, 0)),
-    total_sold: normalizeQuantity(productsList.reduce((s, p) => s + p.sold, 0)),
-    total_damaged: normalizeQuantity(productsList.reduce((s, p) => s + p.damage, 0)),
-    total_current_return: normalizeQuantity(productsList.reduce((s, p) => s + p.current_return_stock, 0)),
+    total_products: finalProductsList.length,
+    total_allocated: normalizeQuantity(finalProductsList.reduce((s, p) => s + p.allocated, 0)),
+    total_sold: normalizeQuantity(finalProductsList.reduce((s, p) => s + p.sold, 0)),
+    total_damaged: normalizeQuantity(finalProductsList.reduce((s, p) => s + p.damage, 0)),
+    total_current_return: normalizeQuantity(finalProductsList.reduce((s, p) => s + p.current_return_stock, 0)),
     mismatches: mismatches.map(m => ({
       product_id: m.product_id,
       product_name: m.product_name,
@@ -5138,7 +5198,7 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
     damages: detailedDamages,
     net_amount: netAmount,
     reconciliation: reconciliationSummary,
-    products: productsList
+    products: finalProductsList
   };
 }
 
