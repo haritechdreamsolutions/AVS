@@ -2045,41 +2045,41 @@ export const StockReturnModal = ({ onClose }) => {
       {/* DAMAGE QUANTITY-ENTRY MODAL (Phase 4) */}
       {showDamageModal && (
         <div className="fixed inset-0 z-60 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-4 sm:p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+          <div className="bg-gradient-to-b from-sky-50/95 via-blue-50/40 to-white border border-sky-200 rounded-3xl max-w-lg w-full p-4 sm:p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
             
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between border-b border-sky-100 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200">
+                <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200 shadow-2xs">
                   <ShieldAlert className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-black text-sm sm:text-base text-slate-900">
+                  <h4 className="font-black text-sm sm:text-base text-slate-900 tracking-tight">
                     RECORD DAMAGE ENTRY (சேதம் பதிவு)
                   </h4>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    Enter damaged quantities for {driverInfo.name || 'Driver'}
+                  <p className="text-[11px] sm:text-xs text-sky-800 font-medium">
+                    Enter damaged quantities for <strong className="text-slate-900 font-bold">{driverInfo.name || 'Driver'}</strong>
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowDamageModal(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-sky-100/60 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Notice */}
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 space-y-1">
+            <div className="p-3 bg-amber-50/90 border border-amber-200/80 rounded-2xl text-[11px] sm:text-xs text-amber-900 space-y-1 shadow-2xs">
               <div className="flex items-center gap-1.5 font-bold">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span>Strict Validation Rule</span>
+                <span>Strict Driver Stock Validation</span>
               </div>
-              <p>
+              <p className="leading-relaxed">
                 Damage quantity <strong>MUST NEVER</strong> exceed the driver's current vehicle stock. 
-                Submitted damages will be <strong>deducted atomically</strong> from live driver stock.
+                Submitted damages are <strong>deducted atomically</strong> from driver stock and recorded into the database.
               </p>
             </div>
 
@@ -2087,13 +2087,13 @@ export const StockReturnModal = ({ onClose }) => {
               
               {/* Reason Selector */}
               <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                   Primary Reason for Damage (சேதக் காரணம்) *
                 </label>
                 <select
                   value={damageReason}
                   onChange={(e) => setDamageReason(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100 transition cursor-pointer"
+                  className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 transition cursor-pointer shadow-2xs"
                 >
                   {DAMAGE_REASONS.map(r => (
                     <option key={r.value} value={r.value}>
@@ -2103,51 +2103,60 @@ export const StockReturnModal = ({ onClose }) => {
                 </select>
               </div>
 
-              {/* Product Quantities List (Reusing POS Pattern) */}
-              <div className="space-y-2.5">
-                <label className="text-[11px] font-bold text-slate-700 uppercase flex items-center justify-between">
+              {/* Product Quantities List (Ordered & Filtered by Driver Stock) */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
                   <span>Product Damage Quantities</span>
-                  <span className="text-[10px] text-slate-400 font-medium">Clamped to Current Stock</span>
+                  <span className="text-[10px] text-sky-700 font-bold bg-sky-100/80 px-2 py-0.5 rounded-md">Driver Stock Clamped</span>
                 </label>
 
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {products.map(p => {
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {reconciliationData.items.map(p => {
                     const opUnit = getOperationalUnit(p);
                     const isPieceBased = opUnit.isPieceBased;
-                    const ppu = Math.max(1, Number(p.pieces_per_unit || 1));
+                    const ppu = Math.max(1, Number(p.pieces_per_unit || p.ppu || 1));
                     const maxStock = isPieceBased
-                      ? Math.round(Number(p.current_stock || 0) * ppu)
-                      : Number(Number(p.current_stock || 0).toFixed(4));
+                      ? Math.round(Number(p.retStock ?? p.current_stock ?? 0))
+                      : Number(Number(p.retStock ?? p.current_stock ?? 0).toFixed(4));
                     const damageUnit = opUnit.pluralLabel;
                     const currentVal = damageQuantities[p.product_id] || 0;
                     const isZeroStock = maxStock <= 0;
+
+                    const masterProd = (masterProducts || []).find(m => Number(m.id) === Number(p.product_id)) || {};
+                    const rawName = (p.product_name || masterProd.display_name || masterProd.name || 'Item').trim();
+                    const packSize = (masterProd.pack_size || p.pack_size || '').trim();
+                    const itemName = (packSize && !rawName.toLowerCase().includes(packSize.toLowerCase()))
+                      ? `${rawName} ${packSize}`
+                      : rawName;
 
                     return (
                       <div 
                         key={p.product_id}
                         className={`p-3 rounded-2xl border transition ${
                           currentVal > 0 
-                            ? 'bg-rose-50/50 border-rose-300 shadow-xs' 
-                            : 'bg-slate-50 border-slate-200'
+                            ? 'bg-rose-50/80 border-rose-300 shadow-sm' 
+                            : isZeroStock
+                              ? 'bg-slate-50/70 border-slate-200 opacity-60'
+                              : 'bg-white/90 border-sky-100 hover:border-sky-300 shadow-2xs'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           
                           {/* Product Info */}
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 shrink-0 flex items-center justify-center p-1">
+                            <div className="w-9 h-9 rounded-xl bg-white border border-sky-100 shrink-0 flex items-center justify-center p-1 shadow-2xs">
                               {p.image_url ? (
-                                <img src={p.image_url} alt={p.product_name} className="w-full h-full object-contain rounded-lg" />
+                                <img src={p.image_url} alt={itemName} className="w-full h-full object-contain rounded-lg" />
                               ) : (
-                                <span className="text-base">{p.icon || '📦'}</span>
+                                <span className="text-lg">{p.icon || '📦'}</span>
                               )}
                             </div>
                             <div className="min-w-0">
-                              <h5 className="font-black text-xs text-slate-900 truncate">
-                                {p.product_name}
+                              <h5 className="font-black text-xs sm:text-sm text-slate-900 truncate" title={itemName}>
+                                {itemName}
                               </h5>
-                              <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
-                                <span>Stock: <strong className="text-slate-800 font-mono">{maxStock} {damageUnit}</strong></span>
+                              <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
+                                <span>Driver Stock: <strong className="text-slate-800 font-mono font-bold">{maxStock} {damageUnit}</strong></span>
                               </div>
                             </div>
                           </div>
@@ -2158,9 +2167,9 @@ export const StockReturnModal = ({ onClose }) => {
                               type="button"
                               disabled={isZeroStock || currentVal <= 0}
                               onClick={() => handleDecrement(p.product_id, isPieceBased, 1)}
-                              className="w-7 h-7 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 flex items-center justify-center font-black text-sm disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer shadow-xs"
+                              className="w-8 h-8 rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-sky-50 hover:text-sky-700 hover:border-sky-300 flex items-center justify-center font-black text-base disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer shadow-xs active:scale-95"
                             >
-                              <Minus className="w-3.5 h-3.5" />
+                              <Minus className="w-4 h-4" />
                             </button>
 
                             <div className="relative w-16">
@@ -2173,7 +2182,7 @@ export const StockReturnModal = ({ onClose }) => {
                                 value={currentVal === 0 ? '' : currentVal}
                                 onChange={(e) => handleQtyChange(p.product_id, e.target.value, maxStock, isPieceBased)}
                                 placeholder="0"
-                                className="w-full bg-white border border-slate-300 rounded-lg py-1 px-1 text-center font-mono font-black text-xs text-slate-900 focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100 transition disabled:bg-slate-100 disabled:text-slate-400"
+                                className="w-full bg-white border border-slate-300 rounded-xl py-1.5 px-1 text-center font-mono font-black text-sm text-slate-900 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200 transition disabled:bg-slate-100 disabled:text-slate-400 shadow-2xs"
                               />
                             </div>
 
@@ -2181,12 +2190,12 @@ export const StockReturnModal = ({ onClose }) => {
                               type="button"
                               disabled={isZeroStock || currentVal >= maxStock}
                               onClick={() => handleIncrement(p.product_id, maxStock, isPieceBased, 1)}
-                              className="w-7 h-7 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 flex items-center justify-center font-black text-sm disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer shadow-xs"
+                              className="w-8 h-8 rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-sky-50 hover:text-sky-700 hover:border-sky-300 flex items-center justify-center font-black text-base disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer shadow-xs active:scale-95"
                             >
-                              <Plus className="w-3.5 h-3.5" />
+                              <Plus className="w-4 h-4" />
                             </button>
 
-                            <span className="text-[10px] font-bold text-slate-600 min-w-10 text-left">
+                            <span className="text-[11px] font-bold text-slate-600 min-w-10 text-left">
                               {damageUnit}
                             </span>
                           </div>
@@ -2200,7 +2209,7 @@ export const StockReturnModal = ({ onClose }) => {
 
               {/* Notes */}
               <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                   Additional Notes (விருப்ப குறிப்பு)
                 </label>
                 <input
@@ -2208,28 +2217,28 @@ export const StockReturnModal = ({ onClose }) => {
                   value={damageNotes}
                   onChange={(e) => setDamageNotes(e.target.value)}
                   placeholder="e.g. Broken near checkpost / leakage on 3rd layer"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100 transition"
+                  className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-slate-800 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 transition shadow-2xs"
                 />
               </div>
 
               {/* Total Damage Summary Card */}
-              <div className="p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between font-mono text-xs shadow-sm">
+              <div className="p-3 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl flex items-center justify-between font-mono text-xs shadow-md border border-slate-700">
                 <div>
-                  <span className="text-[9px] text-slate-400 uppercase font-bold block">Total Damaged Units</span>
-                  <span className="font-black text-sm text-rose-400">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold block tracking-wider">Total Damaged Units</span>
+                  <span className="font-black text-sm sm:text-base text-rose-400">
                     {totalDamageStats.totalItems} Units
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[9px] text-slate-400 uppercase font-bold block">Est. Write-off Cost</span>
-                  <span className="font-black text-sm text-amber-300">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold block tracking-wider">Est. Write-off Cost</span>
+                  <span className="font-black text-sm sm:text-base text-amber-300">
                     ₹{totalDamageStats.totalEstCost.toFixed(2)}
                   </span>
                 </div>
               </div>
 
               {damageFormError && (
-                <p className="text-[11px] font-bold text-rose-600 bg-rose-50 p-2.5 rounded-lg border border-rose-200">
+                <p className="text-[11px] font-bold text-rose-600 bg-rose-50 p-2.5 rounded-xl border border-rose-200">
                   {damageFormError}
                 </p>
               )}
@@ -2239,23 +2248,23 @@ export const StockReturnModal = ({ onClose }) => {
                 <button
                   type="button"
                   onClick={() => setShowDamageModal(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={savingDamage || totalDamageStats.totalItems <= 0}
-                  className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs transition shadow-md cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-black text-xs sm:text-sm transition shadow-md shadow-rose-600/25 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none active:scale-98"
                 >
                   {savingDamage ? (
                     <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <RefreshCw className="w-4 h-4 animate-spin" />
                       <span>Recording Damage & Deducting Stock...</span>
                     </>
                   ) : (
                     <>
-                      <ShieldAlert className="w-3.5 h-3.5" />
+                      <ShieldAlert className="w-4 h-4" />
                       <span>Deduct & Record Damage</span>
                     </>
                   )}
@@ -2270,19 +2279,19 @@ export const StockReturnModal = ({ onClose }) => {
       {/* EDIT DAMAGE ENTRY MODAL */}
       {showEditDamageModal && editingDamage && (
         <div className="fixed inset-0 z-60 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-gradient-to-b from-sky-50/95 via-blue-50/40 to-white border border-sky-200 rounded-3xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
             
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between border-b border-sky-100 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200">
+                <div className="w-9 h-9 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200 shadow-2xs">
                   <Pencil className="w-5 h-5" />
                 </div>
                 <div>
                   <h4 className="font-black text-sm sm:text-base text-slate-900">
                     EDIT DAMAGE ENTRY
                   </h4>
-                  <p className="text-[11px] text-slate-500 font-medium">
+                  <p className="text-[11px] text-sky-800 font-medium">
                     {editingDamage.product_name || `Product #${editingDamage.product_id}`}
                   </p>
                 </div>
@@ -2293,7 +2302,7 @@ export const StockReturnModal = ({ onClose }) => {
                   setShowEditDamageModal(false);
                   setEditingDamage(null);
                 }}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-sky-100/60 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2302,20 +2311,20 @@ export const StockReturnModal = ({ onClose }) => {
             <form onSubmit={handleSubmitEditDamage} className="space-y-4">
               
               {/* Product Info Display */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+              <div className="p-3 bg-white border border-sky-200 rounded-2xl flex items-center justify-between shadow-2xs">
                 <div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase block">Product</span>
-                  <span className="font-black text-xs text-slate-800">{editingDamage.product_name || `Product #${editingDamage.product_id}`}</span>
+                  <span className="font-black text-xs sm:text-sm text-slate-800">{editingDamage.product_name || `Product #${editingDamage.product_id}`}</span>
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] text-slate-400 font-bold uppercase block">Unit</span>
-                  <span className="font-mono font-black text-xs text-indigo-700">{editingDamage.damage_unit || editingDamage.unit || 'Piece'}</span>
+                  <span className="font-mono font-black text-xs sm:text-sm text-indigo-700">{editingDamage.damage_unit || editingDamage.unit || 'Piece'}</span>
                 </div>
               </div>
 
               {/* Damage Quantity Input */}
               <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                   Damaged Quantity ({editingDamage.damage_unit || editingDamage.unit || 'Piece'}) *
                 </label>
                 <input
@@ -2326,19 +2335,19 @@ export const StockReturnModal = ({ onClose }) => {
                   onChange={(e) => setEditDamageQty(e.target.value)}
                   placeholder="Enter damage quantity"
                   required
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-black text-slate-900 focus:bg-white focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100 transition"
+                  className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2.5 text-sm font-mono font-black text-slate-900 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 transition shadow-2xs"
                 />
               </div>
 
               {/* Reason Selector */}
               <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                   Reason for Damage (சேதக் காரணம்) *
                 </label>
                 <select
                   value={editDamageReason}
                   onChange={(e) => setEditDamageReason(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100 transition cursor-pointer"
+                  className="w-full bg-white border border-sky-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 transition cursor-pointer shadow-2xs"
                 >
                   {DAMAGE_REASONS.map(r => (
                     <option key={r.value} value={r.value}>
@@ -2350,7 +2359,7 @@ export const StockReturnModal = ({ onClose }) => {
 
               {/* Optional Notes */}
               <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                   Additional Notes (விருப்ப குறிப்பு)
                 </label>
                 <input
