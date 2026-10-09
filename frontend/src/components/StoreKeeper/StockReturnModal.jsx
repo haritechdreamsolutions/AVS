@@ -2395,15 +2395,13 @@ export const StockReturnModal = ({ onClose }) => {
                   type="button"
                   onClick={() => {
                     window.print();
-                    setTimeout(() => {
-                      setShowStockViewModal(false);
-                    }, 300);
+                    setShowStockViewModal(false);
                   }}
                   className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-blue-600/25 active:scale-95 transition cursor-pointer"
-                  title="Print 58mm Thermal Receipt and Return"
+                  title="Print Stock Sheet and Return"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Print (58mm)</span>
+                  <span>Print</span>
                 </button>
                 <button
                   type="button"
@@ -2424,7 +2422,7 @@ export const StockReturnModal = ({ onClose }) => {
               {/* Header */}
               <div className="text-center space-y-0.5 border-b border-dashed border-slate-400 pb-2">
                 <h3 className="font-black text-base uppercase tracking-normal">AVS AGENCIES</h3>
-                <p className="text-[10px] font-bold text-slate-600">DRIVER STOCK SHEET (58MM)</p>
+                <p className="text-[10px] font-bold text-slate-600 tracking-wider">DRIVER STOCK SHEET</p>
               </div>
 
               {/* Driver & Vehicle Details */}
@@ -2456,8 +2454,11 @@ export const StockReturnModal = ({ onClose }) => {
                 <div className="divide-y divide-slate-200">
                   {reconciliationData.items.map((p, idx) => {
                     const masterProd = (masterProducts || []).find(m => Number(m.id) === Number(p.product_id)) || {};
-                    const packSize = masterProd.pack_size || p.pack_size || '';
-                    const itemName = p.product_name + (packSize ? ` ${packSize}` : '');
+                    const rawName = (p.product_name || masterProd.display_name || masterProd.name || 'Item').trim();
+                    const packSize = (masterProd.pack_size || p.pack_size || '').trim();
+                    const itemName = (packSize && !rawName.toLowerCase().includes(packSize.toLowerCase()))
+                      ? `${rawName} ${packSize}`
+                      : rawName;
 
                     return (
                       <div key={p.product_id || idx} className="py-1 flex justify-between items-center text-[10px] font-mono">
