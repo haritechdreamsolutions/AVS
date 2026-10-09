@@ -752,15 +752,39 @@ export const UserBalanceView = () => {
         <div className="hidden md:block overflow-x-auto max-w-full">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b-2 border-sky-200 font-black text-slate-900 bg-sky-100/90 uppercase tracking-wider text-xs sm:text-sm">
-                <th className="p-3.5 pl-5">User Name (பயனாளர் பெயர்)</th>
-                <th className="p-3.5 text-right">Total Sales (விற்பனை)</th>
-                <th className="p-3.5 text-right">Old Credit (பழைய வரவு)</th>
-                <th className="p-3.5 text-right">Total Received (மொத்த வரவு)</th>
-                <th className="p-3.5 text-right">Balance Given (பாக்கி)</th>
-                <th className="p-3.5 text-right bg-amber-50/60 text-amber-950">Expense (செலவு)</th>
-                <th className="p-3.5 text-center bg-rose-50/60 text-rose-950">Damage (சேதம்)</th>
-                <th className="p-3.5 pr-5 text-center bg-orange-50/60 text-orange-950">Shortage (குறைவு)</th>
+              <tr className="border-b-2 border-sky-200 bg-sky-100/90 text-[11px] sm:text-xs text-slate-800">
+                <th className="py-2.5 px-3 pl-4 sm:pl-5 text-left font-black tracking-tight text-slate-900">
+                  <span>USER NAME</span>
+                  <span className="text-[10px] font-semibold text-slate-500 block normal-case leading-tight">பயனாளர் பெயர்</span>
+                </th>
+                <th className="py-2.5 px-3 text-right font-black tracking-tight text-indigo-950">
+                  <span>TOTAL SALES</span>
+                  <span className="text-[10px] font-semibold text-slate-500 block normal-case leading-tight">விற்பனை</span>
+                </th>
+                <th className="py-2.5 px-3 text-right font-black tracking-tight text-amber-950">
+                  <span>OLD CREDIT</span>
+                  <span className="text-[10px] font-semibold text-slate-500 block normal-case leading-tight">பழைய வரவு</span>
+                </th>
+                <th className="py-2.5 px-3 text-right font-black tracking-tight text-emerald-950">
+                  <span>TOTAL RECEIVED</span>
+                  <span className="text-[10px] font-semibold text-slate-500 block normal-case leading-tight">மொத்த வரவு</span>
+                </th>
+                <th className="py-2.5 px-3 text-right font-black tracking-tight text-rose-950">
+                  <span>BALANCE GIVEN</span>
+                  <span className="text-[10px] font-semibold text-slate-500 block normal-case leading-tight">பாக்கி</span>
+                </th>
+                <th className="py-2.5 px-3 text-right font-black tracking-tight bg-amber-50/70 text-amber-950">
+                  <span>EXPENSE</span>
+                  <span className="text-[10px] font-semibold text-amber-700 block normal-case leading-tight">செலவு</span>
+                </th>
+                <th className="py-2.5 px-3 text-center font-black tracking-tight bg-rose-50/70 text-rose-950">
+                  <span>DAMAGE</span>
+                  <span className="text-[10px] font-semibold text-rose-700 block normal-case leading-tight">சேதம்</span>
+                </th>
+                <th className="py-2.5 px-3 pr-4 sm:pr-5 text-center font-black tracking-tight bg-orange-50/70 text-orange-950">
+                  <span>SHORTAGE</span>
+                  <span className="text-[10px] font-semibold text-orange-700 block normal-case leading-tight">குறைவு</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-sky-100">
