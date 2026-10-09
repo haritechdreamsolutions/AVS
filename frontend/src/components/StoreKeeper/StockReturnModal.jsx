@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getOperationalUnit, normalizeQuantity, checkReconciliationEquation } from '../../utils/unitHelper';
+import { ProductImage } from '../common/ProductImage';
 import { 
   RotateCcw, X, User, Truck, Receipt, PackageCheck, 
   ChevronDown, AlertTriangle, Box, RefreshCw,
@@ -8,7 +9,7 @@ import {
   Fuel, Utensils, CreditCard, Wrench, ShieldAlert,
   HelpCircle, CheckCircle2, ArrowRight, AlertCircle,
   Scale, Calculator, Check, FileCheck2, Printer, Lock,
-  Wind
+  Wind, ArrowLeft, ClipboardCheck, CheckSquare, Square
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -19,6 +20,7 @@ export const StockReturnModal = ({ onClose }) => {
     routes = [],
     villages = [],
     employees = [],
+    products: masterProducts = [],
     fetchEligibleDriversForReturn, 
     fetchDriverExpectedReturn,
     verifyAndAcceptDriverReturnDirect,
@@ -40,6 +42,9 @@ export const StockReturnModal = ({ onClose }) => {
   const [driverData, setDriverData] = useState(null);
   const [loadingData, setLoadingData] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+
+  // Stock View / Inspection Modal State
+  const [showStockViewModal, setShowStockViewModal] = useState(false);
 
   // Expense Modal / Form State (Phase 3)
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -862,13 +867,13 @@ export const StockReturnModal = ({ onClose }) => {
       <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-3.5 sm:p-6 space-y-4 shadow-2xl max-h-[94vh] overflow-y-auto my-auto">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center border border-amber-500/20">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center border border-amber-500/20 shrink-0">
               <RotateCcw className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="font-black text-base sm:text-lg text-slate-900 tracking-tight flex items-center gap-2">
+            <div className="min-w-0">
+              <h3 className="font-black text-base sm:text-lg text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
                 STOREKEEPER RETURN DRIVER
                 {isSessionLocked ? (
                   <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 border border-slate-300 flex items-center gap-1">
@@ -881,18 +886,36 @@ export const StockReturnModal = ({ onClose }) => {
                   </span>
                 )}
               </h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-xs text-slate-500 font-medium truncate sm:whitespace-normal">
                 Sequential Workflow: Driver Selection → Stock → Expenses → Damage → Summary
               </p>
             </div>
           </div>
-          <button 
-            onClick={onClose} 
-            className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer"
-            title="Close"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedDriverId) {
+                  toast.error('Please select a driver first to view vehicle stock inspection!');
+                  return;
+                }
+                setShowStockViewModal(true);
+              }}
+              className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm flex items-center gap-1.5 shadow-md shadow-blue-500/20 active:scale-95 transition cursor-pointer"
+              title="View Driver Stock Sheet & Print for Manual Checking"
+            >
+              <FileCheck2 className="w-4 h-4 text-blue-100" />
+              <span>Stock view</span>
+            </button>
+            <button 
+              onClick={onClose} 
+              className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer"
+              title="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* ========================================================================= */}
@@ -2314,6 +2337,295 @@ export const StockReturnModal = ({ onClose }) => {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 9. DRIVER VEHICLE STOCK INSPECTION SHEET (STOCK VIEW MODAL & PRINT VIEW) */}
+      {/* ========================================================================= */}
+      {showStockViewModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-300 rounded-2xl sm:rounded-3xl max-w-5xl w-full p-4 sm:p-6 space-y-4 shadow-2xl max-h-[96vh] overflow-y-auto my-auto print:max-h-none print:shadow-none print:border-none print:p-0 print:m-0 print:rounded-none">
+            
+            {/* Action Bar (Print & Back buttons - Hidden during actual print) */}
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-200 print:hidden">
+              <button
+                type="button"
+                onClick={() => setShowStockViewModal(false)}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back to Return Workflow</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-blue-600/25 active:scale-95 transition cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Print Inspection Sheet</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowStockViewModal(false)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                  title="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Document Container */}
+            <div id="driver-stock-inspection-sheet" className="space-y-4 text-slate-900 bg-white">
+              
+              {/* Document Header */}
+              <div className="text-center border-b-2 border-slate-800 pb-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="text-left">
+                    <h2 className="text-base sm:text-xl font-black text-slate-900 uppercase tracking-tight">
+                      AVS AGENCIES
+                    </h2>
+                    <p className="text-[10px] sm:text-xs text-slate-600 font-bold">
+                      Distribution Management System • Daily Vehicle Inspection Sheet
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-black text-[10px] sm:text-xs uppercase inline-block">
+                      📋 Stock Inspection
+                    </span>
+                    <p className="text-[10px] text-slate-500 font-mono mt-0.5 font-bold">
+                      Date: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Driver & Session Info Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-mono">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-500 font-sans block">Driver Name</span>
+                  <span className="font-black text-slate-900 text-sm">{driverInfo.name || driverData?.driver?.full_name || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-500 font-sans block">Employee Code</span>
+                  <span className="font-black text-amber-700">{driverInfo.employee_code || 'EMP'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-500 font-sans block">Vehicle Number</span>
+                  <span className="font-black text-blue-700">{driverInfo.vehicle_number || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-500 font-sans block">Route</span>
+                  <span className="font-black text-indigo-700">{driverInfo.route_name || 'Assigned Route'}</span>
+                </div>
+              </div>
+
+              {/* Key Summary Cards Strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200">
+                  <span className="text-[10px] font-bold text-blue-700 uppercase block">1. Total Assigned</span>
+                  <span className="font-mono font-black text-sm sm:text-base text-blue-900">
+                    {reconciliationData.totalAllocated} Units
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200">
+                  <span className="text-[10px] font-bold text-indigo-700 uppercase block">2. Total Sold</span>
+                  <span className="font-mono font-black text-sm sm:text-base text-indigo-900">
+                    {reconciliationData.totalSold} Units
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-rose-50/70 border border-rose-200">
+                  <span className="text-[10px] font-bold text-rose-700 uppercase block">3. Total Damaged</span>
+                  <span className="font-mono font-black text-sm sm:text-base text-rose-900">
+                    {reconciliationData.totalDamaged} Units
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-300">
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase block">4. Available Stock</span>
+                  <span className="font-mono font-black text-sm sm:text-base text-emerald-900">
+                    {reconciliationData.totalReturn} Units
+                  </span>
+                </div>
+              </div>
+
+              {/* Detailed Product Stock Table */}
+              <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-2xs">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-900 text-white font-black text-[11px] uppercase tracking-wider">
+                      <th className="py-2.5 px-3 w-10 text-center">#</th>
+                      <th className="py-2.5 px-3">Product (பொருள் விவரம்)</th>
+                      <th className="py-2.5 px-3 text-center">Assigned (வழங்கப்பட்டது)</th>
+                      <th className="py-2.5 px-3 text-center">Sold (விற்பனையானது)</th>
+                      <th className="py-2.5 px-3 text-center bg-emerald-950/70 text-emerald-200">Available (மீதமுள்ள இருப்பு)</th>
+                      <th className="py-2.5 px-3 text-center min-w-[180px]">Physical Check & Notes (நேரடி சரிபார்ப்பு / குறிப்பு)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 bg-white">
+                    {reconciliationData.items.map((p, idx) => {
+                      const masterProd = (masterProducts || []).find(m => Number(m.id) === Number(p.product_id)) || {};
+                      const actualImg = masterProd.image || masterProd.image_url || p.image || p.image_url;
+                      const packSize = masterProd.pack_size || p.pack_size || '';
+                      const catName = masterProd.category || p.category || 'General';
+                      const ppu = Math.max(1, Number(p.ppu || p.pieces_per_unit || masterProd.pieces_per_unit || 1));
+
+                      // Format Assigned Breakdown
+                      const allocTrays = p.isPieceBased ? Math.floor(p.alloc / ppu) : p.alloc;
+                      const allocLoosePcs = p.isPieceBased ? (p.alloc % ppu) : 0;
+
+                      // Format Sold Breakdown
+                      const soldTrays = p.isPieceBased ? Math.floor(p.sold / ppu) : p.sold;
+                      const soldLoosePcs = p.isPieceBased ? (p.sold % ppu) : 0;
+
+                      // Format Available Breakdown
+                      const availTrays = p.isPieceBased ? Math.floor(p.retStock / ppu) : p.retStock;
+                      const availLoosePcs = p.isPieceBased ? (p.retStock % ppu) : 0;
+
+                      return (
+                        <tr key={p.product_id || idx} className="hover:bg-slate-50/80 transition font-sans">
+                          {/* S.No */}
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-500">
+                            {idx + 1}
+                          </td>
+
+                          {/* Product Image & Name */}
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-2.5">
+                              <ProductImage
+                                src={actualImg}
+                                alt={p.product_name}
+                                size={42}
+                                icon={p.icon || masterProd.icon || '🥛'}
+                                containerClassName="border-slate-200 shrink-0"
+                              />
+                              <div className="min-w-0">
+                                <h4 className="font-black text-slate-900 text-xs sm:text-sm truncate">
+                                  {p.product_name}
+                                </h4>
+                                <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                  <span className="text-[10px] font-extrabold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100">
+                                    {catName}
+                                  </span>
+                                  {packSize && (
+                                    <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-100">
+                                      {packSize}
+                                    </span>
+                                  )}
+                                  {p.isPieceBased && (
+                                    <span className="text-[9px] font-mono font-bold text-slate-500">
+                                      (1 {p.selling_unit || 'Tray'} = {ppu} Pcs)
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Assigned / Allocated */}
+                          <td className="py-2.5 px-3 text-center font-mono">
+                            {p.isPieceBased ? (
+                              <div>
+                                <div className="font-black text-slate-900 text-xs sm:text-sm">
+                                  {allocTrays > 0 ? `${allocTrays} Trays` : ''} {allocLoosePcs > 0 ? `${allocLoosePcs} Pcs` : ''}
+                                  {allocTrays === 0 && allocLoosePcs === 0 ? '0 Pcs' : ''}
+                                </div>
+                                <span className="text-[10px] font-bold text-slate-500 block">
+                                  Total: {p.alloc} Pcs
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="font-black text-slate-900 text-xs sm:text-sm">
+                                {p.alloc} {p.unit}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Sold */}
+                          <td className="py-2.5 px-3 text-center font-mono">
+                            {p.isPieceBased ? (
+                              <div>
+                                <div className="font-black text-slate-900 text-xs sm:text-sm">
+                                  {soldTrays > 0 ? `${soldTrays} Trays` : ''} {soldLoosePcs > 0 ? `${soldLoosePcs} Pcs` : ''}
+                                  {soldTrays === 0 && soldLoosePcs === 0 ? '0 Pcs' : ''}
+                                </div>
+                                <span className="text-[10px] font-bold text-slate-500 block">
+                                  Total: {p.sold} Pcs
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="font-black text-slate-900 text-xs sm:text-sm">
+                                {p.sold} {p.unit}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Expected Available */}
+                          <td className="py-2.5 px-3 text-center font-mono bg-emerald-50/50">
+                            {p.isPieceBased ? (
+                              <div>
+                                <div className="font-black text-emerald-800 text-xs sm:text-sm">
+                                  {availTrays > 0 ? `${availTrays} Trays` : ''} {availLoosePcs > 0 ? `${availLoosePcs} Pcs` : ''}
+                                  {availTrays === 0 && availLoosePcs === 0 ? '0 Pcs' : ''}
+                                </div>
+                                <span className="text-[10px] font-black text-emerald-700 bg-emerald-100/70 px-1.5 py-0.2 rounded border border-emerald-200 inline-block mt-0.5">
+                                  Balance: {p.retStock} Pcs
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="font-black text-emerald-800 text-xs sm:text-sm">
+                                {p.retStock} {p.unit}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Storekeeper Physical Check & Space */}
+                          <td className="py-2.5 px-3">
+                            <div className="space-y-1 text-[11px] font-mono">
+                              <div className="flex items-center gap-2">
+                                <span className="w-4 h-4 border-2 border-slate-400 rounded shrink-0 flex items-center justify-center text-[10px] text-slate-400">
+                                  ☐
+                                </span>
+                                <span className="text-slate-600 font-sans font-bold">Physical Count:</span>
+                                <span className="inline-block border-b border-dashed border-slate-400 w-16 text-center">_____</span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-sans flex items-center gap-1">
+                                <span className="font-bold">Dmg/Shortage:</span>
+                                <span className="inline-block border-b border-dashed border-slate-400 flex-1">_________________</span>
+                              </div>
+                            </div>
+                          </td>
+
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Storekeeper & Driver Signatures for Physical Verification */}
+              <div className="grid grid-cols-2 gap-6 pt-6 border-t-2 border-slate-800 text-xs">
+                <div className="space-y-6">
+                  <div>
+                    <span className="text-slate-500 font-bold block text-[10px] uppercase">Store Keeper Verification</span>
+                    <div className="border-b border-slate-400 w-48 mt-6"></div>
+                    <span className="text-[11px] font-extrabold text-slate-800 mt-1 block">Signature & Seal</span>
+                  </div>
+                </div>
+                <div className="space-y-6 text-right">
+                  <div>
+                    <span className="text-slate-500 font-bold block text-[10px] uppercase">Driver Acknowledgment</span>
+                    <div className="border-b border-slate-400 w-48 ml-auto mt-6"></div>
+                    <span className="text-[11px] font-extrabold text-slate-800 mt-1 block">{driverInfo.name || driverData?.driver?.full_name || 'Driver'} Signature</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
           </div>
         </div>
       )}
