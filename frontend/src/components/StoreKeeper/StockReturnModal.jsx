@@ -2342,47 +2342,55 @@ export const StockReturnModal = ({ onClose }) => {
       )}
 
       {/* ========================================================================= */}
-      {/* 9. DRIVER VEHICLE STOCK INSPECTION SHEET (COMPACT THERMAL & PRINT VIEW) */}
+      {/* 9. DRIVER VEHICLE STOCK INSPECTION SHEET (STRICT 58MM THERMAL PRINTER FORMAT) */}
       {/* ========================================================================= */}
       {showStockViewModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
           <style dangerouslySetInnerHTML={{ __html: `
             @media print {
+              @page {
+                size: 58mm auto;
+                margin: 0;
+              }
               body * {
                 visibility: hidden !important;
               }
-              #driver-stock-inspection-sheet, #driver-stock-inspection-sheet * {
+              #thermal-58mm-stock-sheet, #thermal-58mm-stock-sheet * {
                 visibility: visible !important;
               }
-              #driver-stock-inspection-sheet {
+              #thermal-58mm-stock-sheet {
                 position: fixed !important;
                 left: 0 !important;
                 top: 0 !important;
-                width: 100% !important;
-                max-width: 100% !important;
+                width: 58mm !important;
+                max-width: 58mm !important;
                 margin: 0 !important;
-                padding: 6px !important;
+                padding: 2mm 3mm !important;
                 background: white !important;
                 color: black !important;
-                box-shadow: none !important;
+                font-family: monospace, monospace !important;
+                font-size: 10px !important;
+                line-height: 1.25 !important;
                 border: none !important;
+                box-shadow: none !important;
               }
             }
           `}} />
-          <div className="bg-white border border-slate-300 rounded-2xl sm:rounded-3xl max-w-3xl w-full p-4 sm:p-5 space-y-3 shadow-2xl max-h-[96vh] overflow-y-auto my-auto print:max-h-none print:shadow-none print:border-none print:p-0 print:m-0 print:rounded-none">
+          
+          <div className="bg-white border border-slate-300 rounded-3xl max-w-sm w-full p-4 space-y-3 shadow-2xl my-auto max-h-[96vh] flex flex-col overflow-hidden print:max-h-none print:shadow-none print:border-none print:p-0 print:m-0 print:rounded-none">
             
-            {/* Top Bar: Print & Back (Hidden on Print) */}
-            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-200 print:hidden">
+            {/* Screen Controls Bar (Hidden on Print) */}
+            <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 print:hidden shrink-0">
               <button
                 type="button"
                 onClick={() => setShowStockViewModal(false)}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1 transition cursor-pointer"
               >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back to Return</span>
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back</span>
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => {
@@ -2391,177 +2399,110 @@ export const StockReturnModal = ({ onClose }) => {
                       setShowStockViewModal(false);
                     }, 300);
                   }}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-blue-600/25 active:scale-95 transition cursor-pointer"
-                  title="Print Thermal Receipt / Sheet and Return"
+                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-blue-600/25 active:scale-95 transition cursor-pointer"
+                  title="Print 58mm Thermal Receipt and Return"
                 >
-                  <Printer className="w-4 h-4" />
-                  <span>Print</span>
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print (58mm)</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowStockViewModal(false)}
-                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                  className="p-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
                   title="Close"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* Printable Document Container (English only, Compact & Thermal Ready) */}
-            <div id="driver-stock-inspection-sheet" className="space-y-3 text-slate-900 bg-white p-1">
-              
-              {/* Minimal Header: Driver Name & Vehicle No only */}
-              <div className="flex items-center justify-between border-b-2 border-slate-800 pb-2 text-xs">
-                <div>
-                  <div className="text-[10px] font-bold text-slate-500 uppercase">Driver Name</div>
-                  <div className="text-sm font-black text-slate-900">{driverInfo.name || driverData?.driver?.full_name || 'Driver'}</div>
+            {/* 58mm Thermal Receipt Container */}
+            <div 
+              id="thermal-58mm-stock-sheet" 
+              className="bg-white p-3 border border-slate-300 rounded-2xl font-mono text-[11px] leading-tight space-y-2 text-slate-950 overflow-y-auto flex-1 shadow-2xs"
+            >
+              {/* Header */}
+              <div className="text-center space-y-0.5 border-b border-dashed border-slate-400 pb-2">
+                <h3 className="font-black text-base uppercase tracking-normal">AVS AGENCIES</h3>
+                <p className="text-[10px] font-bold text-slate-600">DRIVER STOCK SHEET (58MM)</p>
+              </div>
+
+              {/* Driver & Vehicle Details */}
+              <div className="border-b border-dashed border-slate-400 pb-1.5 space-y-0.5 text-[10.5px]">
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Driver:</span>
+                  <span className="font-black text-slate-900">{driverInfo.name || driverData?.driver?.full_name || 'Driver'}</span>
                 </div>
-                <div className="text-right">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase">Vehicle No</div>
-                  <div className="text-sm font-black font-mono text-blue-700">{driverInfo.vehicle_number || 'N/A'}</div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Vehicle:</span>
+                  <span className="font-black text-blue-700">{driverInfo.vehicle_number || 'N/A'}</span>
                 </div>
-                <div className="text-right hidden sm:block">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Date</div>
-                  <div className="text-xs font-mono font-bold text-slate-600">
-                    {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                  </div>
+                <div className="flex justify-between text-[10px] text-slate-500">
+                  <span>Date: {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                  <span>{new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>
 
-              {/* Compact Product Table */}
-              <div className="overflow-x-auto rounded-xl border border-slate-300">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-900 text-white font-black text-[10px] sm:text-xs uppercase tracking-wider">
-                      <th className="py-2 px-2.5">Item</th>
-                      <th className="py-2 px-2.5 text-center">Assigned</th>
-                      <th className="py-2 px-2.5 text-center">Sold</th>
-                      <th className="py-2 px-2.5 text-center bg-emerald-950 text-emerald-300">Available</th>
-                      <th className="py-2 px-2.5 text-center w-24 sm:w-28">Physical Check</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
-                    {reconciliationData.items.map((p, idx) => {
-                      const masterProd = (masterProducts || []).find(m => Number(m.id) === Number(p.product_id)) || {};
-                      const actualImg = masterProd.image || masterProd.image_url || p.image || p.image_url;
-                      const packSize = masterProd.pack_size || p.pack_size || '';
-                      const ppu = Math.max(1, Number(p.ppu || p.pieces_per_unit || masterProd.pieces_per_unit || 1));
+              {/* Items List (58mm Compact Format) */}
+              <div className="space-y-1.5 pt-0.5">
+                <div className="flex justify-between font-black text-[10px] border-b border-slate-400 pb-0.5 uppercase text-slate-800">
+                  <span className="w-5/12 text-left">ITEM</span>
+                  <span className="w-2/12 text-center">ASG</span>
+                  <span className="w-2/12 text-center">SLD</span>
+                  <span className="w-2/12 text-center">AVL</span>
+                  <span className="w-1/12 text-right">CHK</span>
+                </div>
 
-                      // Format Assigned
-                      const allocTrays = p.isPieceBased ? Math.floor(p.alloc / ppu) : p.alloc;
-                      const allocLoosePcs = p.isPieceBased ? (p.alloc % ppu) : 0;
+                <div className="divide-y divide-slate-200">
+                  {reconciliationData.items.map((p, idx) => {
+                    const masterProd = (masterProducts || []).find(m => Number(m.id) === Number(p.product_id)) || {};
+                    const packSize = masterProd.pack_size || p.pack_size || '';
+                    const itemName = p.product_name + (packSize ? ` ${packSize}` : '');
 
-                      // Format Sold
-                      const soldTrays = p.isPieceBased ? Math.floor(p.sold / ppu) : p.sold;
-                      const soldLoosePcs = p.isPieceBased ? (p.sold % ppu) : 0;
-
-                      // Format Available
-                      const availTrays = p.isPieceBased ? Math.floor(p.retStock / ppu) : p.retStock;
-                      const availLoosePcs = p.isPieceBased ? (p.retStock % ppu) : 0;
-
-                      return (
-                        <tr key={p.product_id || idx} className="hover:bg-slate-50/80 transition">
-                          {/* Item with Photo */}
-                          <td className="py-2 px-2.5">
-                            <div className="flex items-center gap-2">
-                              <ProductImage
-                                src={actualImg}
-                                alt={p.product_name}
-                                size={34}
-                                icon={p.icon || masterProd.icon || '🥛'}
-                                containerClassName="border-slate-200 shrink-0"
-                              />
-                              <div className="min-w-0">
-                                <div className="font-extrabold text-slate-900 text-xs truncate">
-                                  {p.product_name}
-                                </div>
-                                {packSize && (
-                                  <span className="text-[10px] text-slate-500 font-bold">
-                                    {packSize}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* Assigned */}
-                          <td className="py-2 px-2.5 text-center font-mono">
-                            {p.isPieceBased ? (
-                              <div>
-                                <div className="font-black text-slate-900 text-xs">
-                                  {allocTrays > 0 ? `${allocTrays}T ` : ''}{allocLoosePcs > 0 ? `${allocLoosePcs}P` : ''}
-                                  {allocTrays === 0 && allocLoosePcs === 0 ? '0' : ''}
-                                </div>
-                                <span className="text-[10px] text-slate-500 font-bold block">
-                                  ({p.alloc} pcs)
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="font-black text-slate-900 text-xs">
-                                {p.alloc} {p.unit}
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Sold */}
-                          <td className="py-2 px-2.5 text-center font-mono">
-                            {p.isPieceBased ? (
-                              <div>
-                                <div className="font-black text-slate-900 text-xs">
-                                  {soldTrays > 0 ? `${soldTrays}T ` : ''}{soldLoosePcs > 0 ? `${soldLoosePcs}P` : ''}
-                                  {soldTrays === 0 && soldLoosePcs === 0 ? '0' : ''}
-                                </div>
-                                <span className="text-[10px] text-slate-500 font-bold block">
-                                  ({p.sold} pcs)
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="font-black text-slate-900 text-xs">
-                                {p.sold} {p.unit}
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Available */}
-                          <td className="py-2 px-2.5 text-center font-mono bg-emerald-50/60">
-                            {p.isPieceBased ? (
-                              <div>
-                                <div className="font-black text-emerald-800 text-xs">
-                                  {availTrays > 0 ? `${availTrays}T ` : ''}{availLoosePcs > 0 ? `${availLoosePcs}P` : ''}
-                                  {availTrays === 0 && availLoosePcs === 0 ? '0' : ''}
-                                </div>
-                                <span className="text-[10px] font-black text-emerald-700 block">
-                                  ({p.retStock} pcs)
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="font-black text-emerald-800 text-xs">
-                                {p.retStock} {p.unit}
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Physical Check Small Input / Box */}
-                          <td className="py-2 px-2.5 text-center">
-                            <input
-                              type="text"
-                              placeholder="Count"
-                              className="w-16 h-7 text-center font-mono font-bold text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-blue-500"
-                            />
-                          </td>
-
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                    return (
+                      <div key={p.product_id || idx} className="py-1 flex justify-between items-center text-[10px] font-mono">
+                        <span className="w-5/12 text-left pr-1 font-bold text-slate-900 leading-tight truncate" title={itemName}>
+                          {itemName}
+                        </span>
+                        <span className="w-2/12 text-center font-bold text-slate-700">
+                          {p.alloc}
+                        </span>
+                        <span className="w-2/12 text-center font-bold text-slate-700">
+                          {p.sold}
+                        </span>
+                        <span className="w-2/12 text-center font-black text-emerald-800">
+                          {p.retStock}
+                        </span>
+                        <span className="w-1/12 text-right">
+                          <span className="inline-block border border-slate-400 rounded w-4 h-4 text-center leading-3 font-normal text-slate-300">
+                            □
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Minimal Signatures Strip */}
-              <div className="flex items-center justify-between pt-3 border-t border-slate-300 text-[11px] font-bold text-slate-600">
-                <div>Storekeeper: _______________</div>
-                <div>Driver: _______________</div>
+              {/* Totals Strip */}
+              <div className="border-t border-dashed border-slate-400 pt-1.5 text-[10.5px] font-black space-y-0.5">
+                <div className="flex justify-between">
+                  <span>TOTAL ASSIGNED:</span>
+                  <span>{reconciliationData.totalAllocated}</span>
+                </div>
+                <div className="flex justify-between text-slate-700">
+                  <span>TOTAL SOLD:</span>
+                  <span>{reconciliationData.totalSold}</span>
+                </div>
+                <div className="flex justify-between text-emerald-800 border-t border-slate-300 pt-0.5">
+                  <span>TOTAL AVAILABLE:</span>
+                  <span>{reconciliationData.totalReturn}</span>
+                </div>
+              </div>
+
+              {/* End of Sheet Cut Marker */}
+              <div className="text-center text-[9px] text-slate-400 pt-1 border-t border-dotted border-slate-300">
+                *** END OF STOCK SHEET ***
               </div>
 
             </div>
