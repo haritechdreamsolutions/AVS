@@ -1156,7 +1156,7 @@ export const StockReturnModal = ({ onClose }) => {
                     1. Sales Amount (விற்பனை)
                   </span>
                   <p className="font-mono font-black text-base sm:text-lg text-slate-900 mt-1">
-                    ₹{totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    ₹{Math.round(totalSales).toLocaleString('en-IN')}
                   </p>
                   <span className="text-[9px] text-slate-400 block mt-0.5">From Bills/Invoices</span>
                 </div>
@@ -1167,7 +1167,7 @@ export const StockReturnModal = ({ onClose }) => {
                     2. Total Expenses (செலவுகள்)
                   </span>
                   <p className="font-mono font-black text-base sm:text-lg text-amber-700 mt-1">
-                    - ₹{totalExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    - ₹{Math.round(totalExpenses).toLocaleString('en-IN')}
                   </p>
                   <span className="text-[9px] text-amber-600 font-medium block mt-0.5">{expensesList.length} Entries Recorded</span>
                 </div>
@@ -1179,7 +1179,7 @@ export const StockReturnModal = ({ onClose }) => {
                     <span className="text-[8px] font-mono bg-white/20 px-1.5 py-0.5 rounded">Sales - Exp</span>
                   </span>
                   <p className="font-mono font-black text-base sm:text-lg text-white mt-1">
-                    ₹{netAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    ₹{Math.round(netAmount).toLocaleString('en-IN')}
                   </p>
                   <span className="text-[9px] text-emerald-100 block mt-0.5">Net Collection Cash / Due</span>
                 </div>
@@ -1409,7 +1409,7 @@ export const StockReturnModal = ({ onClose }) => {
                           <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 flex flex-col justify-center">
                             <span className="text-[9px] font-bold text-amber-800 uppercase block">Sold Amount (தொகை)</span>
                             <span className="font-black text-amber-900 text-xs sm:text-sm block mt-0.5">
-                              ₹{soldAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              ₹{Math.round(soldAmt).toLocaleString('en-IN')}
                             </span>
                           </div>
                         </div>
@@ -1508,7 +1508,7 @@ export const StockReturnModal = ({ onClose }) => {
                         <p className="font-bold text-slate-700 truncate">{exp.notes || exp.title || 'Expense'}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="font-mono font-black text-slate-900">₹{Number(exp.amount || 0).toFixed(2)}</span>
+                        <span className="font-mono font-black text-slate-900">₹{Math.round(exp.amount || 0).toLocaleString('en-IN')}</span>
                         {!isSessionLocked && (
                           <>
                             <button
@@ -1644,7 +1644,7 @@ export const StockReturnModal = ({ onClose }) => {
                 <div className="text-right font-mono">
                   <span className="text-[9px] font-bold text-slate-400 uppercase block">Net Amount Due</span>
                   <span className="text-base sm:text-lg font-black text-emerald-400">
-                    ₹{netAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    ₹{Math.round(netAmount).toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
@@ -1654,21 +1654,21 @@ export const StockReturnModal = ({ onClose }) => {
                 <div className="p-2.5 rounded-xl bg-slate-800 border border-slate-700">
                   <span className="text-[9px] font-bold text-slate-400 uppercase block">Total Sales</span>
                   <span className="font-black text-sm text-white block mt-0.5">
-                    ₹{totalSales.toFixed(2)}
+                    ₹{Math.round(totalSales).toLocaleString('en-IN')}
                   </span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-slate-800 border border-slate-700">
                   <span className="text-[9px] font-bold text-amber-400 uppercase block">Total Expenses</span>
                   <span className="font-black text-sm text-amber-300 block mt-0.5">
-                    - ₹{totalExpenses.toFixed(2)}
+                    - ₹{Math.round(totalExpenses).toLocaleString('en-IN')}
                   </span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-800/80">
                   <span className="text-[9px] font-bold text-emerald-300 uppercase block">Net Collection</span>
                   <span className="font-black text-sm text-emerald-400 block mt-0.5">
-                    ₹{netAmount.toFixed(2)}
+                    ₹{Math.round(netAmount).toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
