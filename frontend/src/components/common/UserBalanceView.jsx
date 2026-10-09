@@ -985,77 +985,77 @@ export const UserBalanceView = () => {
       </div>
 
       {/* ============================================================ */}
-      {/* DAMAGE POPUP MODAL (LIGHT-BLUE THEME, BIG FONTS, IMAGES) */}
+      {/* DAMAGE POPUP MODAL (COMPACT LIGHT-BLUE THEME) */}
       {/* ============================================================ */}
       {damageModalData && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
-          <div className="bg-gradient-to-b from-sky-50 via-white to-sky-100/90 border-2 border-sky-300 rounded-3xl max-w-lg w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
+          <div className="bg-gradient-to-b from-sky-50 via-white to-sky-100/90 border-2 border-sky-300 rounded-2xl max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
             
             {/* Modal Header */}
-            <div className="p-4 sm:p-5 border-b-2 border-sky-200 bg-sky-900 text-white flex items-center justify-between shrink-0 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-rose-500 text-white flex items-center justify-center shadow-sm">
-                  <AlertCircle className="w-6 h-6 stroke-[2.5]" />
+            <div className="p-3 px-4 sm:p-3.5 sm:px-5 border-b-2 border-sky-200 bg-sky-950 text-white flex items-center justify-between shrink-0 shadow-xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-rose-500 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <AlertCircle className="w-4.5 h-4.5 stroke-[2.5]" />
                 </div>
-                <div>
-                  <h3 className="font-black text-base sm:text-lg text-white leading-tight">
+                <div className="min-w-0">
+                  <h3 className="font-black text-xs sm:text-sm text-white truncate leading-tight">
                     Damage Stock Details (சேத விவரங்கள்)
                   </h3>
-                  <p className="text-xs text-sky-200 font-bold mt-0.5">
+                  <p className="text-[11px] text-sky-200 font-bold truncate mt-0.5">
                     Driver: <span className="text-white">{damageModalData.userName}</span> {damageModalData.vehicleNumber && `(${damageModalData.vehicleNumber})`}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setDamageModalData(null)}
-                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-sky-100 hover:text-white flex items-center justify-center transition cursor-pointer"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/10 hover:bg-white/20 text-sky-100 hover:text-white flex items-center justify-center transition cursor-pointer shrink-0 ml-2"
                 title="Close"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Modal Body: Products List with Images and Counts */}
-            <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-3 bg-sky-50/50">
+            <div className="flex-1 p-3 sm:p-4 overflow-y-auto space-y-2 bg-sky-50/50">
               {damageModalData.items.length === 0 ? (
-                <div className="p-8 text-center bg-white rounded-2xl border-2 border-sky-200">
-                  <Package className="w-10 h-10 text-sky-400 mx-auto mb-2" />
-                  <p className="font-black text-slate-700 text-sm sm:text-base">No Damaged Products Recorded</p>
+                <div className="p-6 text-center bg-white rounded-xl border border-sky-200">
+                  <Package className="w-8 h-8 text-sky-400 mx-auto mb-1.5" />
+                  <p className="font-bold text-slate-700 text-xs sm:text-sm">No Damaged Products Recorded</p>
                 </div>
               ) : (
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   {damageModalData.items.map((item, idx) => (
                     <div 
                       key={item.productId || idx}
-                      className="flex items-center justify-between p-3.5 bg-white border-2 border-sky-200 hover:border-rose-300 rounded-2xl shadow-xs transition"
+                      className="flex items-center justify-between p-2.5 sm:p-3 bg-white border border-sky-200 hover:border-rose-300 rounded-xl shadow-xs transition"
                     >
                       {/* Left: Product Image & Name */}
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-sky-50 border border-sky-200 p-1.5 flex items-center justify-center shrink-0 shadow-xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-sky-50 border border-sky-200 p-1 flex items-center justify-center shrink-0 shadow-2xs">
                           {item.imageUrl ? (
                             <img 
                               src={item.imageUrl} 
                               alt={item.productName} 
-                              className="w-full h-full object-contain rounded-xl"
+                              className="w-full h-full object-contain rounded-lg"
                               onError={(e) => { e.target.style.display = 'none'; }}
                             />
                           ) : (
-                            <Package className="w-6 h-6 text-sky-500" />
+                            <Package className="w-5 h-5 text-sky-500" />
                           )}
                         </div>
                         <div className="min-w-0">
-                          <h4 className="font-black text-slate-900 text-sm sm:text-base truncate leading-snug">
+                          <h4 className="font-bold text-slate-900 text-xs sm:text-sm truncate leading-snug">
                             {item.productName}
                           </h4>
-                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block mt-0.5">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">
                             Unit: {item.unit || 'Piece'}
                           </span>
                         </div>
                       </div>
 
                       {/* Right: Damage Piece Count */}
-                      <div className="text-right shrink-0 pl-3">
-                        <span className="inline-block px-3 py-1.5 bg-rose-100 border-2 border-rose-300 text-rose-900 font-mono font-black text-base sm:text-lg rounded-xl shadow-xs">
+                      <div className="text-right shrink-0 pl-2">
+                        <span className="inline-block px-2.5 py-1 bg-rose-100 border border-rose-300 text-rose-900 font-mono font-black text-xs sm:text-sm rounded-lg shadow-2xs whitespace-nowrap">
                           {item.totalPieces} Pcs
                         </span>
                       </div>
@@ -1066,11 +1066,11 @@ export const UserBalanceView = () => {
             </div>
 
             {/* Modal Footer: Total Summary */}
-            <div className="p-4 sm:p-5 border-t-2 border-sky-200 bg-sky-100/90 flex items-center justify-between shrink-0">
-              <span className="font-black text-slate-900 text-sm sm:text-base uppercase tracking-wide">
-                Total Damaged Count (மொத்த சேதம்)
+            <div className="p-2.5 px-4 sm:p-3 sm:px-5 border-t-2 border-sky-200 bg-sky-100/90 flex items-center justify-between shrink-0">
+              <span className="font-black text-slate-900 text-xs sm:text-sm uppercase tracking-tight">
+                Total Damage (மொத்த சேதம்)
               </span>
-              <span className="font-mono font-black text-lg sm:text-2xl text-rose-700 bg-white px-4 py-1.5 rounded-2xl border-2 border-rose-300 shadow-xs">
+              <span className="font-mono font-black text-xs sm:text-sm text-rose-800 bg-white px-3 py-1 rounded-xl border-2 border-rose-300 shadow-2xs whitespace-nowrap">
                 {damageModalData.totalCount} Pieces
               </span>
             </div>
@@ -1080,77 +1080,77 @@ export const UserBalanceView = () => {
       )}
 
       {/* ============================================================ */}
-      {/* SHORTAGE POPUP MODAL (LIGHT-BLUE THEME, BIG FONTS, IMAGES) */}
+      {/* SHORTAGE POPUP MODAL (COMPACT LIGHT-BLUE THEME) */}
       {/* ============================================================ */}
       {shortageModalData && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
-          <div className="bg-gradient-to-b from-sky-50 via-white to-sky-100/90 border-2 border-sky-300 rounded-3xl max-w-lg w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
+          <div className="bg-gradient-to-b from-sky-50 via-white to-sky-100/90 border-2 border-sky-300 rounded-2xl max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
             
             {/* Modal Header */}
-            <div className="p-4 sm:p-5 border-b-2 border-sky-200 bg-sky-900 text-white flex items-center justify-between shrink-0 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-orange-500 text-white flex items-center justify-center shadow-sm">
-                  <TrendingDown className="w-6 h-6 stroke-[2.5]" />
+            <div className="p-3 px-4 sm:p-3.5 sm:px-5 border-b-2 border-sky-200 bg-sky-950 text-white flex items-center justify-between shrink-0 shadow-xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <TrendingDown className="w-4.5 h-4.5 stroke-[2.5]" />
                 </div>
-                <div>
-                  <h3 className="font-black text-base sm:text-lg text-white leading-tight">
+                <div className="min-w-0">
+                  <h3 className="font-black text-xs sm:text-sm text-white truncate leading-tight">
                     Shortage Stock Details (குறைவு விவரங்கள்)
                   </h3>
-                  <p className="text-xs text-sky-200 font-bold mt-0.5">
+                  <p className="text-[11px] text-sky-200 font-bold truncate mt-0.5">
                     Driver: <span className="text-white">{shortageModalData.userName}</span> {shortageModalData.vehicleNumber && `(${shortageModalData.vehicleNumber})`}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setShortageModalData(null)}
-                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-sky-100 hover:text-white flex items-center justify-center transition cursor-pointer"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/10 hover:bg-white/20 text-sky-100 hover:text-white flex items-center justify-center transition cursor-pointer shrink-0 ml-2"
                 title="Close"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Modal Body: Products List with Images and Shortage Counts */}
-            <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-3 bg-sky-50/50">
+            <div className="flex-1 p-3 sm:p-4 overflow-y-auto space-y-2 bg-sky-50/50">
               {shortageModalData.items.length === 0 ? (
-                <div className="p-8 text-center bg-white rounded-2xl border-2 border-sky-200">
-                  <Package className="w-10 h-10 text-sky-400 mx-auto mb-2" />
-                  <p className="font-black text-slate-700 text-sm sm:text-base">No Shortage Stock Recorded</p>
+                <div className="p-6 text-center bg-white rounded-xl border border-sky-200">
+                  <Package className="w-8 h-8 text-sky-400 mx-auto mb-1.5" />
+                  <p className="font-bold text-slate-700 text-xs sm:text-sm">No Shortage Stock Recorded</p>
                 </div>
               ) : (
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   {shortageModalData.items.map((item, idx) => (
                     <div 
                       key={item.productId || idx}
-                      className="flex items-center justify-between p-3.5 bg-white border-2 border-sky-200 hover:border-orange-300 rounded-2xl shadow-xs transition"
+                      className="flex items-center justify-between p-2.5 sm:p-3 bg-white border border-sky-200 hover:border-orange-300 rounded-xl shadow-xs transition"
                     >
                       {/* Left: Product Image & Name */}
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-sky-50 border border-sky-200 p-1.5 flex items-center justify-center shrink-0 shadow-xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-sky-50 border border-sky-200 p-1 flex items-center justify-center shrink-0 shadow-2xs">
                           {item.imageUrl ? (
                             <img 
                               src={item.imageUrl} 
                               alt={item.productName} 
-                              className="w-full h-full object-contain rounded-xl"
+                              className="w-full h-full object-contain rounded-lg"
                               onError={(e) => { e.target.style.display = 'none'; }}
                             />
                           ) : (
-                            <Package className="w-6 h-6 text-sky-500" />
+                            <Package className="w-5 h-5 text-sky-500" />
                           )}
                         </div>
                         <div className="min-w-0">
-                          <h4 className="font-black text-slate-900 text-sm sm:text-base truncate leading-snug">
+                          <h4 className="font-bold text-slate-900 text-xs sm:text-sm truncate leading-snug">
                             {item.productName}
                           </h4>
-                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block mt-0.5">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">
                             Unit: {item.unit || 'Piece'}
                           </span>
                         </div>
                       </div>
 
                       {/* Right: Shortage Piece Count */}
-                      <div className="text-right shrink-0 pl-3">
-                        <span className="inline-block px-3 py-1.5 bg-orange-100 border-2 border-orange-300 text-orange-950 font-mono font-black text-base sm:text-lg rounded-xl shadow-xs">
+                      <div className="text-right shrink-0 pl-2">
+                        <span className="inline-block px-2.5 py-1 bg-orange-100 border border-orange-300 text-orange-950 font-mono font-black text-xs sm:text-sm rounded-lg shadow-2xs whitespace-nowrap">
                           {item.totalPieces} Pcs
                         </span>
                       </div>
@@ -1161,11 +1161,11 @@ export const UserBalanceView = () => {
             </div>
 
             {/* Modal Footer: Total Shortage Summary */}
-            <div className="p-4 sm:p-5 border-t-2 border-sky-200 bg-sky-100/90 flex items-center justify-between shrink-0">
-              <span className="font-black text-slate-900 text-sm sm:text-base uppercase tracking-wide">
-                Total Shortage Count (மொத்த குறைவு)
+            <div className="p-2.5 px-4 sm:p-3 sm:px-5 border-t-2 border-sky-200 bg-sky-100/90 flex items-center justify-between shrink-0">
+              <span className="font-black text-slate-900 text-xs sm:text-sm uppercase tracking-tight">
+                Total Shortage (மொத்த குறைவு)
               </span>
-              <span className="font-mono font-black text-lg sm:text-2xl text-orange-800 bg-white px-4 py-1.5 rounded-2xl border-2 border-orange-300 shadow-xs">
+              <span className="font-mono font-black text-xs sm:text-sm text-orange-900 bg-white px-3 py-1 rounded-xl border-2 border-orange-300 shadow-2xs whitespace-nowrap">
                 {shortageModalData.totalCount} Pieces
               </span>
             </div>
