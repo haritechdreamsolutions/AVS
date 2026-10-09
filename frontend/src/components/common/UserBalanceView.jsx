@@ -1,7 +1,10 @@
-import React, { useState, useMemo } from 'react';
-import { useApp } from '../../context/AppContext';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useApp, apiFetch, API_URL } from '../../context/AppContext';
+import { resolveProductImageUrl } from '../../utils/productImageHelper';
+import { getProductDisplayRank } from '../../utils/productOrderHelper';
 import { 
-  Search, Calendar, RotateCcw, AlertTriangle
+  Search, Calendar, RotateCcw, AlertTriangle, X,
+  Layers, AlertCircle, TrendingDown, Package, Sparkles
 } from 'lucide-react';
 
 // Helper function to format any date string into DD-MM-YYYY format
@@ -57,6 +60,27 @@ const extractSaleDateYMD = (sale) => {
   return '';
 };
 
+// Generic Date extractor for expenses, damages, and shortages
+const extractGenericDateYMD = (item) => {
+  if (!item) return '';
+  if (item.expense_date && typeof item.expense_date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(item.expense_date)) {
+    return item.expense_date.substring(0, 10);
+  }
+  if (item.session_date && typeof item.session_date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(item.session_date)) {
+    return item.session_date.substring(0, 10);
+  }
+  if (item.date && typeof item.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(item.date)) {
+    return item.date.substring(0, 10);
+  }
+  if (item.created_at) {
+    const d = new Date(item.created_at);
+    if (!isNaN(d.getTime())) {
+      return formatYMD(d);
+    }
+  }
+  return '';
+};
+
 // Helper to calculate exact financials for any sale
 const getSaleFinancials = (sale) => {
   if (!sale) return { total: 0, received: 0, balance: 0, oldCreditPaid: 0 };
@@ -101,7 +125,17 @@ const getSaleFinancials = (sale) => {
 };
 
 export const UserBalanceView = () => {
-  const { sales = [], employees = [] } = useApp();
+  const { sales = [], employees = [], products = [] } = useApp();
+
+  // Additional Data State
+  const [expenses, setExpenses] = useState([]);
+  const [damages, setDamages] = useState([]);
+  const [shortages, setShortages] = useState([]);
+  const [isLoadingExtra, setIsLoadingExtra] = useState(false);
+
+  // Popup Modal States
+  const [damageModalData, setDamageModalData] = useState(null); // { userName, vehicleNumber, items: [], totalCount }
+  const [shortageModalData, setShortageModalData] = useState(null); // { userName, vehicleNumber, items: [], totalCount }
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
@@ -109,6 +143,30 @@ export const UserBalanceView = () => {
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [userFilter, setUserFilter] = useState('ALL'); // 'ALL', 'STORE', or employee_id string
+
+  // Fetch Expenses, Damages, Shortages from DB
+  const loadExtraData = useCallback(async () => {
+    setIsLoadingExtra(true);
+    try {
+      const [expRes, dmgRes, shtRes] = await Promise.all([
+        apiFetch(`${API_URL}/expenses`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/damages`).then(r => r.ok ? r.json() : []).catch(() => []),
+        apiFetch(`${API_URL}/sk/driver-returns/missing`).then(r => r.ok ? r.json() : { records: [] }).catch(() => ({ records: [] }))
+      ]);
+
+      setExpenses(Array.isArray(expRes) ? expRes : []);
+      setDamages(Array.isArray(dmgRes) ? dmgRes : []);
+      setShortages(Array.isArray(shtRes?.records) ? shtRes.records : (Array.isArray(shtRes) ? shtRes : []));
+    } catch (err) {
+      console.error('Error loading extra balance data:', err);
+    } finally {
+      setIsLoadingExtra(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadExtraData();
+  }, [loadExtraData]);
 
   // Handle Quick Date Selection
   const handleQuickDateSelect = (mode) => {
@@ -159,6 +217,7 @@ export const UserBalanceView = () => {
     map.set('STORE', {
       id: 'STORE',
       name: 'Store Keeper (Counter Direct)',
+      vehicleNumber: 'Counter',
       icon: '🏬'
     });
 
@@ -166,6 +225,7 @@ export const UserBalanceView = () => {
       map.set(String(emp.id), {
         id: String(emp.id),
         name: emp.full_name || `Driver #${emp.id}`,
+        vehicleNumber: emp.vehicle_number || '',
         icon: '🚚'
       });
     });
@@ -175,6 +235,7 @@ export const UserBalanceView = () => {
         map.set(String(s.employee_id), {
           id: String(s.employee_id),
           name: s.employee_name || `Driver #${s.employee_id}`,
+          vehicleNumber: s.vehicle_number || '',
           icon: '🚚'
         });
       }
@@ -220,7 +281,68 @@ export const UserBalanceView = () => {
     });
   }, [sales, fromDate, toDate, userFilter, searchQuery, dateError]);
 
-  // Aggregate stats per user for the filtered period
+  // Filter expenses by date range
+  const filteredExpenses = useMemo(() => {
+    if (dateError) return [];
+    return (expenses || []).filter(exp => {
+      const expYmd = extractGenericDateYMD(exp);
+      if (fromDate && expYmd && expYmd < fromDate) return false;
+      if (toDate && expYmd && expYmd > toDate) return false;
+      if ((fromDate || toDate) && !expYmd) return false;
+
+      if (userFilter !== 'ALL') {
+        if (userFilter === 'STORE') {
+          if (exp.employee_id) return false;
+        } else {
+          if (String(exp.employee_id) !== String(userFilter)) return false;
+        }
+      }
+      return true;
+    });
+  }, [expenses, fromDate, toDate, userFilter, dateError]);
+
+  // Filter damages by date range
+  const filteredDamages = useMemo(() => {
+    if (dateError) return [];
+    return (damages || []).filter(dmg => {
+      const dmgYmd = extractGenericDateYMD(dmg);
+      if (fromDate && dmgYmd && dmgYmd < fromDate) return false;
+      if (toDate && dmgYmd && dmgYmd > toDate) return false;
+      if ((fromDate || toDate) && !dmgYmd) return false;
+
+      if (userFilter !== 'ALL') {
+        if (userFilter === 'STORE') {
+          if (dmg.employee_id) return false;
+        } else {
+          if (String(dmg.employee_id) !== String(userFilter)) return false;
+        }
+      }
+      return true;
+    });
+  }, [damages, fromDate, toDate, userFilter, dateError]);
+
+  // Filter shortages by date range
+  const filteredShortages = useMemo(() => {
+    if (dateError) return [];
+    return (shortages || []).filter(sht => {
+      const shtYmd = extractGenericDateYMD(sht);
+      if (fromDate && shtYmd && shtYmd < fromDate) return false;
+      if (toDate && shtYmd && shtYmd > toDate) return false;
+      if ((fromDate || toDate) && !shtYmd) return false;
+
+      const driverId = sht.driver_id || sht.employee_id;
+      if (userFilter !== 'ALL') {
+        if (userFilter === 'STORE') {
+          if (driverId) return false;
+        } else {
+          if (String(driverId) !== String(userFilter)) return false;
+        }
+      }
+      return true;
+    });
+  }, [shortages, fromDate, toDate, userFilter, dateError]);
+
+  // Aggregate stats per user (Sales + Expenses + Damages + Shortages)
   const userSummaries = useMemo(() => {
     const summaryMap = new Map();
 
@@ -230,10 +352,16 @@ export const UserBalanceView = () => {
         totalSales: 0,
         totalReceived: 0,
         totalBalance: 0,
-        oldCreditCollected: 0
+        oldCreditCollected: 0,
+        totalExpenses: 0,
+        damageProducts: [],
+        totalDamagePieces: 0,
+        shortageProducts: [],
+        totalShortagePieces: 0
       });
     });
 
+    // 1. Process Sales
     filteredSales.forEach(sale => {
       const isStoreCounter = sale.is_store_direct_sale || Number(sale.employee_id) === 6 || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'));
       const key = isStoreCounter ? 'STORE' : String(sale.employee_id || 'STORE');
@@ -243,12 +371,18 @@ export const UserBalanceView = () => {
           user: {
             id: key,
             name: sale.employee_name || 'Driver',
+            vehicleNumber: sale.vehicle_number || '',
             icon: '🚚'
           },
           totalSales: 0,
           totalReceived: 0,
           totalBalance: 0,
-          oldCreditCollected: 0
+          oldCreditCollected: 0,
+          totalExpenses: 0,
+          damageProducts: [],
+          totalDamagePieces: 0,
+          shortageProducts: [],
+          totalShortagePieces: 0
         });
       }
 
@@ -259,6 +393,92 @@ export const UserBalanceView = () => {
       entry.totalReceived += fin.received;
       entry.totalBalance += fin.balance;
       entry.oldCreditCollected += fin.oldCreditPaid;
+    });
+
+    // 2. Process Expenses per Driver
+    filteredExpenses.forEach(exp => {
+      const key = exp.employee_id ? String(exp.employee_id) : 'STORE';
+      if (summaryMap.has(key)) {
+        summaryMap.get(key).totalExpenses += Number(exp.amount || 0);
+      }
+    });
+
+    // 3. Process Damages per Driver
+    const dmgMapByUser = new Map();
+    filteredDamages.forEach(dmg => {
+      const key = dmg.employee_id ? String(dmg.employee_id) : 'STORE';
+      if (!dmgMapByUser.has(key)) {
+        dmgMapByUser.set(key, new Map());
+      }
+      const userDmgMap = dmgMapByUser.get(key);
+      const pid = dmg.product_id || 0;
+      const pObj = products.find(p => p.id === pid) || {};
+      const pName = dmg.product_name || pObj.display_name || pObj.name || `Product #${pid}`;
+      const pieces = Math.round(Number(dmg.base_quantity ?? dmg.qty_units ?? 0));
+      const unit = dmg.damage_unit || dmg.unit || pObj.base_unit || 'Piece';
+      const img = resolveProductImageUrl({ ...pObj, ...dmg, display_name: pName, name: pName });
+
+      if (!userDmgMap.has(pid)) {
+        userDmgMap.set(pid, {
+          productId: pid,
+          productName: pName,
+          imageUrl: img,
+          totalPieces: 0,
+          unit,
+          productObj: pObj
+        });
+      }
+      userDmgMap.get(pid).totalPieces += pieces;
+    });
+
+    dmgMapByUser.forEach((productMap, userKey) => {
+      if (summaryMap.has(userKey)) {
+        const sortedProducts = Array.from(productMap.values())
+          .filter(p => p.totalPieces > 0)
+          .sort((a, b) => getProductDisplayRank(a.productObj || { name: a.productName }) - getProductDisplayRank(b.productObj || { name: b.productName }));
+        const totalPcs = sortedProducts.reduce((sum, p) => sum + p.totalPieces, 0);
+        summaryMap.get(userKey).damageProducts = sortedProducts;
+        summaryMap.get(userKey).totalDamagePieces = totalPcs;
+      }
+    });
+
+    // 4. Process Shortages per Driver
+    const shortMapByUser = new Map();
+    filteredShortages.forEach(sht => {
+      const key = sht.driver_id ? String(sht.driver_id) : (sht.employee_id ? String(sht.employee_id) : 'STORE');
+      if (!shortMapByUser.has(key)) {
+        shortMapByUser.set(key, new Map());
+      }
+      const userShortMap = shortMapByUser.get(key);
+      const pid = sht.product_id || 0;
+      const pObj = products.find(p => p.id === pid) || {};
+      const pName = sht.product_name || pObj.display_name || pObj.name || `Product #${pid}`;
+      const pieces = Math.round(Number(sht.missing_quantity ?? sht.shortage_units ?? 0));
+      const unit = sht.unit || pObj.base_unit || 'Piece';
+      const img = resolveProductImageUrl({ ...pObj, ...sht, display_name: pName, name: pName });
+
+      if (!userShortMap.has(pid)) {
+        userShortMap.set(pid, {
+          productId: pid,
+          productName: pName,
+          imageUrl: img,
+          totalPieces: 0,
+          unit,
+          productObj: pObj
+        });
+      }
+      userShortMap.get(pid).totalPieces += pieces;
+    });
+
+    shortMapByUser.forEach((productMap, userKey) => {
+      if (summaryMap.has(userKey)) {
+        const sortedProducts = Array.from(productMap.values())
+          .filter(p => p.totalPieces > 0)
+          .sort((a, b) => getProductDisplayRank(a.productObj || { name: a.productName }) - getProductDisplayRank(b.productObj || { name: b.productName }));
+        const totalPcs = sortedProducts.reduce((sum, p) => sum + p.totalPieces, 0);
+        summaryMap.get(userKey).shortageProducts = sortedProducts;
+        summaryMap.get(userKey).totalShortagePieces = totalPcs;
+      }
     });
 
     let list = Array.from(summaryMap.values());
@@ -273,7 +493,7 @@ export const UserBalanceView = () => {
     }
 
     return list;
-  }, [availableUsers, filteredSales, userFilter]);
+  }, [availableUsers, filteredSales, filteredExpenses, filteredDamages, filteredShortages, userFilter, products]);
 
   // Overall Aggregated Totals
   const overallMetrics = useMemo(() => {
@@ -281,19 +501,28 @@ export const UserBalanceView = () => {
     let receivedAmt = 0;
     let balanceAmt = 0;
     let oldCreditAmt = 0;
+    let expenseAmt = 0;
+    let damagePcs = 0;
+    let shortagePcs = 0;
 
     userSummaries.forEach(u => {
       salesAmt += u.totalSales;
       receivedAmt += u.totalReceived;
       balanceAmt += u.totalBalance;
       oldCreditAmt += u.oldCreditCollected;
+      expenseAmt += u.totalExpenses;
+      damagePcs += u.totalDamagePieces;
+      shortagePcs += u.totalShortagePieces;
     });
 
     return {
-      totalSales: salesAmt,
-      totalReceived: receivedAmt,
-      totalBalance: balanceAmt,
-      oldCreditCollected: oldCreditAmt
+      totalSales: Math.round(salesAmt),
+      totalReceived: Math.round(receivedAmt),
+      totalBalance: Math.round(balanceAmt),
+      oldCreditCollected: Math.round(oldCreditAmt),
+      totalExpenses: Math.round(expenseAmt),
+      totalDamagePieces: damagePcs,
+      totalShortagePieces: shortagePcs
     };
   }, [userSummaries]);
 
@@ -314,6 +543,26 @@ export const UserBalanceView = () => {
     return count;
   }, [quickDate, fromDate, toDate, userFilter, searchQuery]);
 
+  // Open Damage Popup
+  const openDamageModal = (summary) => {
+    setDamageModalData({
+      userName: summary.user.name,
+      vehicleNumber: summary.user.vehicleNumber,
+      items: summary.damageProducts,
+      totalCount: summary.totalDamagePieces
+    });
+  };
+
+  // Open Shortage Popup
+  const openShortageModal = (summary) => {
+    setShortageModalData({
+      userName: summary.user.name,
+      vehicleNumber: summary.user.vehicleNumber,
+      items: summary.shortageProducts,
+      totalCount: summary.totalShortagePieces
+    });
+  };
+
   return (
     <div className="space-y-4 sm:space-y-5 pb-8 bg-sky-50/50 p-2 sm:p-4 rounded-3xl">
       
@@ -326,7 +575,7 @@ export const UserBalanceView = () => {
             TOTAL SALES (விற்பனை)
           </span>
           <div className="font-mono font-black text-lg sm:text-2xl lg:text-3xl text-indigo-700 mt-1 sm:mt-2">
-            ₹{overallMetrics.totalSales.toLocaleString()}
+            ₹{overallMetrics.totalSales.toLocaleString('en-IN')}
           </div>
         </div>
 
@@ -336,7 +585,7 @@ export const UserBalanceView = () => {
             OLD CREDIT (பழைய கடன் வசூல்)
           </span>
           <div className="font-mono font-black text-lg sm:text-2xl lg:text-3xl text-amber-700 mt-1 sm:mt-2">
-            ₹{overallMetrics.oldCreditCollected.toLocaleString()}
+            ₹{overallMetrics.oldCreditCollected.toLocaleString('en-IN')}
           </div>
         </div>
 
@@ -346,7 +595,7 @@ export const UserBalanceView = () => {
             TOTAL RECEIVED (மொத்த வரவு)
           </span>
           <div className="font-mono font-black text-lg sm:text-2xl lg:text-3xl text-emerald-600 mt-1 sm:mt-2">
-            ₹{overallMetrics.totalReceived.toLocaleString()}
+            ₹{overallMetrics.totalReceived.toLocaleString('en-IN')}
           </div>
         </div>
 
@@ -356,18 +605,18 @@ export const UserBalanceView = () => {
             BALANCE (மொத்த பாக்கி)
           </span>
           <div className="font-mono font-black text-lg sm:text-2xl lg:text-3xl text-rose-600 mt-1 sm:mt-2">
-            ₹{overallMetrics.totalBalance.toLocaleString()}
+            ₹{overallMetrics.totalBalance.toLocaleString('en-IN')}
           </div>
         </div>
 
       </div>
 
-      {/* FILTER CONTROLS PANEL (English Only) */}
+      {/* FILTER CONTROLS PANEL */}
       <div className="glass-panel p-3 sm:p-4 rounded-2xl bg-white border border-sky-200 space-y-3 shadow-xs">
         
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
           
-          {/* English Search Bar - Compact Size */}
+          {/* Search Bar */}
           <div className="relative w-full sm:w-48 lg:w-56 shrink-0">
             <Search className="w-3.5 h-3.5 text-sky-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
@@ -379,7 +628,7 @@ export const UserBalanceView = () => {
             />
           </div>
 
-          {/* Quick Date Range Pills without Scrollbar */}
+          {/* Quick Date Range Pills */}
           <div className="flex flex-wrap sm:flex-nowrap items-center justify-center gap-1 bg-sky-100/80 p-1 rounded-xl border border-sky-200 text-[11px] sm:text-xs">
             <button
               onClick={() => handleQuickDateSelect('ALL')}
@@ -431,7 +680,7 @@ export const UserBalanceView = () => {
             </button>
           </div>
 
-          {/* User Filter Dropdown - Compact Size */}
+          {/* User Filter Dropdown */}
           <div className="w-full sm:w-44 lg:w-52 shrink-0">
             <select
               value={userFilter}
@@ -504,58 +753,110 @@ export const UserBalanceView = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b-2 border-sky-200 font-black text-slate-900 bg-sky-100/90 uppercase tracking-wider text-xs sm:text-sm">
-                <th className="p-4 pl-6">User Name (பயனாளர் பெயர்)</th>
-                <th className="p-4 text-right">Total Sales (விற்பனை)</th>
-                <th className="p-4 text-right">Old Credit (பழைய கடன் வசூல்)</th>
-                <th className="p-4 text-right">Total Received (மொத்த வரவு)</th>
-                <th className="p-4 pr-6 text-right">Balance Given (பாக்கி / கடன்)</th>
+                <th className="p-3.5 pl-5">User Name (பயனாளர் பெயர்)</th>
+                <th className="p-3.5 text-right">Total Sales (விற்பனை)</th>
+                <th className="p-3.5 text-right">Old Credit (பழைய வரவு)</th>
+                <th className="p-3.5 text-right">Total Received (மொத்த வரவு)</th>
+                <th className="p-3.5 text-right">Balance Given (பாக்கி)</th>
+                <th className="p-3.5 text-right bg-amber-50/60 text-amber-950">Expense (செலவு)</th>
+                <th className="p-3.5 text-center bg-rose-50/60 text-rose-950">Damage (சேதம்)</th>
+                <th className="p-3.5 pr-5 text-center bg-orange-50/60 text-orange-950">Shortage (குறைவு)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-sky-100">
               {userSummaries.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="p-10 text-center bg-sky-50/40">
+                  <td colSpan="8" className="p-10 text-center bg-sky-50/40">
                     <p className="font-black text-sm sm:text-base text-slate-700">No User Records Found</p>
                   </td>
                 </tr>
               ) : (
-                userSummaries.map(({ user, totalSales, totalReceived, totalBalance, oldCreditCollected }) => (
-                  <tr key={user.id} className="hover:bg-sky-50/70 transition-colors">
-                    
-                    {/* User Name Only (Role Removed) */}
-                    <td className="p-4 pl-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-900 border border-sky-200 flex items-center justify-center font-bold text-base shrink-0">
-                          {user.icon || '👤'}
+                userSummaries.map((summary) => {
+                  const { user, totalSales, totalReceived, totalBalance, oldCreditCollected, totalExpenses, totalDamagePieces, totalShortagePieces } = summary;
+                  return (
+                    <tr key={user.id} className="hover:bg-sky-50/70 transition-colors">
+                      
+                      {/* User Name */}
+                      <td className="p-3.5 pl-5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-2xl bg-sky-100 text-sky-900 border border-sky-200 flex items-center justify-center font-bold text-base shrink-0">
+                            {user.icon || '👤'}
+                          </div>
+                          <div>
+                            <span className="font-black text-slate-900 text-sm sm:text-base block leading-tight">
+                              {user.name}
+                            </span>
+                            {user.vehicleNumber && user.vehicleNumber !== 'Counter' && (
+                              <span className="text-[11px] font-bold text-slate-500 block">
+                                {user.vehicleNumber}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <span className="font-black text-slate-900 text-sm sm:text-base block">
-                          {user.name}
-                        </span>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Total Sales */}
-                    <td className="p-4 text-right font-mono font-black text-base sm:text-lg text-indigo-700">
-                      ₹{totalSales.toLocaleString()}
-                    </td>
+                      {/* Total Sales */}
+                      <td className="p-3.5 text-right font-mono font-black text-sm sm:text-base text-indigo-700">
+                        ₹{Math.round(totalSales).toLocaleString('en-IN')}
+                      </td>
 
-                    {/* Old Credit Collected */}
-                    <td className="p-4 text-right font-mono font-black text-base sm:text-lg text-amber-700">
-                      ₹{oldCreditCollected.toLocaleString()}
-                    </td>
+                      {/* Old Credit Collected */}
+                      <td className="p-3.5 text-right font-mono font-black text-sm sm:text-base text-amber-700">
+                        ₹{Math.round(oldCreditCollected).toLocaleString('en-IN')}
+                      </td>
 
-                    {/* Total Received */}
-                    <td className="p-4 text-right font-mono font-black text-base sm:text-lg text-emerald-700">
-                      ₹{totalReceived.toLocaleString()}
-                    </td>
+                      {/* Total Received */}
+                      <td className="p-3.5 text-right font-mono font-black text-sm sm:text-base text-emerald-700">
+                        ₹{Math.round(totalReceived).toLocaleString('en-IN')}
+                      </td>
 
-                    {/* Balance Given */}
-                    <td className="p-4 pr-6 text-right font-mono font-black text-base sm:text-lg text-rose-700">
-                      ₹{totalBalance.toLocaleString()}
-                    </td>
+                      {/* Balance Given */}
+                      <td className="p-3.5 text-right font-mono font-black text-sm sm:text-base text-rose-700">
+                        ₹{Math.round(totalBalance).toLocaleString('en-IN')}
+                      </td>
 
-                  </tr>
-                ))
+                      {/* 1st NEW COLUMN: Expense (செலவு) */}
+                      <td className="p-3.5 text-right font-mono font-black text-sm sm:text-base text-amber-900 bg-amber-50/30">
+                        ₹{Math.round(totalExpenses).toLocaleString('en-IN')}
+                      </td>
+
+                      {/* 2nd NEW COLUMN: Damage (சேதம்) */}
+                      <td className="p-3.5 text-center bg-rose-50/30">
+                        {totalDamagePieces > 0 ? (
+                          <button
+                            onClick={() => openDamageModal(summary)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 border-2 border-rose-300 rounded-xl font-black text-xs sm:text-sm shadow-xs transition hover:scale-105 active:scale-95 cursor-pointer"
+                            title="Click to view damaged products breakdown"
+                          >
+                            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                            <span>{totalDamagePieces} Pcs</span>
+                            <span className="text-[10px] uppercase font-bold bg-rose-200/80 text-rose-900 px-1.5 py-0.5 rounded-md">View</span>
+                          </button>
+                        ) : (
+                          <span className="text-slate-400 font-bold text-xs sm:text-sm">0 Pcs</span>
+                        )}
+                      </td>
+
+                      {/* 3rd NEW COLUMN: Shortage (குறைவு) */}
+                      <td className="p-3.5 pr-5 text-center bg-orange-50/30">
+                        {totalShortagePieces > 0 ? (
+                          <button
+                            onClick={() => openShortageModal(summary)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-900 border-2 border-orange-300 rounded-xl font-black text-xs sm:text-sm shadow-xs transition hover:scale-105 active:scale-95 cursor-pointer"
+                            title="Click to view shortage products breakdown"
+                          >
+                            <TrendingDown className="w-4 h-4 text-orange-600 shrink-0" />
+                            <span>{totalShortagePieces} Pcs</span>
+                            <span className="text-[10px] uppercase font-bold bg-orange-200/80 text-orange-950 px-1.5 py-0.5 rounded-md">View</span>
+                          </button>
+                        ) : (
+                          <span className="text-slate-400 font-bold text-xs sm:text-sm">0 Pcs</span>
+                        )}
+                      </td>
+
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -568,43 +869,286 @@ export const UserBalanceView = () => {
               <p className="font-black text-xs text-slate-700">No Records Found</p>
             </div>
           ) : (
-            userSummaries.map(({ user, totalSales, totalReceived, totalBalance, oldCreditCollected }) => (
-              <div key={user.id} className="p-3.5 space-y-2.5 bg-white">
-                
-                {/* Username Only */}
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-900 border border-sky-200 flex items-center justify-center font-bold text-sm shrink-0">
-                    {user.icon || '👤'}
+            userSummaries.map((summary) => {
+              const { user, totalSales, totalReceived, totalBalance, oldCreditCollected, totalExpenses, totalDamagePieces, totalShortagePieces } = summary;
+              return (
+                <div key={user.id} className="p-3.5 space-y-3 bg-white">
+                  
+                  {/* Username & Vehicle */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-900 border border-sky-200 flex items-center justify-center font-bold text-sm shrink-0">
+                        {user.icon || '👤'}
+                      </div>
+                      <div>
+                        <h4 className="font-black text-sm text-slate-900 leading-tight">{user.name}</h4>
+                        {user.vehicleNumber && user.vehicleNumber !== 'Counter' && (
+                          <span className="text-[10px] font-bold text-slate-500">{user.vehicleNumber}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <h4 className="font-black text-sm text-slate-900 leading-tight">{user.name}</h4>
-                </div>
 
-                {/* 4-Grid Financial Breakdown */}
-                <div className="grid grid-cols-2 gap-2 text-center text-xs font-mono font-bold bg-sky-50/80 p-2.5 rounded-2xl border border-sky-200">
-                  <div className="bg-white p-2 rounded-xl border border-sky-100">
-                    <span className="text-[10px] font-black uppercase text-slate-500 block">Sales (விற்பனை)</span>
-                    <span className="font-black text-indigo-700 text-sm">₹{totalSales.toLocaleString()}</span>
+                  {/* Financial 4-Grid */}
+                  <div className="grid grid-cols-2 gap-2 text-center text-xs font-mono font-bold bg-sky-50/80 p-2.5 rounded-2xl border border-sky-200">
+                    <div className="bg-white p-2 rounded-xl border border-sky-100">
+                      <span className="text-[10px] font-black uppercase text-slate-500 block">Sales (விற்பனை)</span>
+                      <span className="font-black text-indigo-700 text-sm">₹{Math.round(totalSales).toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-sky-100">
+                      <span className="text-[10px] font-black uppercase text-slate-500 block">Old Credit (பழைய வரவு)</span>
+                      <span className="font-black text-amber-700 text-sm">₹{Math.round(oldCreditCollected).toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-sky-100">
+                      <span className="text-[10px] font-black uppercase text-slate-500 block">Varavu (வரவு)</span>
+                      <span className="font-black text-emerald-700 text-sm">₹{Math.round(totalReceived).toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="bg-white p-2 rounded-xl border border-sky-100">
+                      <span className="text-[10px] font-black uppercase text-slate-500 block">Paakki (பாக்கி)</span>
+                      <span className="font-black text-rose-700 text-sm">₹{Math.round(totalBalance).toLocaleString('en-IN')}</span>
+                    </div>
                   </div>
-                  <div className="bg-white p-2 rounded-xl border border-sky-100">
-                    <span className="text-[10px] font-black uppercase text-slate-500 block">Old Credit (பழைய வரவு)</span>
-                    <span className="font-black text-amber-700 text-sm">₹{oldCreditCollected.toLocaleString()}</span>
-                  </div>
-                  <div className="bg-white p-2 rounded-xl border border-sky-100">
-                    <span className="text-[10px] font-black uppercase text-slate-500 block">Varavu (வரவு)</span>
-                    <span className="font-black text-emerald-700 text-sm">₹{totalReceived.toLocaleString()}</span>
-                  </div>
-                  <div className="bg-white p-2 rounded-xl border border-sky-100">
-                    <span className="text-[10px] font-black uppercase text-slate-500 block">Paakki (பாக்கி)</span>
-                    <span className="font-black text-rose-700 text-sm">₹{totalBalance.toLocaleString()}</span>
-                  </div>
-                </div>
 
-              </div>
-            ))
+                  {/* 3 Mobile Badges: Expense, Damage, Shortage */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* Mobile Expense */}
+                    <div className="bg-amber-50 border border-amber-200 p-2 rounded-xl text-center">
+                      <span className="text-[10px] font-black text-amber-800 uppercase block">Expense</span>
+                      <span className="font-mono font-black text-amber-950 text-xs sm:text-sm">
+                        ₹{Math.round(totalExpenses).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+
+                    {/* Mobile Damage */}
+                    <button
+                      disabled={totalDamagePieces === 0}
+                      onClick={() => openDamageModal(summary)}
+                      className={`p-2 rounded-xl border text-center transition ${
+                        totalDamagePieces > 0
+                          ? 'bg-rose-50 hover:bg-rose-100 border-rose-300 text-rose-900 cursor-pointer shadow-xs'
+                          : 'bg-slate-50 border-slate-200 text-slate-400 opacity-70 cursor-default'
+                      }`}
+                    >
+                      <span className="text-[10px] font-black uppercase block">Damage</span>
+                      <span className="font-mono font-black text-xs sm:text-sm block">
+                        {totalDamagePieces} Pcs
+                      </span>
+                    </button>
+
+                    {/* Mobile Shortage */}
+                    <button
+                      disabled={totalShortagePieces === 0}
+                      onClick={() => openShortageModal(summary)}
+                      className={`p-2 rounded-xl border text-center transition ${
+                        totalShortagePieces > 0
+                          ? 'bg-orange-50 hover:bg-orange-100 border-orange-300 text-orange-950 cursor-pointer shadow-xs'
+                          : 'bg-slate-50 border-slate-200 text-slate-400 opacity-70 cursor-default'
+                      }`}
+                    >
+                      <span className="text-[10px] font-black uppercase block">Shortage</span>
+                      <span className="font-mono font-black text-xs sm:text-sm block">
+                        {totalShortagePieces} Pcs
+                      </span>
+                    </button>
+                  </div>
+
+                </div>
+              );
+            })
           )}
         </div>
 
       </div>
+
+      {/* ============================================================ */}
+      {/* DAMAGE POPUP MODAL (LIGHT-BLUE THEME, BIG FONTS, IMAGES) */}
+      {/* ============================================================ */}
+      {damageModalData && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
+          <div className="bg-gradient-to-b from-sky-50 via-white to-sky-100/90 border-2 border-sky-300 rounded-3xl max-w-lg w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b-2 border-sky-200 bg-sky-900 text-white flex items-center justify-between shrink-0 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500 text-white flex items-center justify-center shadow-sm">
+                  <AlertCircle className="w-6 h-6 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base sm:text-lg text-white leading-tight">
+                    Damage Stock Details (சேத விவரங்கள்)
+                  </h3>
+                  <p className="text-xs text-sky-200 font-bold mt-0.5">
+                    Driver: <span className="text-white">{damageModalData.userName}</span> {damageModalData.vehicleNumber && `(${damageModalData.vehicleNumber})`}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDamageModalData(null)}
+                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-sky-100 hover:text-white flex items-center justify-center transition cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body: Products List with Images and Counts */}
+            <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-3 bg-sky-50/50">
+              {damageModalData.items.length === 0 ? (
+                <div className="p-8 text-center bg-white rounded-2xl border-2 border-sky-200">
+                  <Package className="w-10 h-10 text-sky-400 mx-auto mb-2" />
+                  <p className="font-black text-slate-700 text-sm sm:text-base">No Damaged Products Recorded</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {damageModalData.items.map((item, idx) => (
+                    <div 
+                      key={item.productId || idx}
+                      className="flex items-center justify-between p-3.5 bg-white border-2 border-sky-200 hover:border-rose-300 rounded-2xl shadow-xs transition"
+                    >
+                      {/* Left: Product Image & Name */}
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-sky-50 border border-sky-200 p-1.5 flex items-center justify-center shrink-0 shadow-xs">
+                          {item.imageUrl ? (
+                            <img 
+                              src={item.imageUrl} 
+                              alt={item.productName} 
+                              className="w-full h-full object-contain rounded-xl"
+                              onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                          ) : (
+                            <Package className="w-6 h-6 text-sky-500" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-black text-slate-900 text-sm sm:text-base truncate leading-snug">
+                            {item.productName}
+                          </h4>
+                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block mt-0.5">
+                            Unit: {item.unit || 'Piece'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Right: Damage Piece Count */}
+                      <div className="text-right shrink-0 pl-3">
+                        <span className="inline-block px-3 py-1.5 bg-rose-100 border-2 border-rose-300 text-rose-900 font-mono font-black text-base sm:text-lg rounded-xl shadow-xs">
+                          {item.totalPieces} Pcs
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer: Total Summary */}
+            <div className="p-4 sm:p-5 border-t-2 border-sky-200 bg-sky-100/90 flex items-center justify-between shrink-0">
+              <span className="font-black text-slate-900 text-sm sm:text-base uppercase tracking-wide">
+                Total Damaged Count (மொத்த சேதம்)
+              </span>
+              <span className="font-mono font-black text-lg sm:text-2xl text-rose-700 bg-white px-4 py-1.5 rounded-2xl border-2 border-rose-300 shadow-xs">
+                {damageModalData.totalCount} Pieces
+              </span>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* SHORTAGE POPUP MODAL (LIGHT-BLUE THEME, BIG FONTS, IMAGES) */}
+      {/* ============================================================ */}
+      {shortageModalData && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
+          <div className="bg-gradient-to-b from-sky-50 via-white to-sky-100/90 border-2 border-sky-300 rounded-3xl max-w-lg w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b-2 border-sky-200 bg-sky-900 text-white flex items-center justify-between shrink-0 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-orange-500 text-white flex items-center justify-center shadow-sm">
+                  <TrendingDown className="w-6 h-6 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base sm:text-lg text-white leading-tight">
+                    Shortage Stock Details (குறைவு விவரங்கள்)
+                  </h3>
+                  <p className="text-xs text-sky-200 font-bold mt-0.5">
+                    Driver: <span className="text-white">{shortageModalData.userName}</span> {shortageModalData.vehicleNumber && `(${shortageModalData.vehicleNumber})`}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShortageModalData(null)}
+                className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-sky-100 hover:text-white flex items-center justify-center transition cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body: Products List with Images and Shortage Counts */}
+            <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-3 bg-sky-50/50">
+              {shortageModalData.items.length === 0 ? (
+                <div className="p-8 text-center bg-white rounded-2xl border-2 border-sky-200">
+                  <Package className="w-10 h-10 text-sky-400 mx-auto mb-2" />
+                  <p className="font-black text-slate-700 text-sm sm:text-base">No Shortage Stock Recorded</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {shortageModalData.items.map((item, idx) => (
+                    <div 
+                      key={item.productId || idx}
+                      className="flex items-center justify-between p-3.5 bg-white border-2 border-sky-200 hover:border-orange-300 rounded-2xl shadow-xs transition"
+                    >
+                      {/* Left: Product Image & Name */}
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-sky-50 border border-sky-200 p-1.5 flex items-center justify-center shrink-0 shadow-xs">
+                          {item.imageUrl ? (
+                            <img 
+                              src={item.imageUrl} 
+                              alt={item.productName} 
+                              className="w-full h-full object-contain rounded-xl"
+                              onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                          ) : (
+                            <Package className="w-6 h-6 text-sky-500" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-black text-slate-900 text-sm sm:text-base truncate leading-snug">
+                            {item.productName}
+                          </h4>
+                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block mt-0.5">
+                            Unit: {item.unit || 'Piece'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Right: Shortage Piece Count */}
+                      <div className="text-right shrink-0 pl-3">
+                        <span className="inline-block px-3 py-1.5 bg-orange-100 border-2 border-orange-300 text-orange-950 font-mono font-black text-base sm:text-lg rounded-xl shadow-xs">
+                          {item.totalPieces} Pcs
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer: Total Shortage Summary */}
+            <div className="p-4 sm:p-5 border-t-2 border-sky-200 bg-sky-100/90 flex items-center justify-between shrink-0">
+              <span className="font-black text-slate-900 text-sm sm:text-base uppercase tracking-wide">
+                Total Shortage Count (மொத்த குறைவு)
+              </span>
+              <span className="font-mono font-black text-lg sm:text-2xl text-orange-800 bg-white px-4 py-1.5 rounded-2xl border-2 border-orange-300 shadow-xs">
+                {shortageModalData.totalCount} Pieces
+              </span>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );
