@@ -397,7 +397,7 @@ export async function getDrivers(cid) {
     '  ua.id AS user_account_id, ua.login_id, ua.account_status, r_ua.id AS role_id, r_ua.role_name AS user_role ' +
     'FROM employees e ' +
     'LEFT JOIN routes r ON r.id = e.route_id ' +
-    'INNER JOIN user_accounts ua ON ua.employee_id = e.id AND ua.account_status = \'ACTIVE\' AND ua.company_id = e.company_id ' +
+    'INNER JOIN user_accounts ua ON (ua.employee_id = e.id OR LOWER(ua.login_id) = LOWER(e.employee_code)) AND ua.account_status = \'ACTIVE\' AND (ua.company_id = e.company_id OR ua.company_id = $1) ' +
     'INNER JOIN roles r_ua ON r_ua.id = ua.role_id AND (r_ua.role_name = \'DRIVER\' OR r_ua.role_name = \'EMPLOYEE\') ' +
     'WHERE e.company_id = $1 AND e.is_active = TRUE ' +
     'ORDER BY e.id ASC, ua.id DESC',
@@ -4759,7 +4759,7 @@ export async function getFleetStockReconciliation(cid, filterDriverId = null) {
 
 export async function getEligibleDriversForReturn(cid) {
   const sql = `
-    SELECT 
+    SELECT DISTINCT ON (e.id)
       e.id as driver_id,
       e.id as employee_id,
       e.full_name as driver_name,
@@ -4779,6 +4779,8 @@ export async function getEligibleDriversForReturn(cid) {
       COALESCE(ds.total_expenses, 0) as total_expenses,
       (SELECT COUNT(*) FROM employee_stock es WHERE es.employee_id = e.id AND es.qty_units > 0) as active_stock_count
     FROM employees e
+    INNER JOIN user_accounts ua ON (ua.employee_id = e.id OR LOWER(ua.login_id) = LOWER(e.employee_code)) AND ua.account_status = 'ACTIVE' AND (ua.company_id = e.company_id OR ua.company_id = $1)
+    INNER JOIN roles r_ua ON r_ua.id = ua.role_id AND (r_ua.role_name = 'DRIVER' OR r_ua.role_name = 'EMPLOYEE')
     LEFT JOIN routes r ON r.id = e.route_id
     LEFT JOIN LATERAL (
       SELECT * FROM driver_sessions ds2 
@@ -4786,7 +4788,7 @@ export async function getEligibleDriversForReturn(cid) {
       ORDER BY ds2.id DESC LIMIT 1
     ) ds ON true
     WHERE e.company_id = $1 AND e.is_active = TRUE
-    ORDER BY e.full_name ASC
+    ORDER BY e.id ASC, e.full_name ASC
   `;
   return await queryAll(sql, [cid]);
 }

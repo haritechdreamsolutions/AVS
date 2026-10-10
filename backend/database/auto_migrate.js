@@ -903,6 +903,12 @@ export async function runAutoMigrations() {
       }
     }
 
+    // Clean up orphaned employees (no matching user_account and no active stock)
+    await safeQuery(client, `
+      DELETE FROM employees
+      WHERE id NOT IN (SELECT employee_id FROM user_accounts WHERE employee_id IS NOT NULL);
+    `, [], 'cleanup orphaned employees');
+
     // Ensure employee_stock table constraints are clean and robust
     await safeQuery(client, 'ALTER TABLE employee_stock DROP CONSTRAINT IF EXISTS employee_stock_employee_id_fkey;', [], 'drop old employee_stock_employee_id_fkey');
     await safeQuery(client, 'ALTER TABLE employee_stock DROP CONSTRAINT IF EXISTS fk_es_employee;', [], 'drop old fk_es_employee');
@@ -991,6 +997,12 @@ export async function resetTransactionAndInventoryData() {
 
     // Reset all product warehouse stock and inventory counts to 0
     await safeQuery(client, 'UPDATE products SET warehouse_stock_units = 0;', [], 'reset products warehouse_stock_units');
+
+    // Clean up orphaned dummy employees that have no matching active user_accounts
+    await safeQuery(client, `
+      DELETE FROM employees
+      WHERE id NOT IN (SELECT employee_id FROM user_accounts WHERE employee_id IS NOT NULL);
+    `, [], 'cleanup orphaned employees');
 
     console.log('[reset] ✅ Transaction and Inventory Data reset finished successfully!');
     return { success: true, message: 'All transactions, inventory, driver records, damages, expenses, and logs have been reset.' };
