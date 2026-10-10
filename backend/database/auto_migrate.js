@@ -1013,3 +1013,106 @@ export async function resetTransactionAndInventoryData() {
     client.release();
   }
 }
+
+export async function resetAllDummyUsersAndKeepAdmins() {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Delete all non-admin user accounts
+    await client.query(`
+      DELETE FROM user_accounts 
+      WHERE LOWER(TRIM(login_id)) NOT IN ('owner', 'storekeeper');
+    `);
+
+    // 2. Truncate employees table
+    await client.query('TRUNCATE employees RESTART IDENTITY CASCADE;');
+
+    // 3. Truncate all operational / transactional tables
+    const tables = [
+      'sale_items',
+      'payments',
+      'sales',
+      'inventory_movements',
+      'stock_transactions',
+      'warehouse_stock',
+      'employee_stock',
+      'employee_stock_balances',
+      'employee_day_closings',
+      'driver_sessions',
+      'driver_returns',
+      'driver_return_items',
+      'driver_closing_reconciliations',
+      'damages',
+      'damage_pieces',
+      'missing_pieces',
+      'route_assignments',
+      'expenses',
+      'settlements',
+      'notifications',
+      'audit_logs'
+    ];
+
+    for (const table of tables) {
+      await safeQuery(client, `TRUNCATE TABLE ${table} RESTART IDENTITY CASCADE;`, [], `truncate ${table}`);
+    }
+
+    // 4. Reset dues and warehouse stocks to 0
+    await safeQuery(client, 'UPDATE shops SET current_due = 0.00;', [], 'reset shops due');
+    await safeQuery(client, 'UPDATE products SET warehouse_stock_units = 0;', [], 'reset products warehouse_stock_units');
+
+    // 5. Ensure Owner and StoreKeeper accounts exist and are ACTIVE with PIN 1234
+    const company = await client.query('SELECT id FROM companies LIMIT 1');
+    const companyId = company.rows[0]?.id || 1;
+    const ownerRole = await client.query("SELECT id FROM roles WHERE role_name = 'OWNER'");
+    const ownerRoleId = ownerRole.rows[0]?.id;
+    const skRole = await client.query("SELECT id FROM roles WHERE role_name = 'STORE_KEEPER'");
+    const skRoleId = skRole.rows[0]?.id;
+    const pinHash = await bcrypt.hash('1234', ROUNDS);
+
+    if (ownerRoleId) {
+      const ownerExists = await client.query("SELECT id FROM user_accounts WHERE LOWER(TRIM(login_id)) = 'owner'");
+      if (ownerExists.rows.length === 0) {
+        await client.query(`
+          INSERT INTO user_accounts (company_id, role_id, login_id, name, pin_hash, account_status)
+          VALUES ($1, $2, 'owner', 'Owner Admin', $3, 'ACTIVE')
+        `, [companyId, ownerRoleId, pinHash]);
+      } else {
+        await client.query(`
+          UPDATE user_accounts 
+          SET pin_hash = $1, account_status = 'ACTIVE', failed_attempts = 0, locked_until = NULL 
+          WHERE LOWER(TRIM(login_id)) = 'owner'
+        `, [pinHash]);
+      }
+    }
+
+    if (skRoleId) {
+      const skExists = await client.query("SELECT id FROM user_accounts WHERE LOWER(TRIM(login_id)) = 'storekeeper'");
+      if (skExists.rows.length === 0) {
+        await client.query(`
+          INSERT INTO user_accounts (company_id, role_id, login_id, name, pin_hash, account_status)
+          VALUES ($1, $2, 'storekeeper', 'Store Keeper Admin', $3, 'ACTIVE')
+        `, [companyId, skRoleId, pinHash]);
+      } else {
+        await client.query(`
+          UPDATE user_accounts 
+          SET pin_hash = $1, account_status = 'ACTIVE', failed_attempts = 0, locked_until = NULL 
+          WHERE LOWER(TRIM(login_id)) = 'storekeeper'
+        `, [pinHash]);
+      }
+    }
+
+    await client.query('COMMIT');
+    console.log('✅ resetAllDummyUsersAndKeepAdmins executed successfully!');
+    return { 
+      success: true, 
+      message: 'All dummy users and employees wiped clean. Only Owner (PIN 1234) and Store Keeper (PIN 1234) accounts remain active.' 
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('❌ Error in resetAllDummyUsersAndKeepAdmins:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
