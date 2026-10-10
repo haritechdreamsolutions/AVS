@@ -915,6 +915,15 @@ export async function runAutoMigrations() {
       }
     }
 
+    // Auto-link existing employees by full_name if employee_id is broken/missing
+    await safeQuery(client, `
+      UPDATE user_accounts ua
+      SET employee_id = e.id
+      FROM employees e
+      WHERE LOWER(TRIM(e.full_name)) = LOWER(TRIM(ua.name))
+        AND (ua.employee_id IS NULL OR NOT EXISTS (SELECT 1 FROM employees e2 WHERE e2.id = ua.employee_id));
+    `, [], 'auto-link user_accounts by employee full_name');
+
     // Clean up orphaned employees (no matching user_account and no active stock)
     await safeQuery(client, `
       DELETE FROM employees

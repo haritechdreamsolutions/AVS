@@ -218,19 +218,27 @@ export async function updateUser(cid, uid, d, actorUserId) {
 
   const displayName = d.name !== undefined ? (d.name ? String(d.name).trim() : null) : existingUser.name;
   const status = d.status || d.account_status || existingUser.account_status;
+  const targetEmployeeId = d.employee_id !== undefined ? Number(d.employee_id) : existingUser.employee_id;
 
   const row = await queryOne(
-    'UPDATE user_accounts SET login_id=$1, role_id=$2, name=COALESCE($3, name), account_status=$4, updated_at=NOW() WHERE id=$5 AND company_id=$6 RETURNING id,company_id,employee_id,role_id,login_id,name,phone,account_status',
-    [loginId, roleId, displayName, status, uid, cid]
+    'UPDATE user_accounts SET login_id=$1, role_id=$2, name=COALESCE($3, name), account_status=$4, employee_id=$5, updated_at=NOW() WHERE id=$6 AND company_id=$7 RETURNING id,company_id,employee_id,role_id,login_id,name,phone,account_status',
+    [loginId, roleId, displayName, status, targetEmployeeId, uid, cid]
   );
 
+  const activeEmpId = targetEmployeeId || existingUser.employee_id;
   let updatedRouteId = undefined;
-  if (existingUser.employee_id) {
+  if (activeEmpId) {
     if (displayName) {
-      await query('UPDATE employees SET full_name=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3', [displayName, existingUser.employee_id, cid]);
+      await query('UPDATE employees SET full_name=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3', [displayName, activeEmpId, cid]);
     }
     if (roleName) {
-      await query('UPDATE employees SET designation=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3', [roleName, existingUser.employee_id, cid]);
+      await query('UPDATE employees SET designation=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3', [roleName, activeEmpId, cid]);
+    }
+    if (d.vehicle_number !== undefined) {
+      await query('UPDATE employees SET vehicle_number=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3', [d.vehicle_number, activeEmpId, cid]);
+    }
+    if (d.phone !== undefined) {
+      await query('UPDATE employees SET phone=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3', [d.phone, activeEmpId, cid]);
     }
 
     if (d.route_id !== undefined || d.routeId !== undefined) {
