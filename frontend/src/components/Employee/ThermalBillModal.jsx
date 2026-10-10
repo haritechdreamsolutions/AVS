@@ -200,20 +200,20 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
             </div>
           </div>
 
-          {/* Bill Meta */}
-          <div className="border-b border-dashed border-slate-400 pb-2 space-y-1 text-[10px] sm:text-[10.5px]">
-            <div className="flex justify-between font-extrabold">
-              <span>Bill: <strong className="text-blue-700 font-black">{displayBillNo}</strong></span>
-              <span>{formattedDate()}</span>
-            </div>
-            <div className="flex justify-between font-bold">
-              <span className="truncate max-w-[150px] sm:max-w-[170px]">Shop: <strong>{bill.shop_name || 'Customer'}</strong></span>
-              <span>{bill.sale_time || ''}</span>
-            </div>
-            <div className="flex justify-between text-[10px] text-slate-600 font-bold">
-              <span>Code: <strong>{bill.shop_code || 'SHP-001'}</strong></span>
-              <span>Emp: <strong>{bill.employee_name || 'Driver'}</strong></span>
-            </div>
+            {/* Bill Meta */}
+            <div className="border-b border-dashed border-slate-400 pb-2 space-y-1 text-[10px] sm:text-[10.5px]">
+              <div className="flex justify-between font-extrabold">
+                <span>Bill: <strong className="text-blue-700 font-black">{displayBillNo}</strong></span>
+                <span>{formattedDate()}</span>
+              </div>
+              <div className="flex justify-between items-start font-bold">
+                <span className="break-words leading-tight pr-1">Shop: <strong className="text-slate-950 font-black">{bill.shop_name || bill.shop?.name || bill.customer_name || matchedShop?.name || 'Customer'}</strong></span>
+                <span className="shrink-0 font-mono text-[10px]">{bill.sale_time || ''}</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-600 font-bold">
+                <span>Code: <strong>{bill.shop_code || 'SHP-001'}</strong></span>
+                <span>Emp: <strong>{bill.employee_name || 'Driver'}</strong></span>
+              </div>
             {bill.vehicle_no && (
               <div className="text-[10px] text-slate-500 font-bold">
                 <span>Veh: <strong>{bill.vehicle_no}</strong></span>
@@ -358,12 +358,12 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
 
         {/* Print & Close Actions */}
         <div className="space-y-2 no-print shrink-0 pt-1">
-          {/* SINGLE PRIMARY DIRECT PRINT BUTTON */}
+          {/* PRIMARY BLUETOOTH DIRECT PRINT BUTTON */}
           <button
             type="button"
             onClick={handleThermalPrint}
             disabled={isPrinting}
-            className={`w-full text-xs sm:text-sm font-black rounded-2xl py-3.5 flex items-center justify-center gap-2 shadow-md min-h-[48px] cursor-pointer transition active:scale-[0.98] ${
+            className={`w-full text-xs sm:text-sm font-black rounded-2xl py-3 flex items-center justify-center gap-2 shadow-md min-h-[44px] cursor-pointer transition active:scale-[0.98] ${
               printSuccess
                 ? 'bg-emerald-600 text-white'
                 : isPrinting
@@ -391,19 +391,34 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
             ) : (
               <>
                 <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                <span>🖨️ PRINT BILL (பில் அச்சிடு - EX58C)</span>
+                <span>🖨️ PRINT BILL (EX58C Bluetooth)</span>
               </>
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPrinting}
-            className="w-full text-xs font-black bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl py-2.5 flex items-center justify-center gap-2 border border-slate-300 min-h-[40px] cursor-pointer transition active:scale-[0.98] disabled:opacity-50"
-          >
-            <span>CLOSE (மூடு)</span>
-          </button>
+          <div className="flex gap-2">
+            {/* BROWSER / SYSTEM PRINT BUTTON */}
+            <button
+              type="button"
+              onClick={() => window.print()}
+              disabled={isPrinting}
+              className="flex-1 text-xs font-black bg-sky-50 hover:bg-sky-100 text-sky-900 rounded-xl py-2.5 flex items-center justify-center gap-1.5 border border-sky-300 min-h-[38px] cursor-pointer transition active:scale-[0.98]"
+              title="Print via System Print Dialog"
+            >
+              <Printer className="w-3.5 h-3.5 text-sky-700" />
+              <span>System Print (Ctrl+P)</span>
+            </button>
+
+            {/* CLOSE BUTTON */}
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPrinting}
+              className="flex-1 text-xs font-black bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl py-2.5 flex items-center justify-center gap-1 border border-slate-300 min-h-[38px] cursor-pointer transition active:scale-[0.98] disabled:opacity-50"
+            >
+              <span>CLOSE (மூடு)</span>
+            </button>
+          </div>
         </div>
 
       </div>

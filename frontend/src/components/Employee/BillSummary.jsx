@@ -187,9 +187,9 @@ export const BillSummary = ({ billResult, onDone }) => {
             <span>Bill: <strong className="text-blue-700 font-black">{displayBillNo}</strong></span>
             <span>{formattedDate()}</span>
           </div>
-          <div className="flex justify-between font-bold">
-            <span className="truncate max-w-[160px] sm:max-w-[180px]">Shop: <strong>{bill.shop_name || 'Customer'}</strong></span>
-            <span>{bill.sale_time || ''}</span>
+          <div className="flex justify-between items-start font-bold">
+            <span className="break-words leading-tight pr-1">Shop: <strong className="text-slate-950 font-black">{bill.shop_name || bill.shop?.name || bill.customer_name || 'Customer'}</strong></span>
+            <span className="shrink-0 font-mono text-[10px]">{bill.sale_time || ''}</span>
           </div>
           <div className="flex justify-between text-[10px] text-slate-600 font-bold">
             <span>Code: <strong>{bill.shop_code || 'SHP-001'}</strong></span>
@@ -374,16 +374,29 @@ export const BillSummary = ({ billResult, onDone }) => {
           )}
         </button>
 
-        {/* Done / Return to Home */}
-        <button
-          type="button"
-          onClick={onDone}
-          disabled={isPrinting}
-          className="w-full py-3 px-6 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition active:scale-[0.98] min-h-[44px] border border-slate-300 cursor-pointer disabled:opacity-50"
-        >
-          <span>DONE (முடிந்தது)</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
+        {/* Secondary Action Row */}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            disabled={isPrinting}
+            className="flex-1 py-2.5 px-4 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-900 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 border border-sky-300 transition active:scale-[0.98] min-h-[40px] cursor-pointer"
+            title="Print via System Print Dialog"
+          >
+            <Printer className="w-3.5 h-3.5 text-sky-700" />
+            <span>System Print</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onDone}
+            disabled={isPrinting}
+            className="flex-1 py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition active:scale-[0.98] min-h-[40px] border border-slate-300 cursor-pointer disabled:opacity-50"
+          >
+            <span>DONE (முடிந்தது)</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
 
       </div>
 
