@@ -391,16 +391,35 @@ export async function addEmployeeUserWizard(cid, data, actorUserId) {
 // ====== EMPLOYEES & DRIVERS ======
 export async function getDrivers(cid) {
   return await queryAll(
-    'SELECT DISTINCT ON (e.id) ' +
-    '  e.id, e.company_id, e.employee_code, e.full_name, e.designation, e.vehicle_number, e.route_id, e.is_active, ' +
-    '  r.name AS route_name, r.code AS route_code, ' +
-    '  ua.id AS user_account_id, ua.login_id, ua.account_status, r_ua.id AS role_id, r_ua.role_name AS user_role ' +
-    'FROM employees e ' +
-    'LEFT JOIN routes r ON r.id = e.route_id ' +
-    'INNER JOIN user_accounts ua ON (ua.employee_id = e.id OR LOWER(ua.login_id) = LOWER(e.employee_code)) AND ua.account_status = \'ACTIVE\' AND (ua.company_id = e.company_id OR ua.company_id = $1) ' +
-    'INNER JOIN roles r_ua ON r_ua.id = ua.role_id AND (r_ua.role_name = \'DRIVER\' OR r_ua.role_name = \'EMPLOYEE\') ' +
-    'WHERE e.company_id = $1 AND e.is_active = TRUE ' +
-    'ORDER BY e.id ASC, ua.id DESC',
+    `SELECT 
+       COALESCE(e.id, ua.id) AS id,
+       COALESCE(e.id, ua.id) AS driver_id,
+       COALESCE(e.id, ua.id) AS employee_id,
+       COALESCE(e.company_id, ua.company_id, $1) AS company_id,
+       COALESCE(e.employee_code, 'EMP-' || LPAD(ua.id::text, 3, '0')) AS employee_code,
+       COALESCE(e.full_name, ua.name, ua.login_id) AS full_name,
+       COALESCE(e.full_name, ua.name, ua.login_id) AS driver_name,
+       COALESCE(e.full_name, ua.name, ua.login_id) AS employee_name,
+       COALESCE(e.designation, r_ua.role_name, 'DRIVER') AS designation,
+       COALESCE(e.phone, ua.phone) AS phone,
+       e.vehicle_number,
+       e.route_id,
+       COALESCE(e.is_active, TRUE) AS is_active,
+       r.name AS route_name,
+       r.code AS route_code,
+       ua.id AS user_account_id,
+       ua.login_id,
+       ua.account_status,
+       r_ua.id AS role_id,
+       r_ua.role_name AS user_role,
+       r_ua.role_name AS role
+     FROM user_accounts ua
+     INNER JOIN roles r_ua ON r_ua.id = ua.role_id AND (r_ua.role_name = 'DRIVER' OR r_ua.role_name = 'EMPLOYEE')
+     LEFT JOIN employees e ON e.id = ua.employee_id
+     LEFT JOIN routes r ON r.id = e.route_id
+     WHERE (ua.company_id = $1 OR ua.company_id = 1 OR ua.company_id IS NULL) 
+       AND ua.account_status = 'ACTIVE'
+     ORDER BY COALESCE(e.full_name, ua.name, ua.login_id) ASC`,
     [cid]
   );
 }
@@ -4759,13 +4778,13 @@ export async function getFleetStockReconciliation(cid, filterDriverId = null) {
 
 export async function getEligibleDriversForReturn(cid) {
   const sql = `
-    SELECT DISTINCT ON (e.id)
-      e.id as driver_id,
-      e.id as employee_id,
-      e.full_name as driver_name,
-      e.full_name as employee_name,
-      e.employee_code,
-      e.phone,
+    SELECT 
+      COALESCE(e.id, ua.id) as driver_id,
+      COALESCE(e.id, ua.id) as employee_id,
+      COALESCE(e.full_name, ua.name, ua.login_id) as driver_name,
+      COALESCE(e.full_name, ua.name, ua.login_id) as employee_name,
+      COALESCE(e.employee_code, 'EMP-' || LPAD(ua.id::text, 3, '0')) as employee_code,
+      COALESCE(e.phone, ua.phone) as phone,
       e.vehicle_number,
       r.id as route_id,
       r.name as route_name,
@@ -4777,18 +4796,20 @@ export async function getEligibleDriversForReturn(cid) {
       ds.updated_at,
       COALESCE(ds.total_sales, 0) as total_sales,
       COALESCE(ds.total_expenses, 0) as total_expenses,
-      (SELECT COUNT(*) FROM employee_stock es WHERE es.employee_id = e.id AND es.qty_units > 0) as active_stock_count
-    FROM employees e
-    INNER JOIN user_accounts ua ON (ua.employee_id = e.id OR LOWER(ua.login_id) = LOWER(e.employee_code)) AND ua.account_status = 'ACTIVE' AND (ua.company_id = e.company_id OR ua.company_id = $1)
+      COALESCE((SELECT COUNT(*) FROM employee_stock es WHERE es.employee_id = COALESCE(e.id, ua.id) AND es.qty_units > 0), 0) as active_stock_count
+    FROM user_accounts ua
     INNER JOIN roles r_ua ON r_ua.id = ua.role_id AND (r_ua.role_name = 'DRIVER' OR r_ua.role_name = 'EMPLOYEE')
+    LEFT JOIN employees e ON e.id = ua.employee_id
     LEFT JOIN routes r ON r.id = e.route_id
     LEFT JOIN LATERAL (
       SELECT * FROM driver_sessions ds2 
-      WHERE ds2.company_id = e.company_id AND ds2.employee_id = e.id 
+      WHERE (ds2.company_id = ua.company_id OR ds2.company_id = $1) 
+        AND (ds2.employee_id = e.id OR ds2.employee_id = ua.id)
       ORDER BY ds2.id DESC LIMIT 1
     ) ds ON true
-    WHERE e.company_id = $1 AND e.is_active = TRUE
-    ORDER BY e.id ASC, e.full_name ASC
+    WHERE (ua.company_id = $1 OR ua.company_id = 1 OR ua.company_id IS NULL) 
+      AND ua.account_status = 'ACTIVE'
+    ORDER BY COALESCE(e.full_name, ua.name, ua.login_id) ASC
   `;
   return await queryAll(sql, [cid]);
 }

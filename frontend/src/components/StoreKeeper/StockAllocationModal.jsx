@@ -38,8 +38,8 @@ export const StockAllocationModal = ({ onClose }) => {
   const drivers = sourceDrivers.filter(emp => {
     if (!emp || emp.is_active === false) return false;
     const role = (emp.user_role || emp.role || emp.role_name || '').toUpperCase();
-    if (role === 'OWNER' || role === 'STORE_KEEPER' || role === 'EMPLOYEE') return false;
-    return role === 'DRIVER';
+    if (role === 'OWNER' || role === 'STORE_KEEPER') return false;
+    return role === 'DRIVER' || role === 'EMPLOYEE' || !role;
   });
 
   const selectedDriver = drivers.find(d => String(d.id) === String(employeeId) || String(d.employee_id) === String(employeeId));

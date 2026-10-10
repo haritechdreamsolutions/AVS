@@ -892,11 +892,23 @@ export async function runAutoMigrations() {
       for (const u of unlinkedUsers.rows) {
         console.log(`[auto_migrate] Creating missing employee record for user ${u.login_id}...`);
         const empCode = 'EMP-' + String(u.id).padStart(3, '0');
-        const empInsert = await safeQuery(client, `
+        let empInsert = await safeQuery(client, `
           INSERT INTO employees (company_id, employee_code, full_name, designation, phone, is_active)
-          VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING id;
+          VALUES ($1, $2, $3, $4, $5, TRUE) 
+          ON CONFLICT (company_id, employee_code) DO UPDATE SET full_name = EXCLUDED.full_name, is_active = TRUE
+          RETURNING id;
         `, [u.company_id || cid, empCode, u.name || u.login_id, u.role_name, u.phone || null]);
-        if (empInsert && empInsert.rows.length > 0) {
+        
+        if (!empInsert || !empInsert.rows || empInsert.rows.length === 0) {
+          const uniqueCode = 'EMP-' + String(u.id).padStart(3, '0') + '-' + Math.floor(1000 + Math.random() * 9000);
+          empInsert = await safeQuery(client, `
+            INSERT INTO employees (company_id, employee_code, full_name, designation, phone, is_active)
+            VALUES ($1, $2, $3, $4, $5, TRUE)
+            RETURNING id;
+          `, [u.company_id || cid, uniqueCode, u.name || u.login_id, u.role_name, u.phone || null]);
+        }
+        
+        if (empInsert && empInsert.rows && empInsert.rows.length > 0) {
           const newEmpId = empInsert.rows[0].id;
           await safeQuery(client, `UPDATE user_accounts SET employee_id = $1 WHERE id = $2;`, [newEmpId, u.id]);
         }
