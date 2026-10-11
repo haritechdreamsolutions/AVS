@@ -144,7 +144,7 @@ const getSaleFinancials = (sale) => {
 };
 
 export const SalesRecordsView = () => {
-  const { sales = [], shops = [], API_URL, apiFetch, exportReportData, refreshData } = useApp();
+  const { sales = [], shops = [], employees = [], API_URL, apiFetch, exportReportData, refreshData } = useApp();
 
   // ------------------------------------------------------------------
   // ADVANCED FILTER STATE MANAGEMENT
@@ -212,15 +212,34 @@ export const SalesRecordsView = () => {
   // Extract unique sellers dynamically from actual sales & employees
   const availableSellers = useMemo(() => {
     const sellersMap = new Map();
+    sellersMap.set('STORE', { id: 'STORE', name: '🏬 Store Keeper (Counter)' });
+
+    (employees || []).forEach(emp => {
+      const key = String(emp.id);
+      sellersMap.set(key, { id: key, name: `🚚 ${emp.full_name || `Driver #${emp.id}`}` });
+    });
+
     (sales || []).forEach(s => {
-      if (s.is_store_direct_sale || Number(s.employee_id) === 6 || (s.employee_name && s.employee_name.toLowerCase().includes('store'))) {
-        sellersMap.set('STORE', { id: 'STORE', name: '🏬 Store Keeper (Counter)' });
-      } else if (s.employee_id) {
-        sellersMap.set(String(s.employee_id), { id: String(s.employee_id), name: `🚚 ${s.employee_name || 'Driver'}` });
+      const isStore = (s.is_store_direct_sale === true || (s.employee_name && s.employee_name.toLowerCase().includes('store'))) && (!s.employee_name || s.employee_name.toLowerCase().includes('store'));
+      if (!isStore && s.employee_name) {
+        const normName = s.employee_name.trim().toLowerCase();
+        let exists = false;
+        for (const sItem of sellersMap.values()) {
+          if (sItem.id === 'STORE') continue;
+          if (sItem.name.toLowerCase().includes(normName)) {
+            exists = true;
+            break;
+          }
+        }
+        if (!exists) {
+          const key = s.employee_id ? String(s.employee_id) : `NAME_${s.employee_name.trim()}`;
+          sellersMap.set(key, { id: key, name: `🚚 ${s.employee_name.trim()}` });
+        }
       }
     });
+
     return Array.from(sellersMap.values());
-  }, [sales]);
+  }, [sales, employees]);
 
   // Extract unique shops dynamically from actual sales records
   const availableShops = useMemo(() => {
@@ -298,7 +317,7 @@ export const SalesRecordsView = () => {
 
     return (sales || []).filter(sale => {
       const saleYmd = extractSaleDateYMD(sale);
-      const isStoreCounter = sale.is_store_direct_sale || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'));
+      const isStoreCounter = (sale.is_store_direct_sale === true || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'))) && (!sale.employee_name || sale.employee_name.toLowerCase().includes('store'));
 
       // 1. DATE RANGE FILTER (From Date <= saleYmd <= To Date, inclusive)
       if (fromDate && saleYmd && saleYmd < fromDate) return false;
@@ -310,7 +329,12 @@ export const SalesRecordsView = () => {
         if (sellerFilter === 'STORE') {
           if (!isStoreCounter) return false;
         } else {
-          if (String(sale.employee_id) !== String(sellerFilter)) return false;
+          const selectedSeller = availableSellers.find(s => s.id === sellerFilter);
+          const selCleanName = selectedSeller ? selectedSeller.name.replace(/^🚚\s*/, '').trim().toLowerCase() : '';
+          const saleEmpName = (sale.employee_name || '').trim().toLowerCase();
+          const idMatches = String(sale.employee_id) === String(sellerFilter);
+          const nameMatches = selCleanName && saleEmpName === selCleanName;
+          if ((!idMatches && !nameMatches) || isStoreCounter) return false;
         }
       }
 
@@ -464,7 +488,7 @@ export const SalesRecordsView = () => {
   };
 
   const renderSellerBadge = (sale) => {
-    const isStore = sale.is_store_direct_sale || Number(sale.employee_id) === 6 || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'));
+    const isStore = (sale.is_store_direct_sale === true || Number(sale.employee_id) === 6 || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'))) && (!sale.employee_name || sale.employee_name.toLowerCase().includes('store'));
     if (isStore) {
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-900 border border-sky-200 font-extrabold text-[11px] sm:text-xs shadow-2xs whitespace-nowrap">
@@ -473,10 +497,11 @@ export const SalesRecordsView = () => {
         </span>
       );
     }
+    const displayName = sale.employee_name || `Driver #${sale.employee_id || ''}`;
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-extrabold text-[11px] sm:text-xs shadow-2xs whitespace-nowrap">
         <span>🚚</span>
-        <span>Driver</span>
+        <span>{displayName}</span>
       </span>
     );
   };

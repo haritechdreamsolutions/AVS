@@ -151,7 +151,7 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
   const recentLiveSales = useMemo(() => {
     return (sales || []).filter(sale => {
       if (!sale) return false;
-      const isStore = sale.is_store_direct_sale === true || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store')) || (!sale.employee_id && (sale.shop_name === 'AVS AGENCIES' || !sale.shop_id));
+      const isStore = (sale.is_store_direct_sale === true || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'))) && (!sale.employee_name || sale.employee_name.toLowerCase().includes('store'));
       if (filterSellerType === 'STORE') return isStore;
       if (filterSellerType === 'DRIVER') return !isStore;
       return true;
@@ -458,7 +458,7 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {recentLiveSales.map(sale => {
-              const isStoreKeeper = sale.is_store_direct_sale === true || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store')) || (!sale.employee_id && (sale.shop_name === 'AVS AGENCIES' || !sale.shop_id));
+              const isStoreKeeper = (sale.is_store_direct_sale === true || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'))) && (!sale.employee_name || sale.employee_name.toLowerCase().includes('store'));
 
               return (
                 <div 

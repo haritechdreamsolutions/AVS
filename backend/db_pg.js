@@ -1946,7 +1946,7 @@ export async function createSale(cid, d, actorUserId) {
     const { employee_id, shop_id, payment_mode, items, cash_paid, gpay_paid, credit_paid } = d;
     if (!items || !Array.isArray(items) || items.length === 0) throw new Error('Sale items array is required');
 
-    const isStoreDirectSale = d.is_store_direct_sale === true || d.sale_type === 'STOREKEEPER_DIRECT' || (!employee_id && (!shop_id || d.shop_name === 'AVS AGENCIES'));
+    const isStoreDirectSale = d.is_store_direct_sale === true || d.sale_type === 'STOREKEEPER_DIRECT' || (!employee_id && (!shop_id || d.shop_name === 'AVS AGENCIES') && (!d.employee_name || d.employee_name.toLowerCase().includes('store')));
 
     const clientRef = d.client_reference || d.idempotency_key || d.bill_no || null;
     if (clientRef) {
@@ -1998,14 +1998,54 @@ export async function createSale(cid, d, actorUserId) {
     }
 
     let empId = employee_id || null;
-    let empName = d.employee_name || 'Store Keeper';
+    let empName = d.employee_name || (isStoreDirectSale ? 'Store Keeper' : 'Driver');
     let driverSession = null;
 
+    if (!empId && actorUserId) {
+      const uR = await client.query(
+        'SELECT ua.*, e.id as emp_id, e.full_name as emp_name, r.role_name FROM user_accounts ua ' +
+        'JOIN roles r ON r.id=ua.role_id ' +
+        'LEFT JOIN employees e ON e.id=ua.employee_id ' +
+        'WHERE ua.id=$1',
+        [actorUserId]
+      );
+      if (uR.rows.length > 0) {
+        const u = uR.rows[0];
+        if (u.role_name === 'DRIVER' || u.role_name === 'EMPLOYEE') {
+          if (u.emp_id) empId = u.emp_id;
+          empName = u.emp_name || u.name;
+        } else if (u.role_name === 'STORE_KEEPER') {
+          empName = u.name || 'Store Keeper';
+        }
+      }
+    }
+
     if (empId) {
-      const eR = await client.query('SELECT * FROM employees WHERE id=$1 AND company_id=$2', [empId, cid]);
-      if (eR.rows.length === 0) throw new Error('Employee not found');
-      const emp = eR.rows[0];
-      empName = emp.full_name;
+      let eR = await client.query('SELECT * FROM employees WHERE id=$1 AND company_id=$2', [empId, cid]);
+      if (eR.rows.length === 0) {
+        const uaR = await client.query('SELECT employee_id FROM user_accounts WHERE id=$1 AND company_id=$2', [empId, cid]);
+        if (uaR.rows.length > 0 && uaR.rows[0].employee_id) {
+          empId = uaR.rows[0].employee_id;
+          eR = await client.query('SELECT * FROM employees WHERE id=$1 AND company_id=$2', [empId, cid]);
+        }
+      }
+      if (eR.rows.length === 0 && d.employee_name) {
+        eR = await client.query('SELECT * FROM employees WHERE LOWER(TRIM(full_name)) = LOWER(TRIM($1)) AND company_id=$2', [d.employee_name, cid]);
+        if (eR.rows.length > 0) {
+          empId = eR.rows[0].id;
+        }
+      }
+      if (eR.rows.length > 0) {
+        const emp = eR.rows[0];
+        empName = emp.full_name;
+      }
+    } else if (d.employee_name && !d.employee_name.toLowerCase().includes('store')) {
+      const eR = await client.query('SELECT * FROM employees WHERE LOWER(TRIM(full_name)) = LOWER(TRIM($1)) AND company_id=$2', [d.employee_name, cid]);
+      if (eR.rows.length > 0) {
+        empId = eR.rows[0].id;
+        empName = eR.rows[0].full_name;
+      }
+    }
 
       let empRouteId = emp.route_id;
       if (!empRouteId) {
@@ -2248,7 +2288,12 @@ export async function getSales(cid, filters) {
       s.sale_date::text as sale_date,
       COALESCE(s.sale_date::text, to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD')) as date,
       COALESCE(s.sale_time, to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'HH12:MI AM')) as time,
-      CASE WHEN s.employee_id IS NULL OR LOWER(COALESCE(s.employee_name, '')) LIKE '%store%' THEN TRUE ELSE FALSE END as is_store_direct_sale,
+      CASE 
+        WHEN LOWER(COALESCE(s.employee_name, '')) LIKE '%store%' 
+             OR (s.employee_id IS NULL AND (s.employee_name IS NULL OR LOWER(s.employee_name) LIKE '%counter%' OR LOWER(s.employee_name) LIKE '%store%'))
+        THEN TRUE 
+        ELSE FALSE 
+      END as is_store_direct_sale,
       COALESCE((
         SELECT json_agg(json_build_object(
           'id', si.id,

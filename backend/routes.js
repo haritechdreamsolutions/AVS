@@ -872,20 +872,47 @@ router.get('/sales', requireAuth, async (req, res) => {
 
 router.post('/sales', requireAuth, async (req, res) => {
   try {
+    const cid = getCid(req);
     const userRole = (req.session?.role || req.session?.userRole || '').toUpperCase();
     const payload = { ...req.body };
-    if (userRole === 'DRIVER') {
-      payload.employee_id = req.session.employeeId || payload.employee_id || req.session.userId;
-      payload.employee_name = req.session.userName || payload.employee_name || 'Driver POS';
+
+    if (userRole === 'DRIVER' || userRole === 'EMPLOYEE') {
+      let resolvedEmpId = req.session.employeeId || payload.employee_id || null;
+      let resolvedEmpName = req.session.userName || payload.employee_name || 'Driver POS';
+
+      if (!resolvedEmpId && req.session.userId) {
+        const uRow = await db.getUserById(req.session.userId);
+        if (uRow?.employee_id) resolvedEmpId = uRow.employee_id;
+        if (uRow?.name) resolvedEmpName = uRow.name;
+      }
+
+      payload.employee_id = resolvedEmpId;
+      payload.employee_name = resolvedEmpName;
       payload.is_store_direct_sale = false;
-    } else if (userRole === 'STORE_KEEPER' || payload.is_store_direct_sale || payload.sale_type === 'STOREKEEPER_DIRECT') {
+      payload.sale_type = payload.sale_type || 'DRIVER_DELIVERY';
+    } else if (userRole === 'STORE_KEEPER') {
+      payload.employee_id = req.session?.employeeId || null;
+      payload.employee_name = req.body?.employee_name || req.session?.userName || 'Store Keeper';
+      payload.is_store_direct_sale = true;
+      payload.sale_type = payload.sale_type || 'STOREKEEPER_DIRECT';
+      if (!payload.shop_name) payload.shop_name = 'AVS AGENCIES';
+    } else if (payload.is_store_direct_sale || payload.sale_type === 'STOREKEEPER_DIRECT') {
       payload.employee_id = null;
       payload.employee_name = req.body?.employee_name || req.session?.userName || 'Store Keeper';
       payload.is_store_direct_sale = true;
       payload.sale_type = 'STOREKEEPER_DIRECT';
       if (!payload.shop_name) payload.shop_name = 'AVS AGENCIES';
+    } else {
+      // OWNER or other role
+      if (payload.employee_id) {
+        payload.is_store_direct_sale = false;
+      } else {
+        payload.employee_name = req.body?.employee_name || req.session?.userName || 'Owner Admin';
+        payload.is_store_direct_sale = false;
+      }
     }
-    const result = await db.createSale(getCid(req), payload, req.session.userId);
+
+    const result = await db.createSale(cid, payload, req.session.userId);
     res.json(result);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });

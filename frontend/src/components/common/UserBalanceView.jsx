@@ -125,7 +125,7 @@ const getSaleFinancials = (sale) => {
 };
 
 export const UserBalanceView = () => {
-  const { sales = [], employees = [], products = [] } = useApp();
+  const { sales = [], employees = [], products = [], users = [], drivers = [] } = useApp();
 
   // Additional Data State
   const [expenses, setExpenses] = useState([]);
@@ -211,7 +211,7 @@ export const UserBalanceView = () => {
     return null;
   }, [fromDate, toDate]);
 
-  // Extract all unique users (Store Keeper + Drivers)
+  // Extract all unique users (Store Keeper + Drivers / Delivery Executives)
   const availableUsers = useMemo(() => {
     const map = new Map();
     map.set('STORE', {
@@ -221,28 +221,125 @@ export const UserBalanceView = () => {
       icon: '🏬'
     });
 
+    // 1. All Employees
     (employees || []).forEach(emp => {
-      map.set(String(emp.id), {
-        id: String(emp.id),
+      const key = String(emp.id);
+      map.set(key, {
+        id: key,
         name: emp.full_name || `Driver #${emp.id}`,
         vehicleNumber: emp.vehicle_number || '',
         icon: '🚚'
       });
     });
 
-    (sales || []).forEach(s => {
-      if (s.employee_id && !map.has(String(s.employee_id)) && !s.is_store_direct_sale) {
-        map.set(String(s.employee_id), {
-          id: String(s.employee_id),
-          name: s.employee_name || `Driver #${s.employee_id}`,
-          vehicleNumber: s.vehicle_number || '',
+    // 2. All Drivers
+    (drivers || []).forEach(drv => {
+      const key = String(drv.id || drv.employee_id);
+      if (!map.has(key)) {
+        map.set(key, {
+          id: key,
+          name: drv.full_name || drv.name || drv.driver_name || `Driver #${key}`,
+          vehicleNumber: drv.vehicle_number || '',
           icon: '🚚'
         });
       }
     });
 
+    // 3. Registered User Accounts (Role DRIVER or EMPLOYEE)
+    (users || []).forEach(u => {
+      const role = (u.role || u.role_name || '').toUpperCase();
+      if (role === 'DRIVER' || role === 'EMPLOYEE') {
+        const key = String(u.employee_id || u.id);
+        const uName = (u.name || '').trim();
+        let exists = false;
+        for (const entry of map.values()) {
+          if (entry.id === 'STORE') continue;
+          if (entry.name && entry.name.toLowerCase() === uName.toLowerCase()) {
+            exists = true;
+            break;
+          }
+        }
+        if (!exists && !map.has(key)) {
+          map.set(key, {
+            id: key,
+            name: u.name || `Driver #${key}`,
+            vehicleNumber: u.vehicle_no || u.vehicle_number || '',
+            icon: '🚚'
+          });
+        }
+      }
+    });
+
+    // 4. Any distinct billed-by names in actual sales
+    (sales || []).forEach(s => {
+      const isStore = s.is_store_direct_sale === true || (s.employee_name && s.employee_name.toLowerCase().includes('store'));
+      if (!isStore && s.employee_name) {
+        const normName = s.employee_name.trim().toLowerCase();
+        let exists = false;
+        for (const entry of map.values()) {
+          if (entry.id === 'STORE') continue;
+          if ((entry.name || '').trim().toLowerCase() === normName) {
+            exists = true;
+            break;
+          }
+        }
+        if (!exists) {
+          const key = s.employee_id ? String(s.employee_id) : `NAME_${s.employee_name.trim()}`;
+          map.set(key, {
+            id: key,
+            name: s.employee_name.trim(),
+            vehicleNumber: s.vehicle_number || '',
+            icon: '🚚'
+          });
+        }
+      }
+    });
+
     return Array.from(map.values());
-  }, [employees, sales]);
+  }, [employees, drivers, users, sales]);
+
+  // Helper to determine if a sale is strictly a Store Keeper counter sale
+  const isStoreCounterSale = (sale) => {
+    if (!sale) return false;
+    const name = (sale.employee_name || '').toLowerCase();
+    if (name.includes('store') || name.includes('counter')) return true;
+    if (sale.is_store_direct_sale && (!sale.employee_name || name.includes('store'))) return true;
+    if (Number(sale.employee_id) === 6 && (!sale.employee_name || name.includes('store'))) return true;
+    return false;
+  };
+
+  // Helper to resolve the user key in summaryMap for any given sale
+  const getSaleUserKey = (sale, summaryMap) => {
+    if (isStoreCounterSale(sale)) return 'STORE';
+
+    // 1. Match by employee_id if directly present
+    if (sale.employee_id && summaryMap.has(String(sale.employee_id))) {
+      return String(sale.employee_id);
+    }
+
+    // 2. Match by exact user name (case-insensitive) against all mapped users
+    if (sale.employee_name) {
+      const normSaleName = sale.employee_name.trim().toLowerCase();
+      for (const [key, entry] of summaryMap.entries()) {
+        if (key === 'STORE') continue;
+        if ((entry.user?.name || '').trim().toLowerCase() === normSaleName) {
+          return key;
+        }
+      }
+    }
+
+    // 3. Fallback: by employee_id if present
+    if (sale.employee_id) {
+      return String(sale.employee_id);
+    }
+
+    // 4. Fallback: by employee_name if present and not store
+    if (sale.employee_name && !sale.employee_name.toLowerCase().includes('store')) {
+      return `NAME_${sale.employee_name.trim()}`;
+    }
+
+    return 'STORE';
+  };
 
   // Filter sales by date range and search
   const filteredSales = useMemo(() => {
@@ -250,7 +347,7 @@ export const UserBalanceView = () => {
 
     return (sales || []).filter(sale => {
       const saleYmd = extractSaleDateYMD(sale);
-      const isStoreCounter = sale.is_store_direct_sale || Number(sale.employee_id) === 6 || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'));
+      const isStoreCounter = isStoreCounterSale(sale);
 
       // Date Range Filter
       if (fromDate && saleYmd && saleYmd < fromDate) return false;
@@ -262,7 +359,14 @@ export const UserBalanceView = () => {
         if (userFilter === 'STORE') {
           if (!isStoreCounter) return false;
         } else {
-          if (String(sale.employee_id) !== String(userFilter) || isStoreCounter) return false;
+          const selectedUser = availableUsers.find(u => u.id === userFilter);
+          const selName = selectedUser ? (selectedUser.name || '').trim().toLowerCase() : '';
+          const sName = (sale.employee_name || '').trim().toLowerCase();
+
+          const idMatches = String(sale.employee_id) === String(userFilter);
+          const nameMatches = selName && sName === selName;
+
+          if ((!idMatches && !nameMatches) || isStoreCounter) return false;
         }
       }
 
@@ -279,7 +383,7 @@ export const UserBalanceView = () => {
 
       return true;
     });
-  }, [sales, fromDate, toDate, userFilter, searchQuery, dateError]);
+  }, [sales, fromDate, toDate, userFilter, searchQuery, dateError, availableUsers]);
 
   // Filter expenses by date range
   const filteredExpenses = useMemo(() => {
@@ -294,12 +398,17 @@ export const UserBalanceView = () => {
         if (userFilter === 'STORE') {
           if (exp.employee_id) return false;
         } else {
-          if (String(exp.employee_id) !== String(userFilter)) return false;
+          const selectedUser = availableUsers.find(u => u.id === userFilter);
+          const selName = selectedUser ? (selectedUser.name || '').trim().toLowerCase() : '';
+          const expName = (exp.employee_name || '').trim().toLowerCase();
+          const idMatches = String(exp.employee_id) === String(userFilter);
+          const nameMatches = selName && expName === selName;
+          if (!idMatches && !nameMatches) return false;
         }
       }
       return true;
     });
-  }, [expenses, fromDate, toDate, userFilter, dateError]);
+  }, [expenses, fromDate, toDate, userFilter, dateError, availableUsers]);
 
   // Filter damages by date range
   const filteredDamages = useMemo(() => {
@@ -314,12 +423,17 @@ export const UserBalanceView = () => {
         if (userFilter === 'STORE') {
           if (dmg.employee_id) return false;
         } else {
-          if (String(dmg.employee_id) !== String(userFilter)) return false;
+          const selectedUser = availableUsers.find(u => u.id === userFilter);
+          const selName = selectedUser ? (selectedUser.name || '').trim().toLowerCase() : '';
+          const dmgName = (dmg.employee_name || '').trim().toLowerCase();
+          const idMatches = String(dmg.employee_id) === String(userFilter);
+          const nameMatches = selName && dmgName === selName;
+          if (!idMatches && !nameMatches) return false;
         }
       }
       return true;
     });
-  }, [damages, fromDate, toDate, userFilter, dateError]);
+  }, [damages, fromDate, toDate, userFilter, dateError, availableUsers]);
 
   // Filter shortages by date range
   const filteredShortages = useMemo(() => {
@@ -335,12 +449,17 @@ export const UserBalanceView = () => {
         if (userFilter === 'STORE') {
           if (driverId) return false;
         } else {
-          if (String(driverId) !== String(userFilter)) return false;
+          const selectedUser = availableUsers.find(u => u.id === userFilter);
+          const selName = selectedUser ? (selectedUser.name || '').trim().toLowerCase() : '';
+          const shtName = (sht.driver_name || sht.employee_name || '').trim().toLowerCase();
+          const idMatches = String(driverId) === String(userFilter);
+          const nameMatches = selName && shtName === selName;
+          if (!idMatches && !nameMatches) return false;
         }
       }
       return true;
     });
-  }, [shortages, fromDate, toDate, userFilter, dateError]);
+  }, [shortages, fromDate, toDate, userFilter, dateError, availableUsers]);
 
   // Aggregate stats per user (Sales + Expenses + Damages + Shortages)
   const userSummaries = useMemo(() => {
@@ -361,10 +480,9 @@ export const UserBalanceView = () => {
       });
     });
 
-    // 1. Process Sales
+    // 1. Process Sales with strict name and ID attribution
     filteredSales.forEach(sale => {
-      const isStoreCounter = sale.is_store_direct_sale || Number(sale.employee_id) === 6 || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'));
-      const key = isStoreCounter ? 'STORE' : String(sale.employee_id || 'STORE');
+      const key = getSaleUserKey(sale, summaryMap);
 
       if (!summaryMap.has(key)) {
         summaryMap.set(key, {
@@ -397,7 +515,16 @@ export const UserBalanceView = () => {
 
     // 2. Process Expenses per Driver
     filteredExpenses.forEach(exp => {
-      const key = exp.employee_id ? String(exp.employee_id) : 'STORE';
+      let key = exp.employee_id ? String(exp.employee_id) : 'STORE';
+      if (!summaryMap.has(key) && exp.employee_name) {
+        const normName = exp.employee_name.trim().toLowerCase();
+        for (const [k, e] of summaryMap.entries()) {
+          if (k !== 'STORE' && (e.user?.name || '').trim().toLowerCase() === normName) {
+            key = k;
+            break;
+          }
+        }
+      }
       if (summaryMap.has(key)) {
         summaryMap.get(key).totalExpenses += Number(exp.amount || 0);
       }
@@ -406,7 +533,16 @@ export const UserBalanceView = () => {
     // 3. Process Damages per Driver
     const dmgMapByUser = new Map();
     filteredDamages.forEach(dmg => {
-      const key = dmg.employee_id ? String(dmg.employee_id) : 'STORE';
+      let key = dmg.employee_id ? String(dmg.employee_id) : 'STORE';
+      if (!summaryMap.has(key) && dmg.employee_name) {
+        const normName = dmg.employee_name.trim().toLowerCase();
+        for (const [k, e] of summaryMap.entries()) {
+          if (k !== 'STORE' && (e.user?.name || '').trim().toLowerCase() === normName) {
+            key = k;
+            break;
+          }
+        }
+      }
       if (!dmgMapByUser.has(key)) {
         dmgMapByUser.set(key, new Map());
       }
@@ -445,7 +581,16 @@ export const UserBalanceView = () => {
     // 4. Process Shortages per Driver
     const shortMapByUser = new Map();
     filteredShortages.forEach(sht => {
-      const key = sht.driver_id ? String(sht.driver_id) : (sht.employee_id ? String(sht.employee_id) : 'STORE');
+      let key = sht.driver_id ? String(sht.driver_id) : (sht.employee_id ? String(sht.employee_id) : 'STORE');
+      if (!summaryMap.has(key) && (sht.driver_name || sht.employee_name)) {
+        const normName = (sht.driver_name || sht.employee_name).trim().toLowerCase();
+        for (const [k, e] of summaryMap.entries()) {
+          if (k !== 'STORE' && (e.user?.name || '').trim().toLowerCase() === normName) {
+            key = k;
+            break;
+          }
+        }
+      }
       if (!shortMapByUser.has(key)) {
         shortMapByUser.set(key, new Map());
       }

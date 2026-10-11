@@ -287,13 +287,18 @@ export const AppProvider = ({ children }) => {
 
   const createSale = async (saleData) => {
     try {
+      const defaultEmpId = currentUser?.employee_id || currentUser?.id || null;
+      const defaultEmpName = currentUser?.name || currentUser?.full_name || currentUser?.employee_name || "Delivery Executive";
+      const isStoreUser = (currentUser?.role || activeRole || '').toUpperCase() === 'STORE_KEEPER';
+
       const res = await apiFetch(`${API_URL}/sales`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          employee_id: currentUser?.employee_id || currentUser?.id || 1,
-          employee_name: currentUser?.name || "Delivery Executive",
-          vehicle_no: currentUser?.vehicle_number || currentUser?.vehicle_no || "Field Vehicle",
+          employee_id: saleData.employee_id !== undefined ? saleData.employee_id : (isStoreUser ? null : defaultEmpId),
+          employee_name: saleData.employee_name || (isStoreUser ? (currentUser?.name || "Store Keeper") : defaultEmpName),
+          vehicle_no: currentUser?.vehicle_number || currentUser?.vehicle_no || (isStoreUser ? "Warehouse Counter" : "Field Vehicle"),
+          is_store_direct_sale: saleData.is_store_direct_sale !== undefined ? saleData.is_store_direct_sale : isStoreUser,
           ...saleData
         })
       });
