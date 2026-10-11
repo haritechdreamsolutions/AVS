@@ -87,6 +87,7 @@ export const StockReturnModal = ({ onClose }) => {
   const [submittingReturn, setSubmittingReturn] = useState(false);
   const [returnSuccessData, setReturnSuccessData] = useState(null);
   const [manualReturnQuantities, setManualReturnQuantities] = useState({});
+  const [touchedProductIds, setTouchedProductIds] = useState(new Set());
   const [shortageReason, setShortageReason] = useState('');
   const [shortageFormError, setShortageFormError] = useState('');
 
@@ -396,16 +397,18 @@ export const StockReturnModal = ({ onClose }) => {
   }, [products]);
 
   useEffect(() => {
-    const defaults = {};
-    (reconciliationData.items || []).forEach(p => {
-      defaults[p.product_id] = p.expectedReturn;
-    });
-    setManualReturnQuantities(defaults);
+    setTouchedProductIds(new Set());
+    setManualReturnQuantities({});
     setShortageReason('');
     setShortageFormError('');
-  }, [driverData?.session?.id, reconciliationData.items.length]);
+  }, [selectedDriverId, driverData?.session?.id]);
 
   const handleManualReturnChange = (productId, rawVal, isPieceBased = false) => {
+    setTouchedProductIds(prev => {
+      const next = new Set(prev);
+      next.add(productId);
+      return next;
+    });
     if (rawVal === '') {
       setManualReturnQuantities(prev => ({ ...prev, [productId]: '' }));
       return;
@@ -419,8 +422,9 @@ export const StockReturnModal = ({ onClose }) => {
 
   const manualReturnReview = useMemo(() => {
     const items = (reconciliationData.items || []).map(p => {
+      const isTouched = touchedProductIds.has(p.product_id);
       const rawVal = manualReturnQuantities[p.product_id];
-      const actualReturn = (rawVal !== undefined && rawVal !== '')
+      const actualReturn = (isTouched && rawVal !== undefined && rawVal !== '')
         ? Number(rawVal)
         : Number(p.expectedReturn || 0);
       
@@ -461,7 +465,7 @@ export const StockReturnModal = ({ onClose }) => {
       totalShortage: Number(items.reduce((sum, p) => sum + Number(p.missingQty || 0), 0).toFixed(4)),
       totalExcess: Number(items.reduce((sum, p) => sum + Number(p.excessQty || 0), 0).toFixed(4))
     };
-  }, [reconciliationData.items, manualReturnQuantities]);
+  }, [reconciliationData.items, manualReturnQuantities, touchedProductIds]);
 
   // Compute total of multi-category expense modal
   const multiExpenseTotal = useMemo(() => {
@@ -845,13 +849,8 @@ export const StockReturnModal = ({ onClose }) => {
       return;
     }
 
-    if (!reconciliationData.isReconciled) {
-      toast.error('Cannot submit return: Stock reconciliation has discrepancies that must be resolved.');
-      return;
-    }
-
-    if (manualReturnReview.hasExcess) {
-      toast.error('Physical return cannot exceed system return stock.');
+    if (products.length === 0) {
+      toast.error('No products found for this driver return.');
       return;
     }
 
@@ -862,7 +861,11 @@ export const StockReturnModal = ({ onClose }) => {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to finalize the return for ${driverInfo.name || 'this driver'}?\n\n• Net Collection Due: ₹${netAmount.toFixed(2)}\n• Total Warehouse Return Stock: ${reconciliationData.totalReturn} Units\n\nLive warehouse inventory will be updated immediately and this session will be permanently locked.`)) {
+    const driverDisplayName = driverInfo.full_name || driverInfo.name || 'this driver';
+    const excessNote = manualReturnReview.hasExcess ? `\n• Excess Stock: +${manualReturnReview.totalExcess} Units (Will be added to Warehouse)` : '';
+    const shortageNote = manualReturnReview.hasShortage ? `\n• Missing Stock: ${manualReturnReview.totalShortage} Units (${shortageReason.trim()})` : '';
+
+    if (!window.confirm(`Are you sure you want to finalize the return for ${driverDisplayName}?\n\n• Net Collection Due: ₹${Math.round(netAmount).toLocaleString('en-IN')}\n• Total Warehouse Return Stock: ${manualReturnReview.totalPhysicalReturn} Units${excessNote}${shortageNote}\n\nLive warehouse inventory will be updated immediately and this session will be permanently locked.`)) {
       return;
     }
 
@@ -1271,11 +1274,11 @@ export const StockReturnModal = ({ onClose }) => {
               ) : manualReturnReview.hasExcess ? (
                 <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 space-y-1">
                   <div className="flex items-center gap-2 font-black">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>EXCESS / MISMATCH DETECTED: Physical return cannot exceed expected stock!</span>
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>EXCESS RETURN DETECTED (+{manualReturnReview.totalExcess} Units)</span>
                   </div>
                   <p className="text-[11px] text-amber-800">
-                    One or more products have Manual Return greater than Expected Return (+{manualReturnReview.totalExcess} Units). Please correct the input.
+                    Physical return exceeds expected return for one or more items (+{manualReturnReview.totalExcess} Units). All excess stock will be credited back into live warehouse inventory upon submit.
                   </p>
                 </div>
               ) : manualReturnReview.hasShortage ? (
@@ -1432,7 +1435,7 @@ export const StockReturnModal = ({ onClose }) => {
                               step={p.isPieceBased ? '1' : 'any'}
                               inputMode={p.isPieceBased ? 'numeric' : 'decimal'}
                               disabled={isSessionLocked}
-                              value={manualReturnQuantities[p.product_id] !== undefined ? manualReturnQuantities[p.product_id] : p.expectedReturn}
+                              value={touchedProductIds.has(p.product_id) && manualReturnQuantities[p.product_id] !== undefined ? manualReturnQuantities[p.product_id] : p.expectedReturn}
                               onChange={(e) => handleManualReturnChange(p.product_id, e.target.value, p.isPieceBased)}
                               placeholder="0"
                               className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3 text-center text-base font-mono font-black text-slate-900 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 disabled:bg-slate-100 disabled:text-slate-500 transition shadow-xs"
@@ -1673,8 +1676,10 @@ export const StockReturnModal = ({ onClose }) => {
                 </div>
               </div>
 
-              {/* Stock Totals 5-Box Grid (Numbers only) */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 font-mono text-center text-xs">
+              {/* Stock Totals Grid (Numbers only) */}
+              <div className={`grid gap-2 font-mono text-center text-xs ${
+                manualReturnReview.totalExcess > 0 ? 'grid-cols-2 sm:grid-cols-6' : 'grid-cols-2 sm:grid-cols-5'
+              }`}>
                 <div className="p-2 rounded-xl bg-slate-800 border border-slate-700">
                   <span className="text-[8px] font-bold text-slate-400 uppercase block">Allocated</span>
                   <span className="font-black text-xs text-slate-200 block mt-0.5">
@@ -1703,7 +1708,7 @@ export const StockReturnModal = ({ onClose }) => {
                   </span>
                 </div>
 
-                <div className={`p-2 rounded-xl border col-span-2 sm:col-span-1 ${
+                <div className={`p-2 rounded-xl border ${
                   manualReturnReview.totalShortage > 0 
                     ? 'bg-rose-950/80 border-rose-700 text-rose-300' 
                     : 'bg-slate-800 border-slate-700 text-slate-400'
@@ -1715,6 +1720,41 @@ export const StockReturnModal = ({ onClose }) => {
                     {manualReturnReview.totalShortage}
                   </span>
                 </div>
+
+                {manualReturnReview.totalExcess > 0 && (
+                  <div className="p-2 rounded-xl bg-amber-950/80 border border-amber-700 text-amber-300 col-span-2 sm:col-span-1">
+                    <span className="text-[8px] font-bold uppercase block">Excess</span>
+                    <span className="font-black text-xs text-amber-400 block mt-0.5">
+                      +{manualReturnReview.totalExcess}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Exact Stock Balance Equation Bar */}
+              <div className="p-2 rounded-xl bg-slate-800/90 border border-slate-700 text-[11px] font-mono text-center text-slate-300 flex flex-wrap items-center justify-center gap-1.5 shadow-2xs">
+                <span className="text-slate-400 font-sans font-semibold text-[10px] uppercase tracking-wide mr-1">
+                  சமன்பாடு (Balance Equation):
+                </span>
+                <span className="text-white font-extrabold">{reconciliationData.totalAllocated} (Allocated)</span>
+                <span className="text-slate-400 font-bold">=</span>
+                <span className="text-blue-300 font-extrabold">{reconciliationData.totalSold} (Sold)</span>
+                <span className="text-slate-400 font-bold">+</span>
+                <span className="text-rose-300 font-extrabold">{reconciliationData.totalDamaged} (Damaged)</span>
+                <span className="text-slate-400 font-bold">+</span>
+                <span className="text-teal-300 font-extrabold">{manualReturnReview.totalPhysicalReturn} (Return)</span>
+                {manualReturnReview.totalShortage > 0 && (
+                  <>
+                    <span className="text-slate-400 font-bold">+</span>
+                    <span className="text-rose-400 font-extrabold">{manualReturnReview.totalShortage} (Missing)</span>
+                  </>
+                )}
+                {manualReturnReview.totalExcess > 0 && (
+                  <>
+                    <span className="text-slate-400 font-bold">-</span>
+                    <span className="text-amber-400 font-extrabold">{manualReturnReview.totalExcess} (Excess)</span>
+                  </>
+                )}
               </div>
 
               {/* Shortage Reason Input Box */}
@@ -1748,14 +1788,14 @@ export const StockReturnModal = ({ onClose }) => {
               {/* ========================================================================= */}
               <button
                 type="button"
-                disabled={isSessionLocked || !reconciliationData.isReconciled || manualReturnReview.hasExcess || (manualReturnReview.hasShortage && !shortageReason.trim()) || products.length === 0 || submittingReturn}
+                disabled={isSessionLocked || (manualReturnReview.hasShortage && !shortageReason.trim()) || products.length === 0 || submittingReturn}
                 onClick={handleFinalSubmitReturn}
                 className={`w-full py-3.5 px-4 rounded-xl font-black text-xs sm:text-sm tracking-wide transition flex items-center justify-center gap-2 shadow-md min-h-[48px] cursor-pointer ${
                   isSessionLocked
                     ? 'bg-slate-700 text-slate-400 cursor-not-allowed border border-slate-600'
-                    : manualReturnReview.hasExcess
-                      ? 'bg-amber-700 text-white cursor-not-allowed'
-                      : reconciliationData.isReconciled && products.length > 0 && !submittingReturn
+                    : (manualReturnReview.hasShortage && !shortageReason.trim())
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                      : products.length > 0 && !submittingReturn
                         ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white'
                         : 'bg-slate-700 text-slate-400 cursor-not-allowed border border-slate-600'
                 }`}
@@ -1770,20 +1810,18 @@ export const StockReturnModal = ({ onClose }) => {
                     <Lock className="w-4 h-4 text-slate-400" />
                     <span>RETURN COMPLETED & LOCKED (மீண்டும் சமர்ப்பிக்க முடியாது)</span>
                   </>
-                ) : manualReturnReview.hasExcess ? (
+                ) : (manualReturnReview.hasShortage && !shortageReason.trim()) ? (
                   <>
                     <AlertTriangle className="w-4 h-4 text-white" />
-                    <span>CANNOT SUBMIT — PHYSICAL RETURN EXCEEDS AVAILABLE STOCK</span>
-                  </>
-                ) : reconciliationData.isReconciled ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>SUBMIT RETURN & UPDATE WAREHOUSE INVENTORY</span>
+                    <span>ENTER SHORTAGE REASON TO SUBMIT ({manualReturnReview.totalShortage} MISSING)</span>
                   </>
                 ) : (
                   <>
-                    <AlertTriangle className="w-4 h-4 text-amber-400" />
-                    <span>CANNOT SUBMIT — RESOLVE STOCK MISMATCH FIRST</span>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>
+                      SUBMIT RETURN & UPDATE WAREHOUSE INVENTORY
+                      {manualReturnReview.totalExcess > 0 ? ` (+${manualReturnReview.totalExcess} EXCESS)` : ''}
+                    </span>
                   </>
                 )}
               </button>

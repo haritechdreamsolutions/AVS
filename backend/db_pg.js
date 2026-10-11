@@ -5453,7 +5453,7 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
       const damagedInfo = dmgMap.get(pid) || { damaged_qty: 0, damaged_pieces: 0 };
       const allocUnits = Number(allocMap.get(pid) || 0);
 
-      let allocVal, soldVal, dmgVal, currentVal, requestedReturnVal, returnStockUnitsToWarehouse, shortageQty, shortageStockUnits;
+      let allocVal, soldVal, dmgVal, currentVal, requestedReturnVal, returnStockUnitsToWarehouse, shortageQty, shortageStockUnits, excessQty;
 
       if (opUnit.isPieceBased) {
         // TRAY CATEGORY: RECONCILIATION IN INTEGER PIECES
@@ -5470,11 +5470,9 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
         if (requestedReturnVal < 0) {
           throw new Error(`Return quantity cannot be negative for product "${prod.display_name}".`);
         }
-        if (requestedReturnVal > currentVal + 0.0001) {
-          throw new Error(`Return quantity (${requestedReturnVal} Pieces) exceeds expected return (${currentVal} Pieces) for "${prod.display_name}". Excess detected: +${requestedReturnVal - currentVal} Pieces.`);
-        }
 
         shortageQty = Math.max(0, currentVal - requestedReturnVal);
+        excessQty = Math.max(0, requestedReturnVal - currentVal);
         shortageStockUnits = shortageQty / ppu;
         returnStockUnitsToWarehouse = requestedReturnVal / ppu;
       } else {
@@ -5489,11 +5487,9 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
         if (requestedReturnVal < 0) {
           throw new Error(`Return quantity cannot be negative for product "${prod.display_name}".`);
         }
-        if (requestedReturnVal > currentVal + 0.0001) {
-          throw new Error(`Return quantity (${requestedReturnVal} ${opUnit.operationalUnit}) exceeds expected return (${currentVal} ${opUnit.operationalUnit}) for "${prod.display_name}". Excess detected: +${normalizeQuantity(requestedReturnVal - currentVal)} ${opUnit.operationalUnit}.`);
-        }
 
         shortageQty = normalizeQuantity(Math.max(0, currentVal - requestedReturnVal));
+        excessQty = normalizeQuantity(Math.max(0, requestedReturnVal - currentVal));
         shortageStockUnits = shortageQty;
         returnStockUnitsToWarehouse = requestedReturnVal;
       }
@@ -5525,10 +5521,13 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
 
         // 2. Record inventory movement
         const movNo = 'MOV-RET-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+        const returnMovementNote = excessQty > 0
+          ? `Final verified return accepted into warehouse from Driver ${empName} (${requestedReturnVal} ${opUnit.operationalUnit}, including ${excessQty} excess)`
+          : `Final verified return accepted into warehouse from Driver ${empName} (${requestedReturnVal} ${opUnit.operationalUnit})`;
         await client.query(
           `INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes) 
            VALUES ($1, $2, 'RETURN', $3, $4, $5, $6, $7, $8, $9)`,
-          [cid, movNo, pid, prod.display_name, empId, empName, returnStockUnitsToWarehouse, prod.selling_unit || 'Unit', `Final verified return accepted into warehouse from Driver ${empName} (${requestedReturnVal} ${opUnit.operationalUnit})`]
+          [cid, movNo, pid, prod.display_name, empId, empName, returnStockUnitsToWarehouse, prod.selling_unit || 'Unit', returnMovementNote]
         );
 
         // 3. Record stock transaction ledger
@@ -5571,12 +5570,13 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
         returned_quantity: requestedReturnVal,
         physical_return_quantity: requestedReturnVal,
         shortage_quantity: shortageQty,
+        excess_quantity: excessQty,
         shortage_units: shortageStockUnits,
         shortage_cost: shortageCost,
         shortage_reason: shortageQty > 0 ? itemShortageReason : '',
         unit_cost: buyRate,
         total_cost: itemReturnCost,
-        reconciliation_status: shortageQty > 0 ? 'SHORTAGE' : 'BALANCED',
+        reconciliation_status: excessQty > 0 ? 'EXCESS' : (shortageQty > 0 ? 'SHORTAGE' : 'BALANCED'),
         is_balanced: true
       });
     }
@@ -5744,8 +5744,8 @@ export async function getMissingStockReport(cid, filters = {}) {
       ds.session_date,
       u.name as checked_by_name
     FROM driver_returns dr
-    JOIN employees e ON e.id = dr.employee_id
     LEFT JOIN driver_sessions ds ON ds.id = dr.session_id
+    LEFT JOIN employees e ON e.id = COALESCE(dr.employee_id, ds.employee_id)
     LEFT JOIN routes r ON r.id = COALESCE(dr.route_id, ds.route_id, e.route_id)
     LEFT JOIN user_accounts u ON u.id = dr.checked_by
     WHERE dr.company_id = $1
