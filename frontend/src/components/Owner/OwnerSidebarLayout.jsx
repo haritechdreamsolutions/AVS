@@ -39,18 +39,18 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-    { id: 'users', label: 'Users Master', icon: <ShieldCheck className="w-5 h-5 text-indigo-400" /> },
-    { id: 'suppliers', label: 'Companies & Inward 🏭', icon: <Building2 className="w-5 h-5 text-sky-400" /> },
+    { id: 'employees', label: 'Employees & Routes', icon: <Users className="w-5 h-5" /> },
     { id: 'villages', label: 'Villages Master 📍', icon: <MapPin className="w-5 h-5 text-amber-400" /> },
-    { id: 'shops', label: 'Shops & Dues', icon: <Store className="w-5 h-5" /> },
     { id: 'products', label: 'Products & Rates 📦', icon: <Package className="w-5 h-5 text-emerald-400" /> },
+    { id: 'users', label: 'Users Master', icon: <ShieldCheck className="w-5 h-5 text-indigo-400" /> },
     { id: 'freezer', label: 'Freezer Assets 🧊', icon: <Snowflake className="w-5 h-5 text-cyan-400" /> },
+    { id: 'suppliers', label: 'Companies & Inward 🏭', icon: <Building2 className="w-5 h-5 text-sky-400" /> },
     { id: 'sales', label: 'Sales & Bills', icon: <ShoppingBag className="w-5 h-5" /> },
+    { id: 'shops', label: 'Shops & Dues', icon: <Store className="w-5 h-5" /> },
     { id: 'user_balance', label: 'User Balance 💳', icon: <Wallet className="w-5 h-5 text-teal-400" /> },
     { id: 'driver_expenses', label: 'Driver Expenses 💰', icon: <DollarSign className="w-5 h-5 text-emerald-400" /> },
-    { id: 'damage_pieces', label: 'Damage Pieces 💥', icon: <AlertOctagon className="w-5 h-5 text-rose-400" /> },
     { id: 'missing_pieces', label: 'Missing Pieces ⚠️', icon: <AlertTriangle className="w-5 h-5 text-amber-400" /> },
-    { id: 'employees', label: 'Employees & Routes', icon: <Users className="w-5 h-5" /> },
+    { id: 'damage_pieces', label: 'Damage Pieces 💥', icon: <AlertOctagon className="w-5 h-5 text-rose-400" /> },
   ];
 
   return (
