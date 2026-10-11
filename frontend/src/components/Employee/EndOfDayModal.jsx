@@ -366,7 +366,11 @@ export const EndOfDayModal = ({ onClose }) => {
 
                       <div className="text-right">
                         <div className="font-mono font-black text-xs text-slate-900">
-                          {Number(item.qty_units).toFixed(2)} {item.selling_unit}s
+                          {item.pieces_per_unit > 1 ? (
+                            `${Math.floor(item.pieces / item.pieces_per_unit)} ${item.selling_unit}${Math.floor(item.pieces / item.pieces_per_unit) !== 1 ? 's' : ''}${item.pieces % item.pieces_per_unit > 0 ? ` ${item.pieces % item.pieces_per_unit} Pcs` : ''}`
+                          ) : (
+                            `${Math.round(item.qty_units)} ${item.selling_unit}${Math.round(item.qty_units) !== 1 ? 's' : ''}`
+                          )}
                         </div>
                         <div className="font-mono font-bold text-[10px] text-blue-600">
                           {item.pieces} {item.base_unit}s

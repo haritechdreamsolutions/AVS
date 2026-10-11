@@ -147,26 +147,63 @@ export function formatWarehouseStock(product) {
       unitLabel: 'Pieces'
     };
   } else {
-    const units = Math.max(0, Number(whUnits || 0));
     const unitName = product?.selling_unit || opUnit.label || 'Case';
-    const isPlural = units !== 1;
-    const label = isPlural && !unitName.endsWith('s') && !unitName.endsWith('S') ? `${unitName}s` : unitName;
-    return {
-      text: `${units} ${label}`,
-      isOutOfStock: units <= 0,
-      totalPieces: units,
-      trays: 0,
-      loosePcs: 0,
-      units,
-      unitLabel: label
-    };
+    if (totalPieces <= 0) {
+      const label = !unitName.endsWith('s') && !unitName.endsWith('S') ? `${unitName}s` : unitName;
+      return {
+        text: `0 ${label}`,
+        isOutOfStock: true,
+        totalPieces: 0,
+        trays: 0,
+        loosePcs: 0,
+        units: 0,
+        unitLabel: label
+      };
+    }
+
+    if (ppu > 1) {
+      const wholeUnits = Math.floor(totalPieces / ppu);
+      const loosePcs = totalPieces % ppu;
+      const isPlural = wholeUnits !== 1;
+      const label = isPlural && !unitName.endsWith('s') && !unitName.endsWith('S') ? `${unitName}s` : unitName;
+      let text = '';
+      if (wholeUnits > 0 && loosePcs > 0) {
+        text = `${wholeUnits} ${label} ${loosePcs} Pcs (${totalPieces} Pcs)`;
+      } else if (wholeUnits > 0) {
+        text = `${wholeUnits} ${label} (${totalPieces} Pcs)`;
+      } else {
+        text = `${loosePcs} Pcs (${totalPieces} Pcs)`;
+      }
+      return {
+        text,
+        isOutOfStock: false,
+        totalPieces,
+        trays: wholeUnits,
+        loosePcs,
+        units: wholeUnits,
+        unitLabel: label
+      };
+    } else {
+      const units = Math.max(0, Number(whUnits || 0));
+      const isPlural = units !== 1;
+      const label = isPlural && !unitName.endsWith('s') && !unitName.endsWith('S') ? `${unitName}s` : unitName;
+      return {
+        text: `${units} ${label}`,
+        isOutOfStock: units <= 0,
+        totalPieces: units,
+        trays: 0,
+        loosePcs: 0,
+        units,
+        unitLabel: label
+      };
+    }
   }
 }
 
 /**
  * Formats driver/employee vehicle stock for card display.
  * For tray/piece-based products: returns `${trays} Trays ${loosePcs} Pcs` (or `${trays} Trays` or `${loosePcs} Pcs`)
- * For other categories: returns `${units} ${unitName}`
+ * For other categories: returns `${wholeUnits} ${unitName} ${loosePcs} Pcs` (or `${wholeUnits} ${unitName}`)
  */
 export function formatVehicleStockDisplay(item) {
   const opUnit = getOperationalUnit(item);
@@ -202,22 +239,64 @@ export function formatVehicleStockDisplay(item) {
       trays,
       loosePcs,
       isPieceBased: true,
-      unitLabel: item?.base_unit || 'PIECE'
+      unitLabel: item?.base_unit ? item.base_unit.toUpperCase() : 'PIECE'
     };
   } else {
-    const units = Math.max(0, Number(item?.qty_units || 0));
+    // Non-tray products (Case, Box, Bag, Bottle, etc.)
     const unitName = item?.selling_unit || opUnit.label || 'Case';
-    const isPlural = units !== 1;
-    const label = isPlural && !unitName.endsWith('s') && !unitName.endsWith('S') ? `${unitName}s` : unitName;
+    if (totalPieces <= 0) {
+      const label = !unitName.endsWith('s') && !unitName.endsWith('S') ? `${unitName}s` : unitName;
+      return {
+        breakdownText: `0 ${label}`,
+        totalPieces: 0,
+        units: 0,
+        trays: 0,
+        loosePcs: 0,
+        isPieceBased: false,
+        unitLabel: label
+      };
+    }
 
-    return {
-      breakdownText: `${units} ${label}`,
-      totalPieces: units,
-      units,
-      trays: 0,
-      loosePcs: 0,
-      isPieceBased: false,
-      unitLabel: label
-    };
+    if (ppu > 1) {
+      // Multi-piece packaging (e.g. Cola 200ml: 1 Case = 24 Pieces)
+      const wholeUnits = Math.floor(totalPieces / ppu);
+      const loosePcs = totalPieces % ppu;
+      const isPlural = wholeUnits !== 1;
+      const label = isPlural && !unitName.endsWith('s') && !unitName.endsWith('S') ? `${unitName}s` : unitName;
+
+      let breakdownText = '';
+      if (wholeUnits > 0 && loosePcs > 0) {
+        breakdownText = `${wholeUnits} ${label} ${loosePcs} Pcs`;
+      } else if (wholeUnits > 0) {
+        breakdownText = `${wholeUnits} ${label}`;
+      } else {
+        breakdownText = `${loosePcs} Pcs`;
+      }
+
+      return {
+        breakdownText,
+        totalPieces,
+        units: wholeUnits,
+        trays: wholeUnits,
+        loosePcs,
+        isPieceBased: false,
+        unitLabel: item?.base_unit ? item.base_unit.toUpperCase() : 'PIECE'
+      };
+    } else {
+      // Direct 1-to-1 units (ppu = 1, e.g. 5 Bags)
+      const wholeUnits = Math.round(Number(item?.qty_units || 0));
+      const isPlural = wholeUnits !== 1;
+      const label = isPlural && !unitName.endsWith('s') && !unitName.endsWith('S') ? `${unitName}s` : unitName;
+
+      return {
+        breakdownText: `${wholeUnits} ${label}`,
+        totalPieces: wholeUnits,
+        units: wholeUnits,
+        trays: 0,
+        loosePcs: 0,
+        isPieceBased: false,
+        unitLabel: label.toUpperCase()
+      };
+    }
   }
 }

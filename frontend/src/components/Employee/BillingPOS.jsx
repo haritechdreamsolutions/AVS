@@ -36,7 +36,7 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
     const opUnit = getOperationalUnit(product);
     const piecesPerUnit = Math.max(1, Number(product.pieces_per_unit || 1));
     const heldUnits = Number(stock?.qty_units || 0);
-    const basePieces = Math.floor(heldUnits * piecesPerUnit);
+    const basePieces = Math.round(heldUnits * piecesPerUnit);
 
     if (opUnit.isPieceBased) {
       // Tray products: Milk, Curd -> strictly Piece-based
@@ -57,6 +57,7 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
     } else {
       // Non-Tray products: Case, Bag, Box -> configured operational bundle unit
       const availableStock = Math.floor(basePieces / piecesPerUnit);
+      const loosePieces = basePieces % piecesPerUnit;
       const rate = Number(product.unit_selling_price || (Number(product.piece_selling_price || 0) * piecesPerUnit) || 0);
       return {
         opUnit,
@@ -64,6 +65,7 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
         basePieces,
         piecesPerUnit,
         availableStock,
+        loosePieces,
         unitLabel: opUnit.pluralLabel,
         shortUnit: opUnit.label,
         sellingUnit: product.selling_unit || opUnit.label,
@@ -312,10 +314,20 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span className="text-[11px] font-bold text-slate-500">
                       Stock: <strong className="text-emerald-600 font-black font-mono">{info.availableStock} {info.unitLabel}</strong>
-                      {info.availableStock > 0 && info.piecesPerUnit > 1 && info.opUnit?.isPieceBased && (
-                        <span className="text-slate-500 font-semibold ml-1.5">
-                          ({Math.floor(info.availableStock / info.piecesPerUnit)} {info.sellingUnit} {info.availableStock % info.piecesPerUnit > 0 ? `${info.availableStock % info.piecesPerUnit} Pcs` : ''})
-                        </span>
+                      {info.piecesPerUnit > 1 && (
+                        info.opUnit?.isPieceBased ? (
+                          info.availableStock > 0 && (
+                            <span className="text-slate-500 font-semibold ml-1.5">
+                              ({Math.floor(info.availableStock / info.piecesPerUnit)} {info.sellingUnit} {info.availableStock % info.piecesPerUnit > 0 ? `${info.availableStock % info.piecesPerUnit} Pcs` : ''})
+                            </span>
+                          )
+                        ) : (
+                          info.loosePieces > 0 && (
+                            <span className="text-slate-500 font-semibold ml-1.5">
+                              (+{info.loosePieces} loose Pcs)
+                            </span>
+                          )
+                        )
                       )}
                     </span>
                     <span className="text-[10.5px] font-semibold text-slate-400">

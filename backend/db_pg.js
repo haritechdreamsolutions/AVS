@@ -4994,15 +4994,27 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
       p.display_name, 
       p.pieces_per_unit, 
       p.selling_unit, 
-      COALESCE(SUM(si.qty), 0) as sold_pieces,
-      COALESCE(SUM(CASE WHEN LOWER(si.unit_type) = 'tray' OR LOWER(si.unit_type) = 'case' OR LOWER(si.unit_type) = 'unit' THEN si.qty ELSE (si.qty::numeric / NULLIF(p.pieces_per_unit, 0)) END), 0) as sold_units
+      COALESCE(SUM(
+        CASE 
+          WHEN LOWER(si.unit_type) = LOWER(COALESCE(p.base_unit, 'piece')) OR LOWER(si.unit_type) = 'piece' OR LOWER(si.unit_type) = 'pieces'
+            THEN si.qty
+          ELSE si.qty * COALESCE(NULLIF(p.pieces_per_unit, 0), 1)
+        END
+      ), 0) as sold_pieces,
+      COALESCE(SUM(
+        CASE 
+          WHEN LOWER(si.unit_type) = LOWER(COALESCE(p.base_unit, 'piece')) OR LOWER(si.unit_type) = 'piece' OR LOWER(si.unit_type) = 'pieces'
+            THEN (si.qty::numeric / COALESCE(NULLIF(p.pieces_per_unit, 0), 1))
+          ELSE si.qty::numeric
+        END
+      ), 0) as sold_units
      FROM sale_items si
      JOIN sales s ON s.id = si.sale_id
      JOIN products p ON p.id = si.product_id
      WHERE s.company_id = $1 AND s.employee_id = $2 
        AND (s.status IS NULL OR s.status = 'ACTIVE' OR s.status != 'CANCELLED')
        AND (s.sale_date = $3::date OR s.created_at::date = $3::date)
-     GROUP BY si.product_id, p.name, p.display_name, p.pieces_per_unit, p.selling_unit`,
+     GROUP BY si.product_id, p.name, p.display_name, p.pieces_per_unit, p.selling_unit, p.base_unit`,
     [cid, empId, todayStr]
   );
   const soldMap = new Map();
@@ -5346,15 +5358,27 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
     const soldRes = await client.query(
       `SELECT 
         si.product_id,
-        COALESCE(SUM(si.qty), 0) as sold_pieces,
-        COALESCE(SUM(CASE WHEN LOWER(si.unit_type) = 'tray' OR LOWER(si.unit_type) = 'case' OR LOWER(si.unit_type) = 'unit' THEN si.qty ELSE (si.qty::numeric / NULLIF(p.pieces_per_unit, 0)) END), 0) as sold_units
+        COALESCE(SUM(
+          CASE 
+            WHEN LOWER(si.unit_type) = LOWER(COALESCE(p.base_unit, 'piece')) OR LOWER(si.unit_type) = 'piece' OR LOWER(si.unit_type) = 'pieces'
+              THEN si.qty
+            ELSE si.qty * COALESCE(NULLIF(p.pieces_per_unit, 0), 1)
+          END
+        ), 0) as sold_pieces,
+        COALESCE(SUM(
+          CASE 
+            WHEN LOWER(si.unit_type) = LOWER(COALESCE(p.base_unit, 'piece')) OR LOWER(si.unit_type) = 'piece' OR LOWER(si.unit_type) = 'pieces'
+              THEN (si.qty::numeric / COALESCE(NULLIF(p.pieces_per_unit, 0), 1))
+            ELSE si.qty::numeric
+          END
+        ), 0) as sold_units
        FROM sale_items si
        JOIN sales s ON s.id = si.sale_id
        JOIN products p ON p.id = si.product_id
        WHERE s.company_id = $1 AND s.employee_id = $2 
          AND (s.status IS NULL OR s.status = 'ACTIVE' OR s.status != 'CANCELLED')
          AND (s.sale_date = $3::date OR s.created_at::date = $3::date)
-       GROUP BY si.product_id`,
+       GROUP BY si.product_id, p.pieces_per_unit, p.base_unit`,
       [cid, empId, todayStr]
     );
     const soldMap = new Map();
