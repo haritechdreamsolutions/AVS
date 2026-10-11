@@ -48,6 +48,22 @@ const formatDMY = (dateStr) => {
   return dateStr;
 };
 
+// Helper function to extract cleanly formatted time (HH:MM AM/PM) from sale
+const getTimeString = (sale) => {
+  if (sale?.time && typeof sale.time === 'string' && sale.time !== 'Live') {
+    return sale.time;
+  }
+  if (sale?.created_at) {
+    try {
+      const dt = new Date(sale.created_at);
+      if (!isNaN(dt.getTime())) {
+        return dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+      }
+    } catch (e) {}
+  }
+  return '';
+};
+
 // Helper function to format JS Date object into YYYY-MM-DD string
 const formatYMD = (dateObj) => {
   if (!dateObj || isNaN(dateObj.getTime())) return '';
@@ -417,27 +433,17 @@ export const SalesRecordsView = () => {
     const isStore = sale.is_store_direct_sale || Number(sale.employee_id) === 6 || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'));
     if (isStore) {
       return (
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold text-sm border border-sky-200 shrink-0 shadow-2xs">
-            🏬
-          </div>
-          <div>
-            <span className="font-black text-slate-900 text-xs sm:text-sm block leading-tight">Store Keeper</span>
-            <span className="text-[10px] text-sky-800 font-extrabold bg-sky-100 px-2 py-0.5 rounded-lg border border-sky-200 inline-block mt-0.5">Store Counter</span>
-          </div>
-        </div>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-900 border border-sky-200 font-extrabold text-[11px] sm:text-xs shadow-2xs whitespace-nowrap">
+          <span>🏬</span>
+          <span>Store Keeper</span>
+        </span>
       );
     }
     return (
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold text-sm border border-sky-200 shrink-0 shadow-2xs">
-          🚚
-        </div>
-        <div>
-          <span className="font-black text-slate-900 text-xs sm:text-sm block leading-tight">{sale.employee_name || 'Driver'}</span>
-          <span className="text-[10px] text-slate-500 font-mono font-bold block">{sale.vehicle_no || 'Vehicle'}</span>
-        </div>
-      </div>
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-extrabold text-[11px] sm:text-xs shadow-2xs whitespace-nowrap">
+        <span>🚚</span>
+        <span>Driver</span>
+      </span>
     );
   };
 
@@ -914,16 +920,19 @@ export const SalesRecordsView = () => {
               ) : (
                 filteredSales.map((sale, idx) => {
                   const billDate = formatDMY(sale.date || sale.sale_date || sale.created_at) || 'Today';
+                  const saleTime = getTimeString(sale);
                   const financials = getSaleFinancials(sale);
 
                   return (
                     <tr key={sale.bill_no || idx} className="hover:bg-sky-50/60 transition-colors">
                       <td className="p-4 pl-5">
-                        <span className="font-mono font-black text-sm sm:text-base text-sky-700 block">
+                        <span className="font-mono font-black text-[11px] sm:text-xs text-sky-700 block break-all leading-snug">
                           #{sale.bill_no}
                         </span>
-                        <span className="text-xs text-slate-600 font-mono font-bold flex items-center gap-1 mt-0.5">
-                          <Calendar className="w-3.5 h-3.5 text-sky-500" /> {billDate} • {sale.time || 'Live'}
+                        <span className="text-[11px] text-slate-500 font-mono font-bold flex items-center gap-1 mt-1">
+                          <Calendar className="w-3 h-3 text-sky-500 shrink-0" />
+                          <span>{billDate}</span>
+                          {saleTime ? <span className="text-slate-400">• {saleTime}</span> : null}
                         </span>
                       </td>
                       <td className="p-4">{renderSellerBadge(sale)}</td>
@@ -980,13 +989,14 @@ export const SalesRecordsView = () => {
           ) : (
             filteredSales.map((sale, idx) => {
               const billDate = formatDMY(sale.date || sale.sale_date || sale.created_at) || 'Today';
+              const saleTime = getTimeString(sale);
               const financials = getSaleFinancials(sale);
 
               return (
                 <div key={sale.bill_no || idx} className="p-4 space-y-3 bg-white">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-black text-sm sm:text-base text-sky-700">#{sale.bill_no}</span>
+                      <span className="font-mono font-black text-xs text-sky-700 break-all">#{sale.bill_no}</span>
                       {renderPaymentBadge(sale)}
                     </div>
                     <span className="font-mono font-black text-base text-slate-900">
@@ -1008,8 +1018,8 @@ export const SalesRecordsView = () => {
                     <span className="font-black text-slate-900">
                       {sale.shop_name || sale.customer_name || 'Walk-in Customer'}
                     </span>
-                    <span className="text-xs text-slate-500 font-mono font-bold">
-                      {billDate} {sale.time}
+                    <span className="text-[11px] text-slate-500 font-mono font-bold">
+                      {billDate}{saleTime ? ' • ' + saleTime : ''}
                     </span>
                   </div>
 

@@ -10,6 +10,95 @@ const formatINR = (val) => {
 };
 
 /**
+ * Detects if a string contains Tamil or non-Latin Unicode characters
+ */
+const containsTamilOrUnicode = (str) => {
+  if (!str) return false;
+  return /[\u0B80-\u0BFF]/.test(String(str));
+};
+
+const textImageCache = new Map();
+
+/**
+ * Renders Tamil / Unicode text into a sharp PNG data URL using browser Canvas
+ */
+const renderUnicodeTextToImage = (text, options = {}) => {
+  const cacheKey = `${text}_${options.fontSize || 26}_${options.color || '#1e293b'}`;
+  if (textImageCache.has(cacheKey)) {
+    return textImageCache.get(cacheKey);
+  }
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const fontSize = options.fontSize || 26;
+  const fontFam = '"Noto Sans Tamil", "Nirmala UI", "Latha", "Tamil Sangam MN", "Mukta Malar", system-ui, -apple-system, sans-serif';
+  const font = `bold ${fontSize}px ${fontFam}`;
+  ctx.font = font;
+
+  const metrics = ctx.measureText(text);
+  const textWidth = Math.ceil(metrics.width) + 16;
+  const textHeight = Math.ceil(fontSize * 1.5);
+
+  canvas.width = Math.max(textWidth, 10);
+  canvas.height = Math.max(textHeight, 10);
+
+  ctx.font = `bold ${fontSize}px ${fontFam}`;
+  ctx.fillStyle = options.color || '#1e293b';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 6, canvas.height / 2);
+
+  const result = {
+    dataUrl: canvas.toDataURL('image/png'),
+    width: canvas.width,
+    height: canvas.height,
+    aspectRatio: canvas.width / canvas.height
+  };
+
+  textImageCache.set(cacheKey, result);
+  return result;
+};
+
+/**
+ * Common autoTable hooks for flawless rendering of Tamil script in PDF table cells
+ */
+const unicodeAutoTableHooks = (doc) => ({
+  willDrawCell: (data) => {
+    if (data.section === 'body') {
+      const rawVal = String(data.cell.raw || '');
+      if (containsTamilOrUnicode(rawVal)) {
+        data.cell.text = []; // Suppress default Latin font from drawing mangled glyphs
+      }
+    }
+  },
+  didDrawCell: (data) => {
+    if (data.section === 'body') {
+      const rawVal = String(data.cell.raw || '');
+      if (containsTamilOrUnicode(rawVal)) {
+        try {
+          const img = renderUnicodeTextToImage(rawVal, { fontSize: 26, color: '#0f172a' });
+          const maxH = Math.max(2, data.cell.height - 2.5);
+          const maxW = Math.max(5, data.cell.width - 4);
+
+          let drawH = maxH;
+          let drawW = drawH * img.aspectRatio;
+          if (drawW > maxW) {
+            drawW = maxW;
+            drawH = drawW / img.aspectRatio;
+          }
+
+          const posX = data.cell.x + 2;
+          const posY = data.cell.y + (data.cell.height - drawH) / 2;
+
+          doc.addImage(img.dataUrl, 'PNG', posX, posY, drawW, drawH);
+        } catch (e) {
+          console.error('Failed to draw Tamil text image to cell:', e);
+        }
+      }
+    }
+  }
+});
+
+/**
  * Adds standard company header to any PDF report
  */
 const addReportHeader = (doc, title, periodText, companyInfo = {}) => {
@@ -593,7 +682,8 @@ export const generateSalesRecordsPDFReport = async ({
     }
 
     const shopName = b.shop_name || b.customer_name || 'Walk-in Customer';
-    const soldBy = b.employee_name || b.seller_name || b.driver_name || (b.is_store_direct_sale ? 'Store Keeper' : 'Staff');
+    const isStore = b.is_store_direct_sale || Number(b.employee_id) === 6 || (b.employee_name && b.employee_name.toLowerCase().includes('store'));
+    const soldBy = isStore ? 'Store Keeper' : 'Driver';
     const paymentMode = (b.payment_mode || 'CASH').toUpperCase();
     const totalAmt = Number(b.total_amount || b.grand_total || 0);
     
@@ -620,6 +710,8 @@ export const generateSalesRecordsPDFReport = async ({
     ];
   });
 
+  const tableHooks = unicodeAutoTableHooks(doc);
+
   autoTable(doc, {
     startY: currentY,
     theme: 'grid',
@@ -635,6 +727,8 @@ export const generateSalesRecordsPDFReport = async ({
       7: { halign: 'right' },
       8: { halign: 'right', fontStyle: 'bold', textColor: [225, 29, 72] }
     },
+    willDrawCell: tableHooks.willDrawCell,
+    didDrawCell: tableHooks.didDrawCell,
     margin: { left: 14, right: 14 }
   });
 
