@@ -419,10 +419,10 @@ export const ThermalBillModal = ({
 
         {/* Print & Close Actions */}
         <div className="space-y-2 no-print shrink-0 pt-1">
-          {/* PRIMARY PRINT BUTTON (Auto-Prints & Redirects to Billing Page) */}
+          {/* PRIMARY PRINT BUTTON (Bluetooth / Thermal Auto-Print & Redirects to Billing Page) */}
           <button
             type="button"
-            onClick={is80mm ? handleSystemPrint : handleThermalPrint}
+            onClick={handleThermalPrint}
             disabled={isPrinting}
             className={`w-full text-xs sm:text-sm font-black rounded-2xl py-3.5 flex items-center justify-center gap-2 shadow-md min-h-[46px] cursor-pointer transition active:scale-[0.98] ${
               printSuccess
@@ -454,38 +454,25 @@ export const ThermalBillModal = ({
                 <Printer className="w-5 h-5 text-white" />
                 <span>
                   {is80mm 
-                    ? '🖨️ PRINT BILL (80mm / 3-Inch POS & Return)' 
-                    : '🖨️ PRINT BILL (EX58C Bluetooth)'}
+                    ? '🖨️ PRINT BILL (Posiflow 80mm Bluetooth)' 
+                    : '🖨️ PRINT BILL (Bluetooth Printer)'}
                 </span>
               </>
             )}
           </button>
 
           <div className="flex gap-2">
-            {/* SECONDARY ACTION */}
-            {is80mm ? (
-              <button
-                type="button"
-                onClick={handleThermalPrint}
-                disabled={isPrinting}
-                className="flex-1 text-xs font-black bg-indigo-50 hover:bg-indigo-100 text-indigo-900 rounded-xl py-2.5 flex items-center justify-center gap-1.5 border border-indigo-300 min-h-[38px] cursor-pointer transition active:scale-[0.98]"
-                title="Print via Bluetooth ESC/POS 80mm"
-              >
-                <Printer className="w-3.5 h-3.5 text-indigo-700" />
-                <span>Bluetooth Print (80mm)</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSystemPrint}
-                disabled={isPrinting}
-                className="flex-1 text-xs font-black bg-sky-50 hover:bg-sky-100 text-sky-900 rounded-xl py-2.5 flex items-center justify-center gap-1.5 border border-sky-300 min-h-[38px] cursor-pointer transition active:scale-[0.98]"
-                title="Print via System Print Dialog"
-              >
-                <Printer className="w-3.5 h-3.5 text-sky-700" />
-                <span>System Print (Ctrl+P)</span>
-              </button>
-            )}
+            {/* SECONDARY ACTION: System Print fallback */}
+            <button
+              type="button"
+              onClick={handleSystemPrint}
+              disabled={isPrinting}
+              className="flex-1 text-xs font-black bg-sky-50 hover:bg-sky-100 text-sky-900 rounded-xl py-2.5 flex items-center justify-center gap-1.5 border border-sky-300 min-h-[38px] cursor-pointer transition active:scale-[0.98]"
+              title="Print via System Print Dialog (USB/Network/PDF)"
+            >
+              <Printer className="w-3.5 h-3.5 text-sky-700" />
+              <span>System Print (Ctrl+P)</span>
+            </button>
 
             {/* CLOSE BUTTON */}
             <button

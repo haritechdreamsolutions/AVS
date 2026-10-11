@@ -1018,13 +1018,18 @@ export const printViaWebBluetooth = async (billData, widthMode = '58mm') => {
   device = await navigator.bluetooth.requestDevice({
     acceptAllDevices: true,
     optionalServices: [
-      '000018f0-0000-1000-8000-00805f9b34fb', // ESC/POS Service
+      '000018f0-0000-1000-8000-00805f9b34fb', // Standard ESC/POS Service
       '0000e0ff-0000-1000-8000-00805f9b34fb',
-      '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC BLE
-      'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // PosBank / Xprinter BLE
-      '0000ff00-0000-1000-8000-00805f9b34fb', // Custom ESC/POS BLE
-      '0000ae00-0000-1000-8000-00805f9b34fb', // Goojprt BLE
-      '0000fee7-0000-1000-8000-00805f9b34fb'  // Generic POS BLE
+      '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC Transparent UART BLE
+      'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // PosBank / Xprinter / Posiflow BLE
+      '0000ff00-0000-1000-8000-00805f9b34fb', // Custom ESC/POS BLE (Common 80mm)
+      '0000ae00-0000-1000-8000-00805f9b34fb', // Goojprt / Rongta BLE
+      '0000ae30-0000-1000-8000-00805f9b34fb', // Portable Posiflow / Rongta BLE
+      '0000fee7-0000-1000-8000-00805f9b34fb', // Generic POS BLE (Tencent/WeChat IoT POS)
+      '0000fff0-0000-1000-8000-00805f9b34fb', // FFF0 Thermal Printer Service
+      '000018f1-0000-1000-8000-00805f9b34fb', // Alternate Printer Service
+      '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // Nordic UART Service (NUS)
+      '0000feea-0000-1000-8000-00805f9b34fb'  // Feea Thermal Printer BLE
     ]
   });
 
@@ -1051,7 +1056,7 @@ export const printViaWebBluetooth = async (billData, widthMode = '58mm') => {
   }
 
   if (!writeCharacteristic) {
-    throw new Error('Could not find writable Bluetooth characteristic for EX58C.');
+    throw new Error('Could not find writable Bluetooth characteristic for thermal printer.');
   }
 
   cachedCharacteristic = writeCharacteristic;
