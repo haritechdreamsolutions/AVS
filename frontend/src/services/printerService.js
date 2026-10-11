@@ -496,21 +496,451 @@ export const generateEscPos58mmRasterBuffer = (bill) => {
 };
 
 /**
- * Direct Web Bluetooth GATT Print implementation (Native Chrome Bluetooth Device Selector).
- * Automatically caches the connected EX58C printer for instant one-click subsequent printing.
+ * Generates an ESC/POS binary buffer for 80mm/82mm thermal rolls (48 columns).
  */
-export const printViaWebBluetooth = async (billData) => {
+export const generateEscPos80mmBuffer = (bill) => {
+  const ESC = 0x1B;
+  const GS = 0x1D;
+
+  const CMD_INITIALIZE = [ESC, 0x40];
+  const CMD_ALIGN_LEFT = [ESC, 0x61, 0];
+  const CMD_ALIGN_CENTER = [ESC, 0x61, 1];
+  const CMD_ALIGN_RIGHT = [ESC, 0x61, 2];
+  const CMD_BOLD_ON = [ESC, 0x45, 1];
+  const CMD_BOLD_OFF = [ESC, 0x45, 0];
+  const CMD_DOUBLE_STRIKE_ON = [ESC, 0x47, 1];
+  const CMD_DOUBLE_STRIKE_OFF = [ESC, 0x47, 0];
+  const CMD_DOUBLE_SIZE_ON = [GS, 0x21, 0x11];
+  const CMD_NORMAL_TEXT = [GS, 0x21, 0x00];
+  const CMD_LINE_FEED = [0x0A];
+  const CMD_CUT = [GS, 0x56, 66, 0];
+
+  const encoder = new TextEncoder();
+  const buffer = [];
+
+  const addBytes = (bytes) => buffer.push(...bytes);
+
+  const addText = (text = '', align = 'LEFT', bold = false, size = 'NORMAL') => {
+    if (align === 'CENTER') addBytes(CMD_ALIGN_CENTER);
+    else if (align === 'RIGHT') addBytes(CMD_ALIGN_RIGHT);
+    else addBytes(CMD_ALIGN_LEFT);
+
+    if (size === 'DOUBLE_SIZE' || size === true) addBytes(CMD_DOUBLE_SIZE_ON);
+    else addBytes(CMD_NORMAL_TEXT);
+
+    if (bold) {
+      addBytes(CMD_BOLD_ON);
+      addBytes(CMD_DOUBLE_STRIKE_ON);
+    }
+
+    const cleanText = String(text || '').replace(/₹/g, 'Rs.');
+    addBytes(Array.from(encoder.encode(cleanText)));
+
+    if (bold) {
+      addBytes(CMD_BOLD_OFF);
+      addBytes(CMD_DOUBLE_STRIKE_OFF);
+    }
+    if (size) addBytes(CMD_NORMAL_TEXT);
+    addBytes(CMD_LINE_FEED);
+  };
+
+  const addDashedLine = () => addText('------------------------------------------------', 'CENTER');
+
+  const addTwoColumnRow = (leftText, rightText, bold = false) => {
+    const totalWidth = 48;
+    const cleanLeft = String(leftText || '').replace(/₹/g, 'Rs.');
+    const cleanRight = String(rightText || '').replace(/₹/g, 'Rs.');
+    const spaceCount = Math.max(1, totalWidth - cleanLeft.length - cleanRight.length);
+    const line = cleanLeft + ' '.repeat(spaceCount) + cleanRight;
+    addText(line, 'LEFT', bold);
+  };
+
+  addBytes(CMD_INITIALIZE);
+
+  const companyName = bill.company_name || 'AVS AGENCIES';
+  const rawPhone = bill.company_phone || '9486334240';
+  const cleanPhone = rawPhone.replace(/\+91\s*/g, '').replace(/\s+/g, '').trim();
+
+  addText(companyName, 'CENTER', true, 'DOUBLE_SIZE');
+  addBytes(CMD_LINE_FEED);
+  addText('No 71, Mailam Road, Kooteripattu', 'CENTER', true);
+  addText(`Ph: ${cleanPhone}`, 'CENTER', true);
+  addBytes(CMD_LINE_FEED);
+  addDashedLine();
+
+  const rawBillNo = bill.bill_no || bill.sale?.bill_no || 'INV-000000';
+  const billNo = rawBillNo.length > 16 ? (rawBillNo.substring(0, 13) + '...') : rawBillNo;
+  const dateStr = formatReceiptDate(bill.sale_date || bill.date);
+  const timeStr = bill.sale_time || bill.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const shopName = bill.shop_name || bill.shop?.name || bill.customer_name || 'Customer';
+  const shopCode = bill.shop_code || bill.shop?.code || 'SHP-001';
+  const empName = bill.employee_name || bill.driver_name || 'Store Keeper';
+  const vehicleNo = bill.vehicle_no || bill.vehicle_number || '';
+
+  addTwoColumnRow(`Bill: ${billNo}`, `${dateStr}`, true);
+  addText(`Shop: ${shopName}`, 'LEFT', true);
+  addTwoColumnRow(`Code: ${shopCode}`, `Time: ${timeStr}`, false);
+  addTwoColumnRow(`Emp: ${empName}`, vehicleNo ? `Veh: ${vehicleNo}` : '', false);
+  addDashedLine();
+
+  addText('ITEM                     QTY       RATE        AMT', 'LEFT', true);
+  addDashedLine();
+
+  const items = bill.items || bill.sale?.items || [];
+  items.forEach((item) => {
+    const rawName = (item.product_name || 'Item').replace(/₹/g, '');
+    const pName = rawName.length > 21 ? rawName.substring(0, 21) : rawName.padEnd(21, ' ');
+    const qtyNum = Math.floor(Number(item.qty || 1));
+    const qtyStr = String(qtyNum).padStart(5, ' ');
+    const rateStr = Number(item.rate || 0).toFixed(2).padStart(10, ' ');
+    const amtStr = Number(item.amount || (qtyNum * Number(item.rate || 0))).toFixed(2).padStart(10, ' ');
+
+    addText(`${pName} ${qtyStr} ${rateStr} ${amtStr}`, 'LEFT', false);
+  });
+
+  if (items.length === 0) {
+    addText('No items billed', 'CENTER', false);
+  }
+
+  addDashedLine();
+
+  const totalAmount = Number(bill.total_amount || 0);
+  const previousDue = Number(bill.previous_due || bill.shop_previous_due || 0);
+  const oldCreditPaid = Number(bill.old_credit_paid || 0);
+  const grandTotal = totalAmount + previousDue;
+
+  addTwoColumnRow('BILL TOTAL:', `Rs. ${totalAmount.toFixed(2)}`, true);
+
+  if (previousDue > 0) {
+    addTwoColumnRow('OLD CREDIT:', `Rs. ${previousDue.toFixed(2)}`, false);
+    if (oldCreditPaid > 0) {
+      addTwoColumnRow('OLD CREDIT PAID:', `Rs. ${oldCreditPaid.toFixed(2)}`, false);
+    }
+    addTwoColumnRow('NET GRAND TOTAL:', `Rs. ${grandTotal.toFixed(2)}`, true);
+  }
+
+  addDashedLine();
+
+  const paymentMode = (bill.payment_mode || 'CASH').toUpperCase();
+  const cashPaid = Number(bill.cash_paid || 0);
+  const gpayPaid = Number(bill.gpay_paid || 0);
+  const creditPaid = Number(bill.credit_paid || 0);
+  const shopBalance = Number(bill.shop_current_due !== undefined ? bill.shop_current_due : (bill.balance || 0));
+
+  addTwoColumnRow('PAYMENT MODE:', paymentMode, true);
+
+  if (paymentMode === 'SPLIT') {
+    if (cashPaid > 0) addTwoColumnRow('Cash Paid:', `Rs. ${cashPaid.toFixed(2)}`, false);
+    if (gpayPaid > 0) addTwoColumnRow('GPay / UPI Paid:', `Rs. ${gpayPaid.toFixed(2)}`, false);
+    if (creditPaid > 0) addTwoColumnRow('Credit on Bill:', `Rs. ${creditPaid.toFixed(2)}`, false);
+    addTwoColumnRow('Total Paid:', `Rs. ${(cashPaid + gpayPaid).toFixed(2)}`, true);
+  } else if (paymentMode === 'CASH') {
+    const received = cashPaid > 0 ? cashPaid : (totalAmount + oldCreditPaid);
+    addTwoColumnRow('Cash Received:', `Rs. ${received.toFixed(2)}`, false);
+  } else if (paymentMode === 'GPAY') {
+    const received = gpayPaid > 0 ? gpayPaid : (totalAmount + oldCreditPaid);
+    addTwoColumnRow('GPay Received:', `Rs. ${received.toFixed(2)}`, false);
+  } else if (paymentMode === 'CREDIT') {
+    addTwoColumnRow('Credit Amount:', `Rs. ${totalAmount.toFixed(2)}`, false);
+  }
+
+  addTwoColumnRow('SHOP BALANCE:', `Rs. ${shopBalance.toFixed(2)}`, true);
+  addDashedLine();
+
+  addText('Thank You! Visit Again', 'CENTER', true);
+  addText(companyName, 'CENTER', false);
+  addBytes(CMD_LINE_FEED);
+  addBytes(CMD_LINE_FEED);
+  addBytes(CMD_LINE_FEED);
+  addBytes(CMD_CUT);
+
+  return new Uint8Array(buffer);
+};
+
+/**
+ * Generates an ESC/POS 80mm/82mm High-Resolution Raster Bit-Image Buffer (576 dots width).
+ */
+export const generateEscPos80mmRasterBuffer = (bill) => {
+  const width = 576; // Standard 80mm/82mm width in dots (72 bytes)
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+
+  const items = bill.items || bill.sale?.items || [];
+  const baseHeight = 620 + (items.length * 36);
+  canvas.height = baseHeight;
+
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return generateEscPos80mmBuffer(bill);
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, width, canvas.height);
+  ctx.fillStyle = '#000000';
+
+  const fontTamilStack = '"Nirmala UI", "Latha", "Mukta Malar", "Noto Sans Tamil", "Tamil Sangam MN", sans-serif, monospace';
+  const fontMonoStack = '"Space Mono", "Courier New", monospace';
+
+  let y = 35;
+
+  // 1. Header
+  ctx.font = `bold 30px ${fontMonoStack}`;
+  ctx.textAlign = 'center';
+  const companyName = bill.company_name || 'AVS AGENCIES';
+  ctx.fillText(companyName, width / 2, y);
+
+  y += 26;
+  ctx.font = `16px ${fontTamilStack}`;
+  ctx.fillText('No 71, Mailam Road, Kooteripattu', width / 2, y);
+
+  y += 24;
+  const rawPhone = bill.company_phone || '9486334240';
+  const cleanPhone = rawPhone.replace(/\+91\s*/g, '').replace(/\s+/g, '').trim();
+  ctx.font = `bold 16px ${fontMonoStack}`;
+  ctx.fillText(`Ph: ${cleanPhone}`, width / 2, y);
+
+  y += 18;
+  ctx.strokeStyle = '#000000';
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(12, y);
+  ctx.lineTo(width - 12, y);
+  ctx.stroke();
+
+  // 2. Bill & Shop Metadata
+  y += 24;
+  ctx.textAlign = 'left';
+  ctx.font = `bold 16px ${fontMonoStack}`;
+  const rawBillNo = bill.bill_no || bill.sale?.bill_no || 'INV-000000';
+  const dateStr = formatReceiptDate(bill.sale_date || bill.date);
+  ctx.fillText(`Bill: ${rawBillNo}`, 12, y);
+  ctx.textAlign = 'right';
+  ctx.fillText(dateStr, width - 12, y);
+
+  y += 26;
+  ctx.textAlign = 'left';
+  ctx.font = `bold 19px ${fontTamilStack}`;
+  const shopName = bill.shop_name || bill.shop?.name || bill.customer_name || 'Customer';
+  ctx.fillText(`Shop: ${shopName}`, 12, y);
+
+  y += 24;
+  ctx.font = `15px ${fontMonoStack}`;
+  const shopCode = bill.shop_code || bill.shop?.code || 'SHP-001';
+  const timeStr = bill.sale_time || bill.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  ctx.fillText(`Code: ${shopCode}`, 12, y);
+  ctx.textAlign = 'right';
+  ctx.fillText(`Time: ${timeStr}`, width - 12, y);
+
+  y += 22;
+  ctx.textAlign = 'left';
+  const empName = bill.employee_name || bill.driver_name || 'Store Keeper';
+  const vehicleNo = bill.vehicle_no || bill.vehicle_number || '';
+  ctx.fillText(`Emp: ${empName}`, 12, y);
+  if (vehicleNo) {
+    ctx.textAlign = 'right';
+    ctx.fillText(`Veh: ${vehicleNo}`, width - 12, y);
+  }
+
+  y += 18;
+  ctx.beginPath();
+  ctx.moveTo(12, y);
+  ctx.lineTo(width - 12, y);
+  ctx.stroke();
+
+  // 3. Items Header
+  y += 22;
+  ctx.font = `bold 16px ${fontMonoStack}`;
+  ctx.textAlign = 'left';
+  ctx.fillText('ITEM', 12, y);
+  ctx.fillText('QTY', 270, y);
+  ctx.textAlign = 'right';
+  ctx.fillText('RATE', 420, y);
+  ctx.fillText('AMT', width - 12, y);
+
+  y += 12;
+  ctx.beginPath();
+  ctx.moveTo(12, y);
+  ctx.lineTo(width - 12, y);
+  ctx.stroke();
+
+  // 4. Items Rows
+  items.forEach((item) => {
+    y += 26;
+    const pName = String(item.product_name || 'Item').replace(/₹/g, '');
+    const qtyNum = Math.floor(Number(item.qty || 1));
+    const rateVal = Number(item.rate || 0).toFixed(2);
+    const amtVal = Number(item.amount || (qtyNum * Number(item.rate || 0))).toFixed(2);
+
+    ctx.textAlign = 'left';
+    ctx.font = `bold 16px ${fontTamilStack}`;
+    ctx.fillText(pName.substring(0, 24), 12, y);
+
+    ctx.font = `bold 16px ${fontMonoStack}`;
+    ctx.fillText(String(qtyNum), 275, y);
+
+    ctx.textAlign = 'right';
+    ctx.fillText(rateVal, 420, y);
+    ctx.fillText(amtVal, width - 12, y);
+  });
+
+  if (items.length === 0) {
+    y += 24;
+    ctx.textAlign = 'center';
+    ctx.font = `14px ${fontMonoStack}`;
+    ctx.fillText('No items in this bill', width / 2, y);
+  }
+
+  y += 16;
+  ctx.beginPath();
+  ctx.moveTo(12, y);
+  ctx.lineTo(width - 12, y);
+  ctx.stroke();
+
+  // 5. Totals
+  const totalAmount = Number(bill.total_amount || 0);
+  const previousDue = Number(bill.previous_due || bill.shop_previous_due || 0);
+  const oldCreditPaid = Number(bill.old_credit_paid || 0);
+  const grandTotal = totalAmount + previousDue;
+
+  y += 26;
+  ctx.textAlign = 'left';
+  ctx.font = `bold 19px ${fontMonoStack}`;
+  ctx.fillText('BILL TOTAL:', 12, y);
+  ctx.textAlign = 'right';
+  ctx.fillText(`Rs. ${totalAmount.toFixed(2)}`, width - 12, y);
+
+  if (previousDue > 0) {
+    y += 24;
+    ctx.textAlign = 'left';
+    ctx.font = `bold 15px ${fontTamilStack}`;
+    ctx.fillText('OLD CREDIT (பழைய கடன்):', 12, y);
+    ctx.textAlign = 'right';
+    ctx.font = `bold 15px ${fontMonoStack}`;
+    ctx.fillText(`Rs. ${previousDue.toFixed(2)}`, width - 12, y);
+
+    if (oldCreditPaid > 0) {
+      y += 22;
+      ctx.textAlign = 'left';
+      ctx.font = `bold 15px ${fontTamilStack}`;
+      ctx.fillText('PAID (செலுத்தியது):', 12, y);
+      ctx.textAlign = 'right';
+      ctx.font = `bold 15px ${fontMonoStack}`;
+      ctx.fillText(`Rs. ${oldCreditPaid.toFixed(2)}`, width - 12, y);
+    }
+
+    y += 24;
+    ctx.textAlign = 'left';
+    ctx.font = `bold 17px ${fontMonoStack}`;
+    ctx.fillText('NET GRAND TOTAL:', 12, y);
+    ctx.textAlign = 'right';
+    ctx.fillText(`Rs. ${grandTotal.toFixed(2)}`, width - 12, y);
+  }
+
+  y += 18;
+  ctx.beginPath();
+  ctx.moveTo(12, y);
+  ctx.lineTo(width - 12, y);
+  ctx.stroke();
+
+  // 6. Payment & Balance
+  const paymentMode = (bill.payment_mode || 'CASH').toUpperCase();
+  const shopBalance = Number(bill.shop_current_due !== undefined ? bill.shop_current_due : (bill.balance || 0));
+
+  y += 22;
+  ctx.textAlign = 'left';
+  ctx.font = `bold 15px ${fontMonoStack}`;
+  ctx.fillText('MODE:', 12, y);
+  ctx.textAlign = 'right';
+  ctx.fillText(paymentMode, width - 12, y);
+
+  y += 26;
+  ctx.textAlign = 'left';
+  ctx.font = `bold 18px ${fontTamilStack}`;
+  ctx.fillText('SHOP BALANCE (கடை பாக்கி):', 12, y);
+  ctx.textAlign = 'right';
+  ctx.font = `bold 19px ${fontMonoStack}`;
+  ctx.fillText(`Rs. ${shopBalance.toFixed(2)}`, width - 12, y);
+
+  y += 18;
+  ctx.beginPath();
+  ctx.moveTo(12, y);
+  ctx.lineTo(width - 12, y);
+  ctx.stroke();
+
+  // 7. Footer
+  y += 24;
+  ctx.textAlign = 'center';
+  ctx.font = `bold 15px ${fontMonoStack}`;
+  ctx.fillText('Thank You! Visit Again', width / 2, y);
+
+  y += 22;
+  ctx.font = `14px ${fontMonoStack}`;
+  ctx.fillText(companyName, width / 2, y);
+
+  const finalHeight = y + 45;
+
+  const imageData = ctx.getImageData(0, 0, width, finalHeight);
+  const data = imageData.data;
+  const widthBytes = Math.ceil(width / 8); // 72 bytes
+  const rasterData = [];
+
+  for (let row = 0; row < finalHeight; row++) {
+    for (let byteIdx = 0; byteIdx < widthBytes; byteIdx++) {
+      let byteVal = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const px = byteIdx * 8 + bit;
+        if (px < width) {
+          const idx = (row * width + px) * 4;
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          if (lum < 160) {
+            byteVal |= (1 << (7 - bit));
+          }
+        }
+      }
+      rasterData.push(byteVal);
+    }
+  }
+
+  const ESC = 0x1B;
+  const GS = 0x1D;
+  const xL = widthBytes % 256;
+  const xH = Math.floor(widthBytes / 256);
+  const yL = finalHeight % 256;
+  const yH = Math.floor(finalHeight / 256);
+
+  const escPosRasterBuffer = [
+    ESC, 0x40, // Initialize
+    ESC, 0x61, 1, // Align Center
+    GS, 0x76, 0x30, 0x00, xL, xH, yL, yH,
+    ...rasterData,
+    0x0A, 0x0A, 0x0A,
+    GS, 0x56, 66, 0 // Cut
+  ];
+
+  return new Uint8Array(escPosRasterBuffer);
+};
+
+/**
+ * Direct Web Bluetooth GATT Print implementation (Native Chrome Bluetooth Device Selector).
+ * Automatically caches the connected printer for instant one-click subsequent printing.
+ */
+export const printViaWebBluetooth = async (billData, widthMode = '58mm') => {
   if (!navigator.bluetooth) {
-    return printViaRawBT(billData);
+    return printViaRawBT(billData, widthMode);
   }
 
   // Use High-Resolution Raster Bit-Image Buffer to ensure 100% Tamil typography prints perfectly
   let escPosBytes;
   try {
-    escPosBytes = generateEscPos58mmRasterBuffer(billData);
+    escPosBytes = widthMode === '80mm'
+      ? generateEscPos80mmRasterBuffer(billData)
+      : generateEscPos58mmRasterBuffer(billData);
   } catch (err) {
     console.warn("Falling back to text ESC/POS buffer:", err);
-    escPosBytes = generateEscPos58mmBuffer(billData);
+    escPosBytes = widthMode === '80mm'
+      ? generateEscPos80mmBuffer(billData)
+      : generateEscPos58mmBuffer(billData);
   }
 
   let device = cachedDevice;
@@ -630,12 +1060,16 @@ export const printViaWebBluetooth = async (billData) => {
 /**
  * Fallback to RawBT URL scheme
  */
-export const printViaRawBT = (billData) => {
+export const printViaRawBT = (billData, widthMode = '58mm') => {
   let escPosBytes;
   try {
-    escPosBytes = generateEscPos58mmRasterBuffer(billData);
+    escPosBytes = widthMode === '80mm'
+      ? generateEscPos80mmRasterBuffer(billData)
+      : generateEscPos58mmRasterBuffer(billData);
   } catch (err) {
-    escPosBytes = generateEscPos58mmBuffer(billData);
+    escPosBytes = widthMode === '80mm'
+      ? generateEscPos80mmBuffer(billData)
+      : generateEscPos58mmBuffer(billData);
   }
 
   let binary = '';
@@ -649,12 +1083,12 @@ export const printViaRawBT = (billData) => {
 };
 
 /**
- * Universal 58mm Thermal Print Dispatcher
+ * Universal Thermal Print Dispatcher (Supports 58mm and 80mm/82mm)
  */
-export const printThermalReceipt = async (billData) => {
+export const printThermalReceipt = async (billData, widthMode = '58mm') => {
   if (!billData) {
     throw new Error('Receipt data is missing.');
   }
 
-  return await printViaWebBluetooth(billData);
+  return await printViaWebBluetooth(billData, widthMode);
 };

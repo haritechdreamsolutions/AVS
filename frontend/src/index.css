@@ -256,11 +256,36 @@ body {
     word-break: break-word !important;
   }
 
+  /* 80mm / 82mm (3-Inch) Thermal Receipt Print Styles - Storekeeper Desktop POS */
+  .printable-thermal-80mm, .printable-thermal-80mm * {
+    visibility: visible;
+  }
+
+  .printable-thermal-80mm {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm !important;
+    max-width: 82mm !important;
+    margin: 0 !important;
+    padding: 2mm 4mm !important;
+    box-sizing: border-box !important;
+    font-family: 'Space Mono', 'Nirmala UI', 'Latha', 'Mukta Malar', 'Noto Sans Tamil', 'Tamil Sangam MN', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace, sans-serif !important;
+    font-size: 11pt !important;
+    line-height: 1.35 !important;
+    color: black !important;
+    background: white !important;
+    border: none !important;
+    box-shadow: none !important;
+    word-break: break-word !important;
+  }
+
   /* Prevent text clipping in print for Tamil shop & item names */
   .printable-thermal-receipt .truncate,
   .printable-thermal .truncate,
   .thermal-receipt .truncate,
-  .printable-receipt .truncate {
+  .printable-receipt .truncate,
+  .printable-thermal-80mm .truncate {
     overflow: visible !important;
     text-overflow: clip !important;
     white-space: normal !important;

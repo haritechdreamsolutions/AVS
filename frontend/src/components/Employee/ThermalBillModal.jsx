@@ -4,9 +4,19 @@ import { Printer, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { printThermalReceipt } from '../../services/printerService';
 import { toast } from 'sonner';
 
-export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrintComplete }) => {
+export const ThermalBillModal = ({ 
+  bill: initialBillProp, 
+  sale, 
+  paperSize = '58mm', 
+  isStoreKeeper = false, 
+  onClose, 
+  onPrintComplete 
+}) => {
   const initialBill = initialBillProp || sale;
-  const { companyInfo, API_URL, apiFetch, shops } = useApp();
+  const { currentUser, companyInfo, API_URL, apiFetch, shops } = useApp();
+
+  // 80mm / 82mm 3-Inch Mode strictly for StoreKeeper login
+  const is80mm = paperSize === '80mm' || isStoreKeeper || currentUser?.role === 'STOREKEEPER' || currentUser?.designation?.toLowerCase().includes('store');
   const [bill, setBill] = useState(initialBill || {});
   const [items, setItems] = useState(initialBill?.items || []);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -108,7 +118,19 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
   };
 
   const rawBillNo = bill.bill_no || bill.sale?.bill_no || 'INV-000000';
-  const displayBillNo = rawBillNo.length > 12 ? (rawBillNo.substring(0, 9) + '...') : rawBillNo;
+  const displayBillNo = rawBillNo.length > 14 ? (rawBillNo.substring(0, 11) + '...') : rawBillNo;
+
+  const handleSystemPrint = () => {
+    window.print();
+    // Allow browser print dialog to trigger, then automatically redirect back to billing page
+    setTimeout(() => {
+      if (onPrintComplete) {
+        onPrintComplete();
+      } else if (onClose) {
+        onClose();
+      }
+    }, 500);
+  };
 
   const handleThermalPrint = async () => {
     if (isPrinting) return;
@@ -130,26 +152,28 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
         shop_current_due: totalShopDue
       };
 
-      toast.info("Connecting to EX58C Bluetooth Printer...");
-      await printThermalReceipt(receiptPayload);
+      toast.info(`Connecting to ${is80mm ? '80mm Thermal Printer' : 'EX58C Bluetooth Printer'}...`);
+      await printThermalReceipt(receiptPayload, is80mm ? '80mm' : '58mm');
 
       setPrintSuccess(true);
-      toast.success("Receipt printed successfully on EX58C!");
+      toast.success(is80mm ? "Receipt printed successfully on 80mm Printer!" : "Receipt printed successfully on EX58C!");
 
-      // Allow 1.2s for user feedback then close modal and return to POS dashboard
+      // Automatically close modal and return to POS billing page
       setTimeout(() => {
         if (onPrintComplete) {
           onPrintComplete();
-        } else {
+        } else if (onClose) {
           onClose();
         }
-      }, 1200);
+      }, 700);
     } catch (err) {
       console.error("Thermal Print Error:", err);
       if (err.name === 'NotFoundError' || err.message?.includes('User cancelled')) {
-        setErrorMessage("Printer selection cancelled. Please select your EX58C printer to print.");
+        setErrorMessage("Printer selection cancelled. Please select your printer to print.");
       } else {
-        const userMsg = err.message || "EX58C printer not connected. Please turn on Bluetooth & printer and retry.";
+        const userMsg = err.message || (is80mm 
+          ? "Thermal printer not connected. Please turn on Bluetooth & printer, or use System Print." 
+          : "EX58C printer not connected. Please turn on Bluetooth & printer and retry.");
         setErrorMessage(userMsg);
         toast.error(userMsg);
       }
@@ -160,14 +184,21 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white border border-slate-200 rounded-3xl max-w-sm sm:max-w-md w-full p-3.5 sm:p-5 space-y-3 sm:space-y-4 shadow-2xl my-auto max-h-[96dvh] flex flex-col overflow-hidden">
+      <div className={`bg-white border border-slate-200 rounded-3xl ${is80mm ? 'max-w-lg sm:max-w-xl' : 'max-w-sm sm:max-w-md'} w-full p-3.5 sm:p-5 space-y-3 sm:space-y-4 shadow-2xl my-auto max-h-[96dvh] flex flex-col overflow-hidden`}>
         
         {/* Header (Screen only) */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 sm:pb-3 no-print shrink-0">
-          <h3 className="font-extrabold text-xs sm:text-sm text-slate-900 flex items-center gap-2">
-            <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
-            58mm Thermal Bill Receipt
-          </h3>
+          <div className="flex items-center gap-2">
+            <Printer className="w-5 h-5 text-blue-600" />
+            <h3 className="font-extrabold text-xs sm:text-sm text-slate-900">
+              {is80mm ? '80mm / 82mm (3-Inch) Thermal Bill Receipt' : '58mm Thermal Bill Receipt'}
+            </h3>
+            {is80mm && (
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full border border-emerald-300">
+                Storekeeper 3" POS
+              </span>
+            )}
+          </div>
           <button 
             onClick={onClose} 
             disabled={isPrinting}
@@ -188,34 +219,40 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
           </div>
         )}
 
-        {/* 58mm Thermal Bill Scrollable Container */}
-        <div className="printable-thermal-receipt printable-thermal bg-white p-3 sm:p-4 font-mono text-[10.5px] sm:text-[11px] border border-slate-300 rounded-2xl space-y-2 sm:space-y-2.5 text-slate-900 leading-tight overflow-y-auto flex-1">
+        {/* Thermal Bill Scrollable Container (58mm or 80mm/82mm) */}
+        <div className={`${is80mm ? 'printable-thermal-80mm text-xs sm:text-[13px] max-w-[440px] p-4 sm:p-5' : 'printable-thermal-receipt printable-thermal text-[10.5px] sm:text-[11px] p-3 sm:p-4'} bg-white font-mono border border-slate-300 rounded-2xl space-y-2 sm:space-y-2.5 text-slate-900 leading-tight overflow-y-auto flex-1 w-full mx-auto`}>
           
           {/* Header */}
           <div className="text-center space-y-1.5 border-b border-dashed border-slate-400 pb-2.5 pt-1">
-            <h2 className="font-black text-2xl sm:text-3xl uppercase tracking-normal text-slate-950 font-mono scale-y-110 mb-2">{companyName}</h2>
-            <div className="space-y-0.5 text-[10.5px] sm:text-[11px] text-slate-800 font-bold">
-              <p>No 71, Mailam Road, Kooteripattu</p>
-              <p className="text-[11px] sm:text-xs text-slate-950 font-black tracking-normal">Ph: {companyPhone}</p>
+            <h2 className={`font-black ${is80mm ? 'text-3xl sm:text-4xl' : 'text-2xl sm:text-3xl'} uppercase tracking-normal text-slate-950 font-mono scale-y-110 mb-2`}>
+              {companyName}
+            </h2>
+            <div className={`space-y-0.5 ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10.5px] sm:text-[11px]'} text-slate-800 font-bold`}>
+              <p>{companyAddress}</p>
+              <p className={`${is80mm ? 'text-xs sm:text-sm' : 'text-[11px] sm:text-xs'} text-slate-950 font-black tracking-normal`}>
+                Ph: {companyPhone}
+              </p>
             </div>
           </div>
 
-            {/* Bill Meta */}
-            <div className="border-b border-dashed border-slate-400 pb-2 space-y-1 text-[10px] sm:text-[10.5px]">
-              <div className="flex justify-between font-extrabold">
-                <span>Bill: <strong className="text-blue-700 font-black">{displayBillNo}</strong></span>
-                <span>{formattedDate()}</span>
-              </div>
-              <div className="flex justify-between items-start font-bold">
-                <span className="break-words leading-tight pr-1">Shop: <strong className="text-slate-950 font-black">{bill.shop_name || bill.shop?.name || bill.customer_name || matchedShop?.name || 'Customer'}</strong></span>
-                <span className="shrink-0 font-mono text-[10px]">{bill.sale_time || ''}</span>
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-600 font-bold">
-                <span>Code: <strong>{bill.shop_code || 'SHP-001'}</strong></span>
-                <span>Emp: <strong>{bill.employee_name || 'Driver'}</strong></span>
-              </div>
+          {/* Bill Meta */}
+          <div className={`border-b border-dashed border-slate-400 pb-2 space-y-1.5 ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10px] sm:text-[10.5px]'}`}>
+            <div className="flex justify-between font-extrabold">
+              <span>Bill: <strong className="text-blue-700 font-black">{is80mm ? rawBillNo : displayBillNo}</strong></span>
+              <span>{formattedDate()}</span>
+            </div>
+            <div className="flex justify-between items-start font-bold">
+              <span className="break-words leading-tight pr-1">
+                Shop: <strong className="text-slate-950 font-black">{bill.shop_name || bill.shop?.name || bill.customer_name || matchedShop?.name || 'Customer'}</strong>
+              </span>
+              <span className="shrink-0 font-mono text-[11px]">{bill.sale_time || ''}</span>
+            </div>
+            <div className={`flex justify-between ${is80mm ? 'text-xs' : 'text-[10px]'} text-slate-600 font-bold`}>
+              <span>Code: <strong>{bill.shop_code || 'SHP-001'}</strong></span>
+              <span>Emp: <strong>{bill.employee_name || (is80mm ? 'Store Keeper POS' : 'Driver')}</strong></span>
+            </div>
             {bill.vehicle_no && (
-              <div className="text-[10px] text-slate-500 font-bold">
+              <div className={`${is80mm ? 'text-xs' : 'text-[10px]'} text-slate-500 font-bold`}>
                 <span>Veh: <strong>{bill.vehicle_no}</strong></span>
               </div>
             )}
@@ -223,7 +260,7 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
 
           {/* Items Table */}
           <div className="space-y-1">
-            <div className="flex justify-between font-black border-b border-slate-400 pb-1 text-[10px] uppercase text-slate-800">
+            <div className={`flex justify-between font-black border-b border-slate-400 pb-1.5 ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10px]'} uppercase text-slate-800`}>
               <span className="w-5/12 text-left">ITEM</span>
               <span className="w-2/12 text-center">QTY</span>
               <span className="w-2/12 text-right">RATE</span>
@@ -232,7 +269,7 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
 
             <div className="divide-y divide-slate-200">
               {items.length === 0 ? (
-                <div className="py-2 text-center text-slate-400 text-[10px]">No items in this bill</div>
+                <div className={`py-2 text-center text-slate-400 ${is80mm ? 'text-xs' : 'text-[10px]'}`}>No items in this bill</div>
               ) : (
                 items.map((item, idx) => {
                   const qty = Math.floor(Number(item.qty || 1));
@@ -240,7 +277,7 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
                   const amount = Number(item.amount || (qty * rate));
 
                   return (
-                    <div key={idx} className="py-1 flex justify-between items-start text-[10px]">
+                    <div key={idx} className={`py-1.5 flex justify-between items-start ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10px]'}`}>
                       <span className="w-5/12 text-left pr-1 font-bold text-slate-900 leading-snug break-words">
                         {item.product_name}
                       </span>
@@ -261,24 +298,24 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
           </div>
 
           {/* Totals Section */}
-          <div className="border-t border-b border-dashed border-slate-400 py-1.5 space-y-1">
-            <div className="flex justify-between font-black text-xs sm:text-sm pt-0.5 text-slate-900">
+          <div className="border-t border-b border-dashed border-slate-400 py-2 space-y-1.5">
+            <div className={`flex justify-between font-black ${is80mm ? 'text-base sm:text-lg' : 'text-xs sm:text-sm'} pt-0.5 text-slate-900`}>
               <span>BILL TOTAL:</span>
               <span className="text-emerald-700">₹{totalAmount.toFixed(2)}</span>
             </div>
             {previousDue > 0 && (
               <>
-                <div className="flex justify-between font-bold text-[10px] text-amber-700 pt-0.5">
+                <div className={`flex justify-between font-bold ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10px]'} text-amber-700 pt-0.5`}>
                   <span>OLD CREDIT (பழைய கடன்):</span>
                   <span className="font-mono">₹{previousDue.toFixed(2)}</span>
                 </div>
                 {oldCreditPaid > 0 && (
-                  <div className="flex justify-between font-bold text-[10px] text-emerald-700 pt-0.5">
+                  <div className={`flex justify-between font-bold ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10px]'} text-emerald-700 pt-0.5`}>
                     <span>OLD CREDIT PAID (செலுத்தியது):</span>
                     <span className="font-mono">₹{oldCreditPaid.toFixed(2)}</span>
                   </div>
                 )}
-                <div className="flex justify-between font-black text-xs sm:text-sm text-slate-950 pt-0.5 border-t border-slate-300">
+                <div className={`flex justify-between font-black ${is80mm ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'} text-slate-950 pt-0.5 border-t border-slate-300`}>
                   <span>NET GRAND TOTAL:</span>
                   <span className="font-mono text-purple-700">
                     ₹{grandTotal.toFixed(2)}
@@ -289,7 +326,7 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
           </div>
 
           {/* Payment Section */}
-          <div className="space-y-1 text-[10px]">
+          <div className={`space-y-1.5 ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10px]'}`}>
             <div className="flex justify-between font-extrabold text-purple-800">
               <span>MODE:</span>
               <span>{paymentMode}</span>
@@ -338,32 +375,32 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
             )}
 
             {/* Total Shop Due Balance */}
-            <div className="flex justify-between items-center font-black text-xs sm:text-sm pt-1.5 pb-1 px-1 border-t-2 border-dashed border-slate-400">
+            <div className={`flex justify-between items-center font-black ${is80mm ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'} pt-2 pb-1.5 px-1 border-t-2 border-dashed border-slate-400`}>
               <span className={totalShopDue > 0 ? 'text-amber-900 font-black' : 'text-emerald-800 font-black'}>
                 SHOP BALANCE (கடை பாக்கி):
               </span>
-              <span className={`font-mono text-sm sm:text-base font-black ${totalShopDue > 0 ? 'text-amber-900' : 'text-emerald-800'}`}>
+              <span className={`font-mono ${is80mm ? 'text-base sm:text-lg' : 'text-sm sm:text-base'} font-black ${totalShopDue > 0 ? 'text-amber-900' : 'text-emerald-800'}`}>
                 ₹{totalShopDue.toFixed(2)}
               </span>
             </div>
           </div>
 
           {/* Footer */}
-          <div className="text-center border-t border-dashed border-slate-400 pt-1.5 space-y-0.5">
-            <p className="font-bold text-[10px]">Thank You! Visit Again</p>
-            <p className="text-[9px] text-slate-500 uppercase tracking-wider font-extrabold">{companyName}</p>
+          <div className="text-center border-t border-dashed border-slate-400 pt-2 space-y-0.5">
+            <p className={`font-bold ${is80mm ? 'text-xs' : 'text-[10px]'}`}>Thank You! Visit Again</p>
+            <p className={`text-slate-500 uppercase tracking-wider font-extrabold ${is80mm ? 'text-[11px]' : 'text-[9px]'}`}>{companyName}</p>
           </div>
 
         </div>
 
         {/* Print & Close Actions */}
         <div className="space-y-2 no-print shrink-0 pt-1">
-          {/* PRIMARY BLUETOOTH DIRECT PRINT BUTTON */}
+          {/* PRIMARY PRINT BUTTON (Auto-Prints & Redirects to Billing Page) */}
           <button
             type="button"
-            onClick={handleThermalPrint}
+            onClick={is80mm ? handleSystemPrint : handleThermalPrint}
             disabled={isPrinting}
-            className={`w-full text-xs sm:text-sm font-black rounded-2xl py-3 flex items-center justify-center gap-2 shadow-md min-h-[44px] cursor-pointer transition active:scale-[0.98] ${
+            className={`w-full text-xs sm:text-sm font-black rounded-2xl py-3.5 flex items-center justify-center gap-2 shadow-md min-h-[46px] cursor-pointer transition active:scale-[0.98] ${
               printSuccess
                 ? 'bg-emerald-600 text-white'
                 : isPrinting
@@ -375,39 +412,56 @@ export const ThermalBillModal = ({ bill: initialBillProp, sale, onClose, onPrint
           >
             {isPrinting ? (
               <>
-                <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin text-white" />
-                <span>⏳ PRINTING... (அச்சிடப்படுகிறது...)</span>
+                <Loader2 className="w-5 h-5 animate-spin text-white" />
+                <span>⏳ PRINTING & REDIRECTING...</span>
               </>
             ) : printSuccess ? (
               <>
-                <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                <span>✓ PRINTED (அச்சிடப்பட்டது)</span>
+                <CheckCircle2 className="w-5 h-5 text-white" />
+                <span>✓ PRINTED! REDIRECTING TO BILL PAGE...</span>
               </>
             ) : errorMessage ? (
               <>
-                <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                <Printer className="w-5 h-5 text-white" />
                 <span>⚠️ RETRY PRINT BILL (மீண்டும் அச்சிடு)</span>
               </>
             ) : (
               <>
-                <Printer className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-                <span>🖨️ PRINT BILL (EX58C Bluetooth)</span>
+                <Printer className="w-5 h-5 text-white" />
+                <span>
+                  {is80mm 
+                    ? '🖨️ PRINT BILL (80mm / 3-Inch POS & Return)' 
+                    : '🖨️ PRINT BILL (EX58C Bluetooth)'}
+                </span>
               </>
             )}
           </button>
 
           <div className="flex gap-2">
-            {/* BROWSER / SYSTEM PRINT BUTTON */}
-            <button
-              type="button"
-              onClick={() => window.print()}
-              disabled={isPrinting}
-              className="flex-1 text-xs font-black bg-sky-50 hover:bg-sky-100 text-sky-900 rounded-xl py-2.5 flex items-center justify-center gap-1.5 border border-sky-300 min-h-[38px] cursor-pointer transition active:scale-[0.98]"
-              title="Print via System Print Dialog"
-            >
-              <Printer className="w-3.5 h-3.5 text-sky-700" />
-              <span>System Print (Ctrl+P)</span>
-            </button>
+            {/* SECONDARY ACTION */}
+            {is80mm ? (
+              <button
+                type="button"
+                onClick={handleThermalPrint}
+                disabled={isPrinting}
+                className="flex-1 text-xs font-black bg-indigo-50 hover:bg-indigo-100 text-indigo-900 rounded-xl py-2.5 flex items-center justify-center gap-1.5 border border-indigo-300 min-h-[38px] cursor-pointer transition active:scale-[0.98]"
+                title="Print via Bluetooth ESC/POS 80mm"
+              >
+                <Printer className="w-3.5 h-3.5 text-indigo-700" />
+                <span>Bluetooth Print (80mm)</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSystemPrint}
+                disabled={isPrinting}
+                className="flex-1 text-xs font-black bg-sky-50 hover:bg-sky-100 text-sky-900 rounded-xl py-2.5 flex items-center justify-center gap-1.5 border border-sky-300 min-h-[38px] cursor-pointer transition active:scale-[0.98]"
+                title="Print via System Print Dialog"
+              >
+                <Printer className="w-3.5 h-3.5 text-sky-700" />
+                <span>System Print (Ctrl+P)</span>
+              </button>
+            )}
 
             {/* CLOSE BUTTON */}
             <button

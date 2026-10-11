@@ -24,6 +24,7 @@ export const KeeperDashboard = () => {
   const { products = [], summary, employees, stockMovements } = useApp();
   const [activeModal, setActiveModal] = useState(null); // SETTLEMENT, RECEIVE, ALLOCATE, RETURN_DRIVER, ADD_SHOP, DIRECT_SALE, SHOP_BILL, USER_BALANCE, ADJUST_STOCK, SALES_HISTORY
   const [completedBill, setCompletedBill] = useState(null);
+  const [lastBillingModal, setLastBillingModal] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
 
@@ -443,26 +444,50 @@ export const KeeperDashboard = () => {
       {/* Modals */}
       {activeModal === 'SHOP_BILL' && (
         <StoreShopBillingModal
-          onClose={() => setActiveModal(null)}
-          onBillGenerated={(sale) => setCompletedBill(sale)}
+          onClose={() => {
+            setActiveModal(null);
+            setLastBillingModal(null);
+          }}
+          onBillGenerated={(sale) => {
+            setLastBillingModal('SHOP_BILL');
+            setCompletedBill(sale);
+          }}
         />
       )}
       {activeModal === 'DIRECT_SALE' && (
         <StoreDirectBillingModal 
-          onClose={() => setActiveModal(null)}
-          onBillGenerated={(sale) => setCompletedBill(sale)}
+          onClose={() => {
+            setActiveModal(null);
+            setLastBillingModal(null);
+          }}
+          onBillGenerated={(sale) => {
+            setLastBillingModal('DIRECT_SALE');
+            setCompletedBill(sale);
+          }}
         />
       )}
       {completedBill && (
         <ThermalBillModal
           bill={completedBill}
+          paperSize="80mm"
+          isStoreKeeper={true}
           onClose={() => {
+            const redirectBack = lastBillingModal;
             setCompletedBill(null);
-            setActiveModal(null);
+            if (redirectBack) {
+              setActiveModal(redirectBack);
+            } else {
+              setActiveModal(null);
+            }
           }}
           onPrintComplete={() => {
+            const redirectBack = lastBillingModal;
             setCompletedBill(null);
-            setActiveModal(null);
+            if (redirectBack) {
+              setActiveModal(redirectBack);
+            } else {
+              setActiveModal(null);
+            }
           }}
         />
       )}
