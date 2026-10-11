@@ -569,7 +569,7 @@ export const generateEscPos80mmBuffer = (bill) => {
   addDashedLine();
 
   const rawBillNo = bill.bill_no || bill.sale?.bill_no || 'INV-000000';
-  const billNo = rawBillNo.length > 35 ? rawBillNo.substring(0, 35) : rawBillNo;
+  const billNo = rawBillNo.length > 20 ? (rawBillNo.substring(0, 18) + '..') : rawBillNo;
   const dateStr = formatReceiptDate(bill.sale_date || bill.date);
   const timeStr = bill.sale_time || bill.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   const shopName = bill.shop_name || bill.shop?.name || bill.customer_name || 'Customer';
@@ -577,9 +577,13 @@ export const generateEscPos80mmBuffer = (bill) => {
   const empName = bill.employee_name || bill.driver_name || 'Store Keeper';
   const vehicleNo = bill.vehicle_no || bill.vehicle_number || '';
 
-  addText(`Bill: ${billNo}`, 'LEFT', true);
-  addTwoColumnRow(`Date: ${dateStr}`, `Time: ${timeStr}`, false);
-  addText(`Shop: ${shopName}`, 'LEFT', true);
+  // Strict 3-Row Metadata Layout
+  // Row 1: Bill (Left, half width) + Date (Right)
+  addTwoColumnRow(`Bill: ${billNo}`, `Date: ${dateStr}`, true);
+  // Row 2: Shop (Left) + Time (Right)
+  const trimmedShop = shopName.length > 22 ? (shopName.substring(0, 20) + '..') : shopName;
+  addTwoColumnRow(`Shop: ${trimmedShop}`, `Time: ${timeStr}`, true);
+  // Row 3: Code (Left) + Emp (Right)
   addTwoColumnRow(`Code: ${shopCode}`, `Emp: ${empName}`, false);
   if (vehicleNo) {
     addText(`Veh: ${vehicleNo}`, 'RIGHT', false);
@@ -708,12 +712,9 @@ export const generateEscPos80mmRasterBuffer = (bill) => {
   ctx.lineTo(width - 12, y);
   ctx.stroke();
 
-  // 2. Bill & Shop Metadata
-  y += 24;
-  ctx.textAlign = 'left';
-  ctx.font = `bold 16px ${fontMonoStack}`;
+  // 2. Bill & Shop Metadata (Strict 3-Row Layout)
   const rawBillNo = bill.bill_no || bill.sale?.bill_no || 'INV-000000';
-  const displayBillNo = rawBillNo.length > 35 ? rawBillNo.substring(0, 35) : rawBillNo;
+  const displayBillNo = rawBillNo.length > 20 ? (rawBillNo.substring(0, 18) + '..') : rawBillNo;
   const dateStr = formatReceiptDate(bill.sale_date || bill.date);
   const timeStr = bill.sale_time || bill.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   const shopName = bill.shop_name || bill.shop?.name || bill.customer_name || 'Customer';
@@ -721,23 +722,26 @@ export const generateEscPos80mmRasterBuffer = (bill) => {
   const empName = bill.employee_name || bill.driver_name || 'Store Keeper';
   const vehicleNo = bill.vehicle_no || bill.vehicle_number || '';
 
-  // Row 1: Bill Number on its own line
+  // Row 1: Bill Number (Left, half width) + Date (Right)
+  y += 24;
+  ctx.textAlign = 'left';
+  ctx.font = `bold 16px ${fontMonoStack}`;
   ctx.fillText(`Bill: ${displayBillNo}`, 12, y);
-
-  // Row 2: Date & Time in ONE row
-  y += 22;
-  ctx.fillText(`Date: ${dateStr}`, 12, y);
   ctx.textAlign = 'right';
-  ctx.fillText(`Time: ${timeStr}`, width - 12, y);
+  ctx.fillText(`Date: ${dateStr}`, width - 12, y);
 
-  // Row 3: Shop Name
+  // Row 2: Shop Name (Left) + Time (Right)
   y += 26;
   ctx.textAlign = 'left';
-  ctx.font = `bold 19px ${fontTamilStack}`;
-  ctx.fillText(`Shop: ${shopName}`, 12, y);
+  ctx.font = `bold 18px ${fontTamilStack}`;
+  ctx.fillText(`Shop: ${shopName.substring(0, 20)}`, 12, y);
+  ctx.textAlign = 'right';
+  ctx.font = `bold 15px ${fontMonoStack}`;
+  ctx.fillText(`Time: ${timeStr}`, width - 12, y);
 
-  // Row 4: Code & Emp
+  // Row 3: Code (Left) + Emp Name (Right)
   y += 24;
+  ctx.textAlign = 'left';
   ctx.font = `15px ${fontMonoStack}`;
   ctx.fillText(`Code: ${shopCode}`, 12, y);
   ctx.textAlign = 'right';
