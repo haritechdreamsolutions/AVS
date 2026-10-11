@@ -2162,8 +2162,8 @@ export async function createSale(cid, d, actorUserId) {
     }
 
     const billNo = clientRef || ('INV-' + Date.now().toString().slice(-6));
-    const today = new Date().toISOString().split('T')[0];
-    const nowTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+    const nowTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
 
     let sR;
     try {
@@ -2246,7 +2246,9 @@ export async function getSales(cid, filters) {
   let sql = `
     SELECT s.*, 
       s.sale_date::text as sale_date,
-      COALESCE(s.sale_date::text, to_char(s.created_at, 'YYYY-MM-DD')) as date,
+      COALESCE(s.sale_date::text, to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD')) as date,
+      COALESCE(s.sale_time, to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'HH12:MI AM')) as time,
+      CASE WHEN s.employee_id IS NULL OR LOWER(COALESCE(s.employee_name, '')) LIKE '%store%' THEN TRUE ELSE FALSE END as is_store_direct_sale,
       COALESCE((
         SELECT json_agg(json_build_object(
           'id', si.id,
@@ -2274,9 +2276,19 @@ export async function getSales(cid, filters) {
   let idx = 2;
   if (filters.employee_id) { sql += ' AND s.employee_id=$' + idx++; params.push(filters.employee_id); }
   if (filters.shop_id) { sql += ' AND s.shop_id=$' + idx++; params.push(filters.shop_id); }
-  if (filters.date) { sql += ' AND s.sale_date=$' + idx++; params.push(filters.date); }
-  if (filters.start_date || filters.from) { sql += ' AND s.sale_date >= $' + idx++; params.push(filters.start_date || filters.from); }
-  if (filters.end_date || filters.to) { sql += ' AND s.sale_date <= $' + idx++; params.push(filters.end_date || filters.to); }
+  if (filters.date) {
+    sql += ` AND (s.sale_date = $${idx} OR (s.created_at AT TIME ZONE 'Asia/Kolkata')::date = $${idx})`;
+    params.push(filters.date);
+    idx++;
+  }
+  if (filters.start_date || filters.from) {
+    sql += ` AND COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) >= $${idx++}`;
+    params.push(filters.start_date || filters.from);
+  }
+  if (filters.end_date || filters.to) {
+    sql += ` AND COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) <= $${idx++}`;
+    params.push(filters.end_date || filters.to);
+  }
   if (filters.payment_mode && filters.payment_mode !== 'ALL') { sql += ' AND UPPER(s.payment_mode) = $' + idx++; params.push(filters.payment_mode.toUpperCase()); }
   if (filters.search && filters.search.trim()) {
     const q = `%${filters.search.trim()}%`;
@@ -2284,7 +2296,7 @@ export async function getSales(cid, filters) {
     params.push(q);
     idx++;
   }
-  sql += ' ORDER BY s.sale_date DESC, s.created_at DESC LIMIT 500';
+  sql += ' ORDER BY COALESCE(s.sale_date, (s.created_at AT TIME ZONE \'Asia/Kolkata\')::date) DESC, s.created_at DESC LIMIT 500';
   return await queryAll(sql, params);
 }
 
@@ -3641,8 +3653,7 @@ export async function getEmployeeStock(cid,eid) {
 
 function parseDateFilters(filters = {}, defaultCol = 'sale_date') {
   const period = (filters.period || filters.range || 'ALL').toUpperCase();
-  const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
   let start = filters.start_date || filters.from || null;
   let end = filters.end_date || filters.to || null;
 
@@ -3650,22 +3661,23 @@ function parseDateFilters(filters = {}, defaultCol = 'sale_date') {
     start = todayStr;
     end = todayStr;
   } else if (period === 'YESTERDAY') {
-    const y = new Date(now);
-    y.setDate(y.getDate() - 1);
-    start = y.toISOString().split('T')[0];
+    const now = new Date();
+    const y = new Date(now.getTime() - 86400000);
+    start = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(y);
     end = start;
   } else if (period === 'THIS_WEEK' || period === 'WEEK') {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 7);
-    start = d.toISOString().split('T')[0];
+    const now = new Date();
+    const d = new Date(now.getTime() - 7 * 86400000);
+    start = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
     end = todayStr;
   } else if (period === 'THIS_MONTH' || period === 'MONTH') {
-    const d = new Date(now.getFullYear(), now.getMonth(), 1);
-    start = d.toISOString().split('T')[0];
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now).split('-');
+    start = `${parts[0]}-${parts[1]}-01`;
     end = todayStr;
   }
 
-  return { start, end, period };
+  return { start, end, period, todayStr };
 }
 
 export async function getDashboardSummary(cid) {
@@ -3673,7 +3685,7 @@ export async function getDashboardSummary(cid) {
 }
 
 export async function getOwnerExecutiveDashboard(cid, filters = {}) {
-  const { start, end, period } = parseDateFilters(filters, 'sale_date');
+  const { start, end, period, todayStr } = parseDateFilters(filters, 'sale_date');
 
   let salesDateCond = '';
   let expDateCond = '';
@@ -3681,15 +3693,15 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
   let retDateCond = '';
 
   if (start && end) {
-    salesDateCond = ` AND (s.sale_date >= '${start}' AND s.sale_date <= '${end}')`;
-    expDateCond = ` AND (e.created_at::date >= '${start}' AND e.created_at::date <= '${end}')`;
-    dmgDateCond = ` AND (d.created_at::date >= '${start}' AND d.created_at::date <= '${end}')`;
-    retDateCond = ` AND (dr.created_at::date >= '${start}' AND dr.created_at::date <= '${end}')`;
+    salesDateCond = ` AND (COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) >= '${start}' AND COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) <= '${end}')`;
+    expDateCond = ` AND ((e.created_at AT TIME ZONE 'Asia/Kolkata')::date >= '${start}' AND (e.created_at AT TIME ZONE 'Asia/Kolkata')::date <= '${end}')`;
+    dmgDateCond = ` AND ((d.created_at AT TIME ZONE 'Asia/Kolkata')::date >= '${start}' AND (d.created_at AT TIME ZONE 'Asia/Kolkata')::date <= '${end}')`;
+    retDateCond = ` AND ((dr.created_at AT TIME ZONE 'Asia/Kolkata')::date >= '${start}' AND (dr.created_at AT TIME ZONE 'Asia/Kolkata')::date <= '${end}')`;
   } else if (start) {
-    salesDateCond = ` AND s.sale_date >= '${start}'`;
-    expDateCond = ` AND e.created_at::date >= '${start}'`;
-    dmgDateCond = ` AND d.created_at::date >= '${start}'`;
-    retDateCond = ` AND dr.created_at::date >= '${start}'`;
+    salesDateCond = ` AND COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) >= '${start}'`;
+    expDateCond = ` AND (e.created_at AT TIME ZONE 'Asia/Kolkata')::date >= '${start}'`;
+    dmgDateCond = ` AND (d.created_at AT TIME ZONE 'Asia/Kolkata')::date >= '${start}'`;
+    retDateCond = ` AND (dr.created_at AT TIME ZONE 'Asia/Kolkata')::date >= '${start}'`;
   }
 
   // 1. Sales & Multi-Payment Breakdown (0 Double Counting)
@@ -3807,7 +3819,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
         COALESCE(SUM(s.credit_paid), 0)::numeric(12,2) AS credit
       FROM last_7_days d
       LEFT JOIN sales s ON s.company_id = $1 
-        AND s.sale_date = d.d 
+        AND COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) = d.d 
         AND (s.status IS NULL OR s.status = 'ACTIVE' OR s.status != 'CANCELLED')
       GROUP BY d.d
       ORDER BY d.d ASC
@@ -3869,7 +3881,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
       JOIN sales s ON s.id = si.sale_id
       JOIN products p ON p.id = si.product_id
       WHERE s.company_id = $1 
-        AND s.sale_date = CURRENT_DATE
+        AND COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) = '${start || todayStr}'
         AND (s.status IS NULL OR s.status = 'ACTIVE' OR s.status != 'CANCELLED')
       GROUP BY p.id, p.display_name, p.name, p.icon, p.selling_unit
       ORDER BY total_amount DESC

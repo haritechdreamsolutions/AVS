@@ -5,7 +5,7 @@ import {
   TrendingUp, Printer, RefreshCw, Eye, ShoppingBag, 
   DollarSign, Smartphone, CreditCard, ArrowRightLeft, UserCheck, 
   Truck, Store, Snowflake, Sparkles, CheckCircle2, Clock, X, Download, FileText,
-  AlertTriangle, Trash2
+  AlertTriangle, Trash2, ArrowRight
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateOwnerExecutivePDFReport } from '../../utils/pdfReportGenerator';
@@ -147,15 +147,15 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
     cost_data_incomplete: false
   };
 
-  // Filter last 6 live sales for ticker
+  // Filter last 9 live sales for ticker
   const recentLiveSales = useMemo(() => {
     return (sales || []).filter(sale => {
       if (!sale) return false;
-      const isStore = sale.is_store_direct_sale || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'));
+      const isStore = sale.is_store_direct_sale === true || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store')) || (!sale.employee_id && (sale.shop_name === 'AVS AGENCIES' || !sale.shop_id));
       if (filterSellerType === 'STORE') return isStore;
       if (filterSellerType === 'DRIVER') return !isStore;
       return true;
-    }).slice(0, 6);
+    }).slice(0, 9);
   }, [sales, filterSellerType]);
 
   const renderPaymentBadge = (mode) => {
@@ -446,60 +446,81 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
           </div>
         </div>
 
-        {/* Live Sales Feed Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-          {recentLiveSales.map(sale => {
-            const isStoreKeeper = sale.is_store_direct_sale || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'));
+        {/* Live Sales Feed Grid or Empty State */}
+        {recentLiveSales.length === 0 ? (
+          <div className="p-8 text-center bg-white/70 rounded-2xl border border-dashed border-sky-300 space-y-2">
+            <ShoppingBag className="w-10 h-10 text-sky-400 mx-auto" />
+            <h4 className="font-extrabold text-sm text-[#002244]">No bills recorded yet for this view</h4>
+            <p className="text-xs text-slate-500 font-medium">
+              Bills created by delivery drivers or store counter will instantly appear here in real time.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {recentLiveSales.map(sale => {
+              const isStoreKeeper = sale.is_store_direct_sale === true || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store')) || (!sale.employee_id && (sale.shop_name === 'AVS AGENCIES' || !sale.shop_id));
 
-            return (
-              <div 
-                key={sale.bill_no || sale.id} 
-                className="bg-white/85 hover:bg-white p-4 rounded-2xl border border-sky-200 hover:border-sky-400 shadow-2xs hover:shadow-md transition-all duration-300 flex flex-col justify-between"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono font-black text-[0.95rem] text-[#002244]">{sale.bill_no}</span>
-                    {renderPaymentBadge(sale.payment_mode)}
+              return (
+                <div 
+                  key={sale.bill_no || sale.id} 
+                  className="bg-white/85 hover:bg-white p-4 rounded-2xl border border-sky-200 hover:border-sky-400 shadow-2xs hover:shadow-md transition-all duration-300 flex flex-col justify-between"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-black text-[0.95rem] text-[#002244]">{sale.bill_no}</span>
+                      {renderPaymentBadge(sale.payment_mode)}
+                    </div>
+
+                    {/* Seller Badge */}
+                    <div>
+                      {isStoreKeeper ? (
+                        <span className="px-2.5 py-0.5 bg-purple-100 text-purple-900 font-extrabold text-[0.78rem] rounded-md border border-purple-200 flex items-center gap-1 w-max">
+                          <Store className="w-3.5 h-3.5 text-purple-700" /> 🏬 Store Keeper (Counter)
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 bg-sky-100 text-sky-900 font-extrabold text-[0.78rem] rounded-md border border-sky-200 flex items-center gap-1 w-max">
+                          <Truck className="w-3.5 h-3.5 text-sky-700" /> 🚚 {sale.employee_name || 'Driver'}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-[0.88rem] text-slate-700 space-y-0.5">
+                      <span className="font-bold text-[#002244] block truncate">
+                        Customer: {sale.shop_name || sale.customer_name || 'Walk-in Customer'}
+                      </span>
+                      <span className="text-[0.8rem] text-sky-700/80 font-mono block">
+                        Time: {sale.date} at {sale.time || sale.sale_time || ''}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Seller Badge */}
-                  <div>
-                    {isStoreKeeper ? (
-                      <span className="px-2.5 py-0.5 bg-purple-100 text-purple-900 font-extrabold text-[0.78rem] rounded-md border border-purple-200 flex items-center gap-1 w-max">
-                        <Store className="w-3.5 h-3.5 text-purple-700" /> 🏬 Store Keeper (Counter)
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 bg-sky-100 text-sky-900 font-extrabold text-[0.78rem] rounded-md border border-sky-200 flex items-center gap-1 w-max">
-                        <Truck className="w-3.5 h-3.5 text-sky-700" /> 🚚 {sale.employee_name || 'Driver'}
-                      </span>
-                    )}
-                  </div>
+                  <div className="mt-3.5 pt-2.5 border-t border-sky-100 flex items-center justify-between">
+                    <div className="font-mono font-black text-[1.15rem] text-[#002244]">
+                      ₹{Number(sale.total_amount || 0).toLocaleString()}
+                    </div>
 
-                  <div className="text-[0.88rem] text-slate-700 space-y-0.5">
-                    <span className="font-bold text-[#002244] block truncate">
-                      Customer: {sale.shop_name || sale.customer_name || 'Walk-in Customer'}
-                    </span>
-                    <span className="text-[0.8rem] text-sky-700/80 font-mono block">
-                      Time: {sale.date} at {sale.time}
-                    </span>
+                    <button
+                      onClick={() => setSelectedSaleForDetails(sale)}
+                      className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-sky-50 text-sky-900 font-extrabold text-[0.85rem] border border-sky-200 shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-sky-600" /> Receipt
+                    </button>
                   </div>
                 </div>
+              );
+            })}
+          </div>
+        )}
 
-                <div className="mt-3.5 pt-2.5 border-t border-sky-100 flex items-center justify-between">
-                  <div className="font-mono font-black text-[1.15rem] text-[#002244]">
-                    ₹{Number(sale.total_amount || 0).toLocaleString()}
-                  </div>
-
-                  <button
-                    onClick={() => setSelectedSaleForDetails(sale)}
-                    className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-sky-50 text-sky-900 font-extrabold text-[0.85rem] border border-sky-200 shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
-                  >
-                    <Eye className="w-3.5 h-3.5 text-sky-600" /> Receipt
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+        {/* View All Bills Link */}
+        <div className="pt-2 flex justify-end">
+          <button
+            onClick={() => onNavigateTab && onNavigateTab('sales')}
+            className="text-xs font-black text-sky-700 hover:text-sky-900 flex items-center gap-1 hover:underline cursor-pointer"
+          >
+            <span>View All Sales Records & Billing History ({sales.length} Bills)</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 

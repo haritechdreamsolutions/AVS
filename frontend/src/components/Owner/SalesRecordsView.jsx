@@ -51,6 +51,9 @@ const formatDMY = (dateStr) => {
 
 // Helper function to extract cleanly formatted time (HH:MM AM/PM) from sale
 const getTimeString = (sale) => {
+  if (sale?.sale_time && typeof sale.sale_time === 'string') {
+    return sale.sale_time;
+  }
   if (sale?.time && typeof sale.time === 'string' && sale.time !== 'Live') {
     return sale.time;
   }
@@ -58,7 +61,7 @@ const getTimeString = (sale) => {
     try {
       const dt = new Date(sale.created_at);
       if (!isNaN(dt.getTime())) {
-        return dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+        return dt.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
       }
     } catch (e) {}
   }
@@ -93,10 +96,12 @@ const extractSaleDateYMD = (sale) => {
   }
   // 3. From created_at timestamp
   if (sale.created_at) {
-    const d = new Date(sale.created_at);
-    if (!isNaN(d.getTime())) {
-      return formatYMD(d);
-    }
+    try {
+      const d = new Date(sale.created_at);
+      if (!isNaN(d.getTime())) {
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+      }
+    } catch (e) {}
   }
   return '';
 };
@@ -235,7 +240,7 @@ export const SalesRecordsView = () => {
   const handleQuickDateSelect = (mode) => {
     setQuickDate(mode);
     const now = new Date();
-    const todayYmd = formatYMD(now);
+    const todayYmd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
 
     if (mode === 'ALL') {
       setFromDate('');
@@ -244,8 +249,8 @@ export const SalesRecordsView = () => {
       setFromDate(todayYmd);
       setToDate(todayYmd);
     } else if (mode === 'YESTERDAY') {
-      const yest = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-      const yestYmd = formatYMD(yest);
+      const yest = new Date(now.getTime() - 86400000);
+      const yestYmd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(yest);
       setFromDate(yestYmd);
       setToDate(yestYmd);
     } else if (mode === 'THIS_WEEK') {
@@ -256,10 +261,10 @@ export const SalesRecordsView = () => {
       setFromDate(formatYMD(monday));
       setToDate(formatYMD(sunday));
     } else if (mode === 'THIS_MONTH') {
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      setFromDate(formatYMD(firstDay));
-      setToDate(formatYMD(lastDay));
+      const parts = todayYmd.split('-');
+      const firstDay = `${parts[0]}-${parts[1]}-01`;
+      setFromDate(firstDay);
+      setToDate(todayYmd);
     } else if (mode === 'CUSTOM') {
       if (!fromDate) setFromDate(todayYmd);
       if (!toDate) setToDate(todayYmd);

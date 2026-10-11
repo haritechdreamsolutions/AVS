@@ -862,7 +862,7 @@ router.get('/sales', requireAuth, async (req, res) => {
     const cid = getCid(req);
     const userRole = (req.session?.role || req.session?.userRole || '').toUpperCase();
     const queryParams = { ...req.query };
-    if (userRole === 'DRIVER') {
+    if ((userRole === 'DRIVER' || userRole === 'EMPLOYEE') && req.session.employeeId) {
       queryParams.employee_id = req.session.employeeId;
     }
     const sales = await db.getSales(cid, queryParams);

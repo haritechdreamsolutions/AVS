@@ -46,6 +46,7 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
     { id: 'freezer', label: 'Freezer Assets 🧊', icon: <Snowflake className="w-5 h-5 text-cyan-400" /> },
     { id: 'suppliers', label: 'Companies & Inward 🏭', icon: <Building2 className="w-5 h-5 text-sky-400" /> },
     { id: 'sales', label: 'Sales & Bills', icon: <ShoppingBag className="w-5 h-5" /> },
+    { id: 'returns_recon', label: 'Driver Reconciliation ⚖️', icon: <RotateCcw className="w-5 h-5 text-indigo-400" /> },
     { id: 'shops', label: 'Shops & Dues', icon: <Store className="w-5 h-5" /> },
     { id: 'user_balance', label: 'User Balance 💳', icon: <Wallet className="w-5 h-5 text-teal-400" /> },
     { id: 'driver_expenses', label: 'Driver Expenses 💰', icon: <DollarSign className="w-5 h-5 text-emerald-400" /> },
