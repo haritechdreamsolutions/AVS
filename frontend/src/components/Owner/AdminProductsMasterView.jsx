@@ -171,19 +171,23 @@ export const AdminProductsMasterView = () => {
     if (Number(formData.purchase_price) < 0) errors.purchase_price = 'Buy rate cannot be negative';
     if (Number(formData.pieces_per_unit) <= 0) errors.pieces_per_unit = 'Conversion factor must be at least 1';
 
-    // Duplicate Variant check (allows same product name with different pack size)
-    if (formData.name.trim() && formData.pack_size.trim()) {
-      const nameNorm = formData.name.trim().toLowerCase();
-      const packNorm = formData.pack_size.trim().toLowerCase();
-      const dispNorm = (formData.display_name.trim() || `${formData.name.trim()} ${formData.pack_size.trim()}`).toLowerCase();
+    // Duplicate Variant check
+    if (formData.name.trim()) {
+      let targetName = formData.name.trim();
+      const pack = (formData.pack_size || '').trim();
+      if (pack && !targetName.toLowerCase().includes(pack.toLowerCase())) {
+        targetName = `${targetName} ${pack}`;
+      }
+      const targetDisp = (formData.display_name && formData.display_name.trim()) ? formData.display_name.trim() : targetName;
+      
       const dupVariant = products.find(p => 
         (p.is_active !== undefined ? Boolean(p.is_active) : true) && (
-          (p.name && p.name.trim().toLowerCase() === nameNorm && (p.pack_size || '').trim().toLowerCase() === packNorm) ||
-          (p.display_name && p.display_name.trim().toLowerCase() === dispNorm)
+          (p.name && p.name.trim().toLowerCase() === targetName.toLowerCase()) ||
+          (p.display_name && p.display_name.trim().toLowerCase() === targetDisp.toLowerCase())
         )
       );
       if (dupVariant) {
-        errors.name = `Variant '${dupVariant.display_name || dupVariant.name}' already exists. Use a different Pack Size or Name.`;
+        errors.name = `Product '${dupVariant.display_name || dupVariant.name}' already exists. Use a different Pack Size or Name.`;
       }
     }
 
@@ -360,8 +364,20 @@ export const AdminProductsMasterView = () => {
       const categoryName = selectedCat?.name || formData.category || 'General';
       const categoryId = selectedCat?.id || formData.category_id || (activeCategories[0]?.id || 1);
 
+      let cleanName = formData.name.trim();
+      const pack = (formData.pack_size || '').trim();
+      if (pack && !cleanName.toLowerCase().includes(pack.toLowerCase())) {
+        cleanName = `${cleanName} ${pack}`;
+      }
+
+      const cleanDisplayName = (formData.display_name && formData.display_name.trim()) 
+        ? formData.display_name.trim() 
+        : cleanName;
+
       const payload = {
         ...formData,
+        name: cleanName,
+        display_name: cleanDisplayName,
         category_id: categoryId,
         category: categoryName
       };
