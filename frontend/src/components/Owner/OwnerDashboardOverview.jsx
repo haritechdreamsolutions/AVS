@@ -507,75 +507,38 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
       <AdminAnalyticsChart data={dashboardData} />
 
       {/* Freezer Asset Allocation Rich Card (Mobile & Desktop Responsive) */}
+      {/* Compact Single-Line Freezer Asset Bar (Mobile & Desktop Responsive) */}
       {(() => {
         const shopsWithFreezer = (shops || []).filter(s => s.has_freezer || (freezers || []).some(f => String(f.shop_id) === String(s.id)));
         const totalDeployedFreezers = (freezers && freezers.length > 0) ? freezers.length : shopsWithFreezer.length;
-        const totalShopsCount = (shops || []).length;
-        const totalVillagesWithFreezers = new Set(shopsWithFreezer.map(s => s.village_name || s.village_id || 'Salem')).size;
 
         return (
           <div
             onClick={() => onNavigateTab && onNavigateTab('freezer')}
-            className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-cyan-600 via-sky-600 to-indigo-700 p-5 sm:p-6 text-white shadow-xl shadow-cyan-900/15 border border-cyan-400/30 cursor-pointer transition-all duration-300 hover:shadow-2xl hover:scale-[1.008] active:scale-[0.995]"
+            className="group px-4 py-2.5 rounded-2xl bg-gradient-to-r from-cyan-600 via-sky-600 to-indigo-600 text-white shadow-md hover:shadow-lg border border-cyan-400/30 flex flex-col sm:flex-row items-center justify-between gap-2.5 cursor-pointer transition-all duration-200 active:scale-[0.99]"
           >
-            {/* Background Glow & Watermark */}
-            <div className="absolute -right-8 -top-8 w-44 h-44 rounded-full bg-white/10 blur-2xl pointer-events-none"></div>
-            <div className="absolute right-4 bottom-2 text-7xl opacity-10 select-none pointer-events-none font-sans font-black">
-              🧊
+            {/* Left: Icon + Title + Status */}
+            <div className="flex items-center gap-2.5 w-full sm:w-auto">
+              <span className="w-7 h-7 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-sm shadow-xs flex-shrink-0">
+                🧊
+              </span>
+              <span className="font-black text-xs uppercase tracking-wide text-white drop-shadow-2xs truncate">
+                Shop Freezer Assets
+              </span>
+              <span className="hidden md:inline-block text-[11px] font-bold text-cyan-100 truncate">
+                • {shopsWithFreezer.length} Shops Equipped
+              </span>
             </div>
 
-            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
-              {/* Left Details */}
-              <div className="flex items-start sm:items-center gap-4">
-                <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-3xl shadow-lg flex-shrink-0 group-hover:rotate-6 transition-transform">
-                  🧊
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-black text-base sm:text-lg tracking-tight text-white drop-shadow-xs">
-                      SHOP FREEZER ASSETS ALLOCATION
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/25 text-white border border-white/30 backdrop-blur-xs">
-                      Cold Storage Fleet
-                    </span>
-                  </div>
-                  <p className="text-xs sm:text-sm text-cyan-100 font-medium leading-relaxed">
-                    Track, deploy and manage branded deep freezers & visicoolers allocated across retail store networks.
-                  </p>
-                </div>
-              </div>
-
-              {/* Middle Metrics (Badges) */}
-              <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
-                <div className="px-3.5 py-2 rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 text-center flex-1 sm:flex-none min-w-[85px]">
-                  <span className="block text-[10px] uppercase font-bold text-cyan-200">Deployed</span>
-                  <span className="font-mono font-black text-base sm:text-lg text-white">
-                    {totalDeployedFreezers} <span className="text-[11px] font-sans font-bold">Units</span>
-                  </span>
-                </div>
-
-                <div className="px-3.5 py-2 rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 text-center flex-1 sm:flex-none min-w-[85px]">
-                  <span className="block text-[10px] uppercase font-bold text-cyan-200">Shops</span>
-                  <span className="font-mono font-black text-base sm:text-lg text-white">
-                    {shopsWithFreezer.length} <span className="text-[11px] font-sans font-bold">Stores</span>
-                  </span>
-                </div>
-
-                <div className="px-3.5 py-2 rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 text-center flex-1 sm:flex-none min-w-[85px]">
-                  <span className="block text-[10px] uppercase font-bold text-cyan-200">Coverage</span>
-                  <span className="font-mono font-black text-base sm:text-lg text-white">
-                    {totalVillagesWithFreezers} <span className="text-[11px] font-sans font-bold">Villages</span>
-                  </span>
-                </div>
-
-                {/* Right Action Button */}
-                <div className="w-full sm:w-auto mt-1 sm:mt-0">
-                  <span className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-white text-cyan-900 hover:bg-cyan-50 font-black text-xs sm:text-sm shadow-lg flex items-center justify-center gap-1.5 transition-colors">
-                    <span>Manage Freezers</span>
-                    <span className="group-hover:translate-x-1 transition-transform">→</span>
-                  </span>
-                </div>
-              </div>
+            {/* Right: Badges & Action */}
+            <div className="flex items-center justify-between sm:justify-end gap-2.5 w-full sm:w-auto">
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-white/20 border border-white/25 text-white font-mono">
+                {totalDeployedFreezers} Units Deployed
+              </span>
+              <span className="text-xs font-black text-white group-hover:text-cyan-200 flex items-center gap-1 transition-colors flex-shrink-0">
+                <span>Manage</span>
+                <span className="group-hover:translate-x-0.5 transition-transform">→</span>
+              </span>
             </div>
           </div>
         );
