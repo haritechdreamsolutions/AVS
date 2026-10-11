@@ -4,7 +4,8 @@ import {
   ShoppingBag, Search, Filter, Eye, Printer, DollarSign, 
   Smartphone, CreditCard, ArrowRightLeft, UserCheck, Truck, 
   Store, Calendar, Clock, X, ChevronRight, CheckCircle2, 
-  Layers, RotateCcw, AlertTriangle, ChevronDown, SlidersHorizontal, Download 
+  Layers, RotateCcw, AlertTriangle, ChevronDown, SlidersHorizontal, Download,
+  RefreshCw 
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ThermalBillModal } from '../Employee/ThermalBillModal';
@@ -138,7 +139,7 @@ const getSaleFinancials = (sale) => {
 };
 
 export const SalesRecordsView = () => {
-  const { sales = [], shops = [], API_URL, apiFetch, exportReportData } = useApp();
+  const { sales = [], shops = [], API_URL, apiFetch, exportReportData, refreshData } = useApp();
 
   // ------------------------------------------------------------------
   // ADVANCED FILTER STATE MANAGEMENT
@@ -158,6 +159,34 @@ export const SalesRecordsView = () => {
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [selectedSaleDetails, setSelectedSaleDetails] = useState(null);
   const [printThermalBill, setPrintThermalBill] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Auto-sync polling every 5 seconds so Owner sees new Driver & Storekeeper bills in real time
+  useEffect(() => {
+    if (typeof refreshData === 'function') {
+      refreshData();
+    }
+    const interval = setInterval(() => {
+      if (typeof refreshData === 'function') {
+        refreshData();
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [refreshData]);
+
+  const handleManualSync = async () => {
+    if (typeof refreshData === 'function') {
+      setIsRefreshing(true);
+      try {
+        await refreshData();
+        toast.success('Live billing records refreshed!');
+      } catch (e) {
+        console.error('Refresh error:', e);
+      } finally {
+        setIsRefreshing(false);
+      }
+    }
+  };
 
   useEffect(() => {
     if (selectedSaleDetails && (!selectedSaleDetails.items || selectedSaleDetails.items.length === 0)) {
@@ -475,6 +504,16 @@ export const SalesRecordsView = () => {
           <span className="font-mono font-black text-xs sm:text-sm text-emerald-300 bg-emerald-500/15 px-3.5 py-2 rounded-2xl border border-emerald-400/30 shadow-xs">
             Revenue: ₹{metrics.totalRevenue.toLocaleString()}
           </span>
+          <button
+            onClick={handleManualSync}
+            disabled={isRefreshing}
+            className={`p-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-black text-xs flex items-center justify-center border border-white/20 transition cursor-pointer min-w-[38px] min-h-[38px] ${
+              isRefreshing ? 'opacity-70' : 'active:scale-95'
+            }`}
+            title="Refresh Live Billing Records"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
           <button
             onClick={async () => {
               try {
