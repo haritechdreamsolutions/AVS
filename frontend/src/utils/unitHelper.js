@@ -162,3 +162,62 @@ export function formatWarehouseStock(product) {
     };
   }
 }
+
+/**
+ * Formats driver/employee vehicle stock for card display.
+ * For tray/piece-based products: returns `${trays} Trays ${loosePcs} Pcs` (or `${trays} Trays` or `${loosePcs} Pcs`)
+ * For other categories: returns `${units} ${unitName}`
+ */
+export function formatVehicleStockDisplay(item) {
+  const opUnit = getOperationalUnit(item);
+  const ppu = Math.max(1, Number(item?.pieces_per_unit || 1));
+  const totalPieces = Math.round(Number(item?.qty_units || 0) * ppu);
+
+  if (opUnit.isPieceBased) {
+    const unitName = item?.selling_unit || 'Tray';
+    if (totalPieces <= 0) {
+      return {
+        breakdownText: `0 ${unitName}`,
+        totalPieces: 0,
+        trays: 0,
+        loosePcs: 0,
+        isPieceBased: true,
+        unitLabel: item?.base_unit || 'PIECE'
+      };
+    }
+    const trays = Math.floor(totalPieces / ppu);
+    const loosePcs = totalPieces % ppu;
+    let breakdownText = '';
+    if (trays > 0 && loosePcs > 0) {
+      breakdownText = `${trays} ${unitName}${trays > 1 ? 's' : ''} ${loosePcs} Pcs`;
+    } else if (trays > 0) {
+      breakdownText = `${trays} ${unitName}${trays > 1 ? 's' : ''}`;
+    } else {
+      breakdownText = `${loosePcs} Pcs`;
+    }
+
+    return {
+      breakdownText,
+      totalPieces,
+      trays,
+      loosePcs,
+      isPieceBased: true,
+      unitLabel: item?.base_unit || 'PIECE'
+    };
+  } else {
+    const units = Math.max(0, Number(item?.qty_units || 0));
+    const unitName = item?.selling_unit || opUnit.label || 'Case';
+    const isPlural = units !== 1;
+    const label = isPlural && !unitName.endsWith('s') && !unitName.endsWith('S') ? `${unitName}s` : unitName;
+
+    return {
+      breakdownText: `${units} ${label}`,
+      totalPieces: units,
+      units,
+      trays: 0,
+      loosePcs: 0,
+      isPieceBased: false,
+      unitLabel: label
+    };
+  }
+}

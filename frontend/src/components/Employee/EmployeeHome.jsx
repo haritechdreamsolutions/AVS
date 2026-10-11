@@ -6,6 +6,7 @@ import {
   Calendar, Clock, ShieldCheck, Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatVehicleStockDisplay } from '../../utils/unitHelper';
 
 export const EmployeeHome = ({ onStartBilling }) => {
   const { 
@@ -459,8 +460,7 @@ export const EmployeeHome = ({ onStartBilling }) => {
         ) : (
           <div className="flex flex-col gap-2.5 sm:gap-3">
             {employeeStock.filter(item => Number(item.qty_units || 0) > 0).map((item, idx) => {
-              const piecesPerUnit = item.pieces_per_unit || 1;
-              const totalPieces = Math.floor(Number(item.qty_units || 0) * piecesPerUnit);
+              const stockDisplay = formatVehicleStockDisplay(item);
 
               return (
                 <div 
@@ -483,17 +483,17 @@ export const EmployeeHome = ({ onStartBilling }) => {
                     <h4 className="font-extrabold text-sm sm:text-base text-slate-900 leading-snug truncate">
                       {item.display_name || item.product_name}
                     </h4>
-                    <p className="text-xs text-slate-500 font-semibold mt-0.5 truncate">
-                      {item.qty_units} {item.selling_unit || 'Trays'}
+                    <p className="text-xs text-slate-600 font-bold mt-0.5 truncate">
+                      {stockDisplay.breakdownText}
                     </p>
                   </div>
 
                   <div className="text-right shrink-0 pl-2">
                     <span className="font-mono font-black text-xl sm:text-2xl text-emerald-600 block leading-tight">
-                      {totalPieces}
+                      {stockDisplay.totalPieces}
                     </span>
                     <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mt-0.5">
-                      {item.base_unit || 'PCS'}
+                      {stockDisplay.unitLabel}
                     </span>
                   </div>
                 </div>

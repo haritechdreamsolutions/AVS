@@ -312,9 +312,9 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span className="text-[11px] font-bold text-slate-500">
                       Stock: <strong className="text-emerald-600 font-black font-mono">{info.availableStock} {info.unitLabel}</strong>
-                      {info.heldUnits > 0 && info.piecesPerUnit > 1 && (
+                      {info.availableStock > 0 && info.piecesPerUnit > 1 && info.opUnit?.isPieceBased && (
                         <span className="text-slate-500 font-semibold ml-1.5">
-                          ({info.heldUnits} {info.sellingUnit})
+                          ({Math.floor(info.availableStock / info.piecesPerUnit)} {info.sellingUnit} {info.availableStock % info.piecesPerUnit > 0 ? `${info.availableStock % info.piecesPerUnit} Pcs` : ''})
                         </span>
                       )}
                     </span>
