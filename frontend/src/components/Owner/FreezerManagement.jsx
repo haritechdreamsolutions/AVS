@@ -48,7 +48,10 @@ export const FreezerManagement = () => {
     unassignFreezer, 
     freezerModels = [], 
     addFreezerModel, 
-    deleteFreezerModel 
+    deleteFreezerModel,
+    deleteVillage,
+    deleteShop,
+    refreshData
   } = useApp();
 
   // Search & Filter State
@@ -695,35 +698,44 @@ export const FreezerManagement = () => {
     }
   };
 
-  // Handle delete all freezer allocations from a village
+  // Handle delete village & its shops / freezers from Database and UI
   const handleConfirmVillageFreezersDelete = async () => {
     const vg = villageDeleteModal.village;
     if (!vg) return;
 
     setVillageDeleteModal(prev => ({ ...prev, isDeleting: true }));
     try {
-      // Loop through all freezers in this village and unassign them
+      // 1. Remove all freezer assets in this village
       const freezersToRemove = vg.allFreezers || [];
-      if (freezersToRemove.length === 0) {
-        // Also check if any shop has has_freezer flag
-        for (const s of vg.shops || []) {
-          if (s.has_freezer) {
-            await unassignFreezer(s.id, s.id);
-          }
-        }
-      } else {
-        for (const frz of freezersToRemove) {
-          const targetId = frz.id && !String(frz.id).startsWith('legacy-') ? frz.id : frz.shop_id;
-          await unassignFreezer(targetId, frz.shop_id);
+      for (const frz of freezersToRemove) {
+        const targetId = frz.id && !String(frz.id).startsWith('legacy-') ? frz.id : frz.shop_id;
+        await unassignFreezer(targetId, frz.shop_id);
+      }
+
+      // 2. Remove shops in this village if they belong to this test group
+      for (const s of vg.shops || []) {
+        if (s.id) {
+          await deleteShop(s.id);
         }
       }
-      toast.success(`🗑️ Freezer assets successfully removed from village '${vg.name}'!`);
+
+      // 3. Delete the village itself from database if it has a real id
+      if (vg.id && typeof vg.id === 'number') {
+        await deleteVillage(vg.id);
+      }
+
+      // 4. Trigger global state refresh so both DB and UI stay 100% in sync
+      if (typeof refreshData === 'function') {
+        await refreshData();
+      }
+
+      toast.success(`🗑️ '${vg.name}' removed completely from database!`);
       setVillageDeleteModal({ isOpen: false, village: null, isDeleting: false });
       if (selectedVillage && (selectedVillage.id === vg.id || selectedVillage.name === vg.name)) {
         setSelectedVillage(null);
       }
     } catch (err) {
-      toast.error('Failed to remove freezers: ' + (err.message || 'Unknown error'));
+      toast.error('Failed to remove: ' + (err.message || 'Unknown error'));
       setVillageDeleteModal(prev => ({ ...prev, isDeleting: false }));
     }
   };
@@ -1840,15 +1852,15 @@ export const FreezerManagement = () => {
             </div>
             
             <div className="text-center space-y-1">
-              <h4 className="font-black text-base text-slate-900">Remove Freezer Assets?</h4>
+              <h4 className="font-black text-base text-slate-900">Remove from Database?</h4>
               <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                Are you sure you want to remove all freezer assets deployed in village <strong className="text-slate-900">{villageDeleteModal.village?.name}</strong>?
+                Are you sure you want to completely remove <strong className="text-slate-900">{villageDeleteModal.village?.name}</strong> from database and this view?
               </p>
             </div>
 
             <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-xs space-y-1">
               <p className="font-bold text-amber-800 text-[11px] leading-relaxed">
-                ℹ️ Village and Shop accounts will <strong>remain safe</strong>. Only freezer hardware allocations will be removed from this village.
+                ℹ️ This card, its linked shops and freezer records will be removed immediately from both database and page view.
               </p>
             </div>
 
