@@ -5,6 +5,7 @@ import {
   Receipt, ShieldCheck, ArrowRight
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getOperationalUnit } from '../../utils/unitHelper';
 
 export const EndOfDayModal = ({ onClose }) => {
   const { 
@@ -366,14 +367,42 @@ export const EndOfDayModal = ({ onClose }) => {
 
                       <div className="text-right">
                         <div className="font-mono font-black text-xs text-slate-900">
-                          {item.pieces_per_unit > 1 ? (
-                            `${Math.floor(item.pieces / item.pieces_per_unit)} ${item.selling_unit}${Math.floor(item.pieces / item.pieces_per_unit) !== 1 ? 's' : ''}${item.pieces % item.pieces_per_unit > 0 ? ` ${item.pieces % item.pieces_per_unit} Pcs` : ''}`
-                          ) : (
-                            `${Math.round(item.qty_units)} ${item.selling_unit}${Math.round(item.qty_units) !== 1 ? 's' : ''}`
-                          )}
+                          {(() => {
+                            const opUnit = getOperationalUnit(item);
+                            if (opUnit.isPieceBased) {
+                              const ppu = Math.max(1, Number(item.pieces_per_unit || 1));
+                              const trays = Math.floor(item.pieces / ppu);
+                              const loose = item.pieces % ppu;
+                              const unitName = item.selling_unit || 'Tray';
+                              return trays > 0 && loose > 0
+                                ? `${trays} ${unitName}${trays > 1 ? 's' : ''} ${loose} Pcs`
+                                : trays > 0
+                                  ? `${trays} ${unitName}${trays > 1 ? 's' : ''}`
+                                  : `${loose} Pcs`;
+                            } else {
+                              const wholeUnits = item.pieces_per_unit > 1
+                                ? Math.floor(item.pieces / item.pieces_per_unit)
+                                : Math.floor(Number(item.qty_units || 0));
+                              const unitName = item.selling_unit || 'Case';
+                              const label = wholeUnits !== 1 && !unitName.endsWith('s') && !unitName.endsWith('S') ? `${unitName}s` : unitName;
+                              return `${wholeUnits} ${label}`;
+                            }
+                          })()}
                         </div>
                         <div className="font-mono font-bold text-[10px] text-blue-600">
-                          {item.pieces} {item.base_unit}s
+                          {(() => {
+                            const opUnit = getOperationalUnit(item);
+                            if (opUnit.isPieceBased) {
+                              return `${item.pieces} ${item.base_unit || 'Piece'}s`;
+                            } else {
+                              const wholeUnits = item.pieces_per_unit > 1
+                                ? Math.floor(item.pieces / item.pieces_per_unit)
+                                : Math.floor(Number(item.qty_units || 0));
+                              const unitName = item.selling_unit || 'Case';
+                              const label = wholeUnits !== 1 && !unitName.endsWith('s') && !unitName.endsWith('S') ? `${unitName}s` : unitName;
+                              return `${wholeUnits} ${label.toUpperCase()}`;
+                            }
+                          })()}
                         </div>
                       </div>
                     </div>

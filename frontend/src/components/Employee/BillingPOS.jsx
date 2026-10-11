@@ -314,20 +314,10 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span className="text-[11px] font-bold text-slate-500">
                       Stock: <strong className="text-emerald-600 font-black font-mono">{info.availableStock} {info.unitLabel}</strong>
-                      {info.piecesPerUnit > 1 && (
-                        info.opUnit?.isPieceBased ? (
-                          info.availableStock > 0 && (
-                            <span className="text-slate-500 font-semibold ml-1.5">
-                              ({Math.floor(info.availableStock / info.piecesPerUnit)} {info.sellingUnit} {info.availableStock % info.piecesPerUnit > 0 ? `${info.availableStock % info.piecesPerUnit} Pcs` : ''})
-                            </span>
-                          )
-                        ) : (
-                          info.loosePieces > 0 && (
-                            <span className="text-slate-500 font-semibold ml-1.5">
-                              (+{info.loosePieces} loose Pcs)
-                            </span>
-                          )
-                        )
+                      {info.availableStock > 0 && info.piecesPerUnit > 1 && info.opUnit?.isPieceBased && (
+                        <span className="text-slate-500 font-semibold ml-1.5">
+                          ({Math.floor(info.availableStock / info.piecesPerUnit)} {info.sellingUnit} {info.availableStock % info.piecesPerUnit > 0 ? `${info.availableStock % info.piecesPerUnit} Pcs` : ''})
+                        </span>
                       )}
                     </span>
                     <span className="text-[10.5px] font-semibold text-slate-400">
