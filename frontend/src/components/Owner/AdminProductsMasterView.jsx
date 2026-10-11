@@ -171,6 +171,22 @@ export const AdminProductsMasterView = () => {
     if (Number(formData.purchase_price) < 0) errors.purchase_price = 'Buy rate cannot be negative';
     if (Number(formData.pieces_per_unit) <= 0) errors.pieces_per_unit = 'Conversion factor must be at least 1';
 
+    // Duplicate Variant check (allows same product name with different pack size)
+    if (formData.name.trim() && formData.pack_size.trim()) {
+      const nameNorm = formData.name.trim().toLowerCase();
+      const packNorm = formData.pack_size.trim().toLowerCase();
+      const dispNorm = (formData.display_name.trim() || `${formData.name.trim()} ${formData.pack_size.trim()}`).toLowerCase();
+      const dupVariant = products.find(p => 
+        (p.is_active !== undefined ? Boolean(p.is_active) : true) && (
+          (p.name && p.name.trim().toLowerCase() === nameNorm && (p.pack_size || '').trim().toLowerCase() === packNorm) ||
+          (p.display_name && p.display_name.trim().toLowerCase() === dispNorm)
+        )
+      );
+      if (dupVariant) {
+        errors.name = `Variant '${dupVariant.display_name || dupVariant.name}' already exists. Use a different Pack Size or Name.`;
+      }
+    }
+
     // Duplicate SKU check
     if (formData.sku.trim()) {
       const skuNorm = formData.sku.trim().toUpperCase();
@@ -969,6 +985,16 @@ export const AdminProductsMasterView = () => {
                     </button>
                   )}
                 </div>
+              </div>
+            </div>
+
+            <div className="bg-sky-50 border border-sky-200 rounded-2xl p-3 text-xs text-sky-900 flex items-start gap-2.5 shadow-sm">
+              <span className="text-base leading-none mt-0.5">💡</span>
+              <div>
+                <p className="font-extrabold text-sky-950">Creating Variants (e.g. Milk 200ml, Milk 500ml, Milk 1 Ltr):</p>
+                <p className="text-[11px] text-sky-800 font-medium mt-0.5">
+                  You can keep <strong>Product Name</strong> as <em>Milk</em> for all sizes! The system distinguishes them by their <strong>Pack Size</strong> (e.g. <em>200ml</em>, <em>500ml</em>, <em>1 Ltr</em>) and unique <strong>SKU Code</strong>.
+                </p>
               </div>
             </div>
 

@@ -300,6 +300,25 @@ export async function runAutoMigrations() {
     await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_rate_uom VARCHAR(50) DEFAULT 'Tray';", [], 'products.selling_rate_uom');
     await safeQuery(client, "ALTER TABLE products ADD COLUMN IF NOT EXISTS direct_sale_rate NUMERIC(10,2) NOT NULL DEFAULT 0.00;", [], 'products.direct_sale_rate');
 
+    // Drop rigid bare-name unique index if present and replace with variant-aware index
+    await safeQuery(client, 'DROP INDEX IF EXISTS uq_prod_company_lower_name;', [], 'drop uq_prod_company_lower_name');
+    await safeQuery(
+      client,
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_prod_variant 
+       ON products (company_id, LOWER(TRIM(name)), LOWER(TRIM(COALESCE(pack_size, '')))) 
+       WHERE (is_active = TRUE);`,
+      [],
+      'create uq_prod_variant'
+    );
+    await safeQuery(
+      client,
+      `CREATE UNIQUE INDEX IF NOT EXISTS uq_prod_display_name 
+       ON products (company_id, LOWER(TRIM(display_name))) 
+       WHERE (is_active = TRUE);`,
+      [],
+      'create uq_prod_display_name'
+    );
+
     // 9.5 Product UOMs Table
     await safeQuery(client, `
       CREATE TABLE IF NOT EXISTS product_uoms (

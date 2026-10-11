@@ -807,9 +807,37 @@ export async function addProduct(cid, d) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const dupCheck = await client.query('SELECT id FROM products WHERE company_id=$1 AND LOWER(TRIM(name))=LOWER(TRIM($2)) AND is_active=TRUE', [cid, d.name]);
+
+    // Duplicate SKU check if custom SKU provided
+    if (d.sku && String(d.sku).trim()) {
+      const skuCheck = await client.query(
+        'SELECT id, name FROM products WHERE company_id = $1 AND UPPER(TRIM(sku)) = UPPER(TRIM($2)) AND is_active = TRUE',
+        [cid, String(d.sku).trim()]
+      );
+      if (skuCheck.rows.length > 0) {
+        throw new Error(`Product SKU / Code '${String(d.sku).trim().toUpperCase()}' is already taken.`);
+      }
+    }
+
+    // Check duplicate product:
+    // A product variant is considered duplicate only if:
+    // 1. Both name AND pack_size are identical (e.g. Milk 500ml vs Milk 500ml), OR
+    // 2. Both have the same display_name, OR
+    // 3. Name is identical and neither has a pack_size specified.
+    const dupCheck = await client.query(
+      `SELECT id, name, pack_size, display_name FROM products 
+       WHERE company_id = $1 
+         AND is_active = TRUE 
+         AND (
+           (LOWER(TRIM(name)) = LOWER(TRIM($2)) AND LOWER(TRIM(COALESCE(pack_size, ''))) = LOWER(TRIM(COALESCE($3, ''))))
+           OR (LOWER(TRIM(display_name)) = LOWER(TRIM($4)))
+         )`,
+      [cid, d.name, packSize, displayName]
+    );
     if (dupCheck.rows.length > 0) {
-      throw new Error(`Product '${d.name.trim()}' already exists. Please choose a different name.`);
+      const existing = dupCheck.rows[0];
+      const existLabel = existing.display_name || `${existing.name}${existing.pack_size ? ' ' + existing.pack_size : ''}`;
+      throw new Error(`Product variant '${existLabel}' already exists. Please choose a different name or pack size.`);
     }
     const pRes = await client.query(
       `INSERT INTO products (
@@ -904,6 +932,39 @@ export async function updateProduct(cid, prodId, d) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    if (d.sku && String(d.sku).trim()) {
+      const skuCheck = await client.query(
+        'SELECT id, name FROM products WHERE company_id = $1 AND id != $2 AND UPPER(TRIM(sku)) = UPPER(TRIM($3)) AND is_active = TRUE',
+        [cid, prodId, String(d.sku).trim()]
+      );
+      if (skuCheck.rows.length > 0) {
+        throw new Error(`Product SKU / Code '${String(d.sku).trim().toUpperCase()}' is already taken.`);
+      }
+    }
+
+    if (d.name || d.pack_size || d.display_name) {
+      const checkName = d.name ? d.name.trim() : pOld.name;
+      const checkPack = d.pack_size !== undefined ? d.pack_size.trim() : (pOld.pack_size || '');
+      const checkDisp = d.display_name ? d.display_name.trim() : (pOld.display_name || checkName);
+      const dupCheck = await client.query(
+        `SELECT id, name, pack_size, display_name FROM products 
+         WHERE company_id = $1 
+           AND id != $2 
+           AND is_active = TRUE 
+           AND (
+             (LOWER(TRIM(name)) = LOWER(TRIM($3)) AND LOWER(TRIM(COALESCE(pack_size, ''))) = LOWER(TRIM(COALESCE($4, ''))))
+             OR (LOWER(TRIM(display_name)) = LOWER(TRIM($5)))
+           )`,
+        [cid, prodId, checkName, checkPack, checkDisp]
+      );
+      if (dupCheck.rows.length > 0) {
+        const existing = dupCheck.rows[0];
+        const existLabel = existing.display_name || `${existing.name}${existing.pack_size ? ' ' + existing.pack_size : ''}`;
+        throw new Error(`Product variant '${existLabel}' already exists. Please choose a different name or pack size.`);
+      }
+    }
+
     const pRes = await client.query(
       `UPDATE products SET
         category_id=COALESCE($1, category_id), category=COALESCE($2, category), sku=COALESCE($3, sku), barcode=COALESCE($4, barcode),
