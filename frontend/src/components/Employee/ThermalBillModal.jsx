@@ -118,7 +118,14 @@ export const ThermalBillModal = ({
   };
 
   const rawBillNo = bill.bill_no || bill.sale?.bill_no || 'INV-000000';
-  const displayBillNo = rawBillNo.length > 14 ? (rawBillNo.substring(0, 11) + '...') : rawBillNo;
+  const displayBillNo = rawBillNo.length > 35 ? rawBillNo.substring(0, 35) : rawBillNo;
+
+  // Logged-in username display
+  const loggedInEmpName = (currentUser?.name || currentUser?.username)
+    ? (currentUser.name || currentUser.username)
+    : (bill.employee_name && bill.employee_name !== 'Store Keeper POS'
+        ? bill.employee_name
+        : (is80mm ? 'Store Keeper' : 'Driver'));
 
   const handleSystemPrint = () => {
     window.print();
@@ -142,6 +149,8 @@ export const ThermalBillModal = ({
 
       const receiptPayload = {
         ...bill,
+        bill_no: displayBillNo,
+        employee_name: loggedInEmpName,
         company_name: companyName,
         company_address: companyAddress,
         company_phone: companyPhone,
@@ -236,20 +245,22 @@ export const ThermalBillModal = ({
           </div>
 
           {/* Bill Meta */}
-          <div className={`border-b border-dashed border-slate-400 pb-2 space-y-1.5 ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10px] sm:text-[10.5px]'}`}>
-            <div className="flex justify-between font-extrabold">
-              <span>Bill: <strong className="text-blue-700 font-black">{is80mm ? rawBillNo : displayBillNo}</strong></span>
-              <span>{formattedDate()}</span>
+          <div className={`border-b border-dashed border-slate-400 pb-2 space-y-1 ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10px] sm:text-[10.5px]'}`}>
+            <div className="font-extrabold text-left break-all leading-tight">
+              <span>Bill: <strong className="text-blue-700 font-black">{displayBillNo}</strong></span>
             </div>
-            <div className="flex justify-between items-start font-bold">
-              <span className="break-words leading-tight pr-1">
+            <div className="flex justify-between items-center font-extrabold text-slate-800">
+              <span className="whitespace-nowrap">Date: <strong className="text-slate-950 font-black">{formattedDate()}</strong></span>
+              <span className="shrink-0 font-mono text-slate-600 font-bold whitespace-nowrap">Time: {bill.sale_time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+            <div className="font-bold text-left pt-0.5">
+              <span className="break-words leading-tight">
                 Shop: <strong className="text-slate-950 font-black">{bill.shop_name || bill.shop?.name || bill.customer_name || matchedShop?.name || 'Customer'}</strong>
               </span>
-              <span className="shrink-0 font-mono text-[11px]">{bill.sale_time || ''}</span>
             </div>
-            <div className={`flex justify-between ${is80mm ? 'text-xs' : 'text-[10px]'} text-slate-600 font-bold`}>
-              <span>Code: <strong>{bill.shop_code || 'SHP-001'}</strong></span>
-              <span>Emp: <strong>{bill.employee_name || (is80mm ? 'Store Keeper POS' : 'Driver')}</strong></span>
+            <div className={`flex justify-between items-center ${is80mm ? 'text-xs' : 'text-[10px]'} text-slate-600 font-bold`}>
+              <span>Code: <strong>{bill.shop_code || matchedShop?.code || 'SHP-001'}</strong></span>
+              <span>Emp: <strong className="text-slate-950 font-black">{loggedInEmpName}</strong></span>
             </div>
             {bill.vehicle_no && (
               <div className={`${is80mm ? 'text-xs' : 'text-[10px]'} text-slate-500 font-bold`}>

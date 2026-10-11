@@ -880,7 +880,7 @@ router.post('/sales', requireAuth, async (req, res) => {
       payload.is_store_direct_sale = false;
     } else if (userRole === 'STORE_KEEPER' || payload.is_store_direct_sale || payload.sale_type === 'STOREKEEPER_DIRECT') {
       payload.employee_id = null;
-      payload.employee_name = req.session?.userName || 'Store Keeper';
+      payload.employee_name = req.body?.employee_name || req.session?.userName || 'Store Keeper';
       payload.is_store_direct_sale = true;
       payload.sale_type = 'STOREKEEPER_DIRECT';
       if (!payload.shop_name) payload.shop_name = 'AVS AGENCIES';

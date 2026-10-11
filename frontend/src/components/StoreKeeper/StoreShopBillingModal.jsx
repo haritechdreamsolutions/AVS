@@ -10,7 +10,7 @@ import {
 import { toast } from 'sonner';
 
 export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
-  const { products = [], shops = [], villages = [], sales = [], createSale } = useApp();
+  const { products = [], shops = [], villages = [], sales = [], createSale, currentUser } = useApp();
 
   // Navigation Steps: 'VILLAGES' | 'SHOPS' | 'BILLING' | 'PAYMENT'
   const [currentStep, setCurrentStep] = useState('VILLAGES');
@@ -388,7 +388,7 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
       shop_code: activeShop.code || '',
       customer_name: activeShop.name,
       employee_id: null,
-      employee_name: 'Store Keeper',
+      employee_name: currentUser?.name || currentUser?.username || 'Store Keeper',
       vehicle_no: 'Warehouse Direct',
       payment_mode: paymentMode,
       cash_paid: paymentMode === 'CASH' ? payableAmount : (paymentMode === 'SPLIT' ? numCash : 0),

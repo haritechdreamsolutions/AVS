@@ -61,7 +61,7 @@ const PRODUCT_IMAGES = {
 };
 
 export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
-  const { products = [], createSale } = useApp();
+  const { products = [], createSale, currentUser } = useApp();
   
   const activeProducts = useMemo(() => {
     return sortProductsCustom((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
@@ -274,7 +274,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
       shop_name: 'AVS AGENCIES',
       customer_name: 'Walk-in Counter Customer',
       employee_id: null,
-      employee_name: 'Store Keeper',
+      employee_name: currentUser?.name || currentUser?.username || 'Store Keeper',
       vehicle_no: 'Warehouse Counter',
       payment_mode: paymentMode,
       cash_paid: finalCash,

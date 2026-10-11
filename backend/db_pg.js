@@ -1998,7 +1998,7 @@ export async function createSale(cid, d, actorUserId) {
     }
 
     let empId = employee_id || null;
-    let empName = 'Store Keeper POS';
+    let empName = d.employee_name || 'Store Keeper';
     let driverSession = null;
 
     if (empId) {
