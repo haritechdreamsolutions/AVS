@@ -101,3 +101,64 @@ export function checkReconciliationEquation(allocated, sold, damaged, currentRet
     calculated
   };
 }
+
+/**
+ * Canonical Warehouse Inventory Stock Formatter.
+ * Formats warehouse stock into Tray & Loose Pieces (with total piece count) or Standard Bundle Units.
+ */
+export function formatWarehouseStock(product) {
+  const opUnit = getOperationalUnit(product);
+  const ppu = Math.max(1, Number(product?.pieces_per_unit || 1));
+  const whUnits = Number(product?.warehouse_stock_units || 0);
+  const totalPieces = Math.round(whUnits * ppu);
+
+  if (opUnit.isPieceBased) {
+    const unitName = product?.selling_unit || 'Tray';
+    if (totalPieces <= 0) {
+      return {
+        text: `0 ${unitName} (0 Pcs)`,
+        isOutOfStock: true,
+        totalPieces: 0,
+        trays: 0,
+        loosePcs: 0,
+        units: 0,
+        unitLabel: 'Pieces'
+      };
+    }
+
+    const trays = Math.floor(totalPieces / ppu);
+    const loosePcs = totalPieces % ppu;
+    let text = '';
+    if (trays > 0 && loosePcs > 0) {
+      text = `${trays} ${unitName} ${loosePcs} Pcs (${totalPieces} Pcs)`;
+    } else if (trays > 0) {
+      text = `${trays} ${unitName}${trays > 1 ? 's' : ''} (${totalPieces} Pcs)`;
+    } else {
+      text = `${loosePcs} Pcs (${totalPieces} Pcs)`;
+    }
+
+    return {
+      text,
+      isOutOfStock: false,
+      totalPieces,
+      trays,
+      loosePcs,
+      units: trays,
+      unitLabel: 'Pieces'
+    };
+  } else {
+    const units = Math.max(0, Number(whUnits || 0));
+    const unitName = product?.selling_unit || opUnit.label || 'Case';
+    const isPlural = units !== 1;
+    const label = isPlural && !unitName.endsWith('s') && !unitName.endsWith('S') ? `${unitName}s` : unitName;
+    return {
+      text: `${units} ${label}`,
+      isOutOfStock: units <= 0,
+      totalPieces: units,
+      trays: 0,
+      loosePcs: 0,
+      units,
+      unitLabel: label
+    };
+  }
+}

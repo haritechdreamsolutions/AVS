@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { getOperationalUnit } from '../../utils/unitHelper';
+import { getOperationalUnit, formatWarehouseStock } from '../../utils/unitHelper';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
 import { 
   X, ShoppingBag, Plus, Minus, CheckCircle2, 
@@ -88,26 +88,29 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
     const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
     const whUnits = Number(prod.warehouse_stock_units || 0);
     const directSaleRate = Number(prod.direct_sale_rate || 0);
+    const stockFormatted = formatWarehouseStock(prod);
 
     if (opUnit.isPieceBased) {
-      const maxAvailable = Math.floor(whUnits * ppu);
+      const maxAvailable = stockFormatted.totalPieces;
       const fallbackRate = Number(prod.piece_selling_price || (Number(prod.unit_selling_price || 0) / ppu) || 0);
       const rate = directSaleRate > 0 ? directSaleRate : fallbackRate;
       return {
         opUnit,
         maxAvailable,
+        stockFormatted,
         rate,
         unitType: 'Piece',
         displayUnit: 'Piece',
         pluralUnit: 'Pieces'
       };
     } else {
-      const maxAvailable = whUnits;
+      const maxAvailable = stockFormatted.units;
       const fallbackRate = Number(prod.unit_selling_price || (Number(prod.piece_selling_price || 0) * ppu) || 0);
       const rate = directSaleRate > 0 ? directSaleRate : fallbackRate;
       return {
         opUnit,
         maxAvailable,
+        stockFormatted,
         rate,
         unitType: opUnit.operationalUnit,
         displayUnit: opUnit.operationalUnit,
@@ -457,7 +460,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                               {meta.sizeBadge}
                             </span>
                             <span className="font-mono font-black text-xs sm:text-sm text-slate-900">
-                              ₹{stockInfo.rate.toFixed(2)}/pc
+                              ₹{stockInfo.rate.toFixed(2)}/{stockInfo.unitType === 'Piece' ? 'pc' : (stockInfo.displayUnit || 'unit').toLowerCase()}
                             </span>
                           </div>
 
@@ -466,10 +469,10 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                           </h4>
                         </div>
 
-                        <div className="flex items-center justify-between text-[10px] mt-1">
-                          <span className="text-slate-500 font-bold">Store Stock:</span>
-                          <span className={`font-mono font-black ${availablePcs > 10 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                            {prod.warehouse_stock_units} Trays ({availablePcs} Pcs)
+                        <div className="flex items-center justify-between text-[10px] mt-1 gap-1">
+                          <span className="text-slate-500 font-bold shrink-0">Store Stock:</span>
+                          <span className={`font-mono font-black text-right ${availablePcs > 10 ? 'text-emerald-700' : availablePcs > 0 ? 'text-amber-600' : 'text-rose-600'}`}>
+                            {stockInfo.stockFormatted.text}
                           </span>
                         </div>
                       </div>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { getOperationalUnit } from '../../utils/unitHelper';
+import { getOperationalUnit, formatWarehouseStock } from '../../utils/unitHelper';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
 import { 
   X, Store, MapPin, Search, ArrowLeft, ArrowRight, CheckCircle2, 
@@ -154,39 +154,41 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
     const opUnit = getOperationalUnit(product);
     const piecesPerUnit = Math.max(1, Number(product.pieces_per_unit || 1));
     const whUnits = Number(product.warehouse_stock_units || 0);
-    const basePieces = Math.floor(whUnits * piecesPerUnit);
+    const stockFormatted = formatWarehouseStock(product);
 
     if (opUnit.isPieceBased) {
       // Tray products: Milk, Curd -> Piece-based rates & available
-      const availableStock = basePieces;
+      const availableStock = stockFormatted.totalPieces;
       const rate = Number(product.piece_selling_price || (Number(product.unit_selling_price || 0) / piecesPerUnit) || 0);
       return {
         opUnit,
         whUnits,
-        basePieces,
+        stockFormatted,
+        basePieces: availableStock,
         piecesPerUnit,
         availableStock,
         unitLabel: 'Pieces',
         shortUnit: 'Pcs',
         sellingUnit: product.selling_unit || 'Trays',
         rate,
-        isOutOfStock: availableStock <= 0
+        isOutOfStock: stockFormatted.isOutOfStock
       };
     } else {
       // Non-tray products: Case, Bag, Box
-      const availableStock = Math.floor(basePieces / piecesPerUnit);
+      const availableStock = stockFormatted.units;
       const rate = Number(product.unit_selling_price || (Number(product.piece_selling_price || 0) * piecesPerUnit) || 0);
       return {
         opUnit,
         whUnits,
-        basePieces,
+        stockFormatted,
+        basePieces: Math.round(whUnits * piecesPerUnit),
         piecesPerUnit,
         availableStock,
         unitLabel: opUnit.pluralLabel,
         shortUnit: opUnit.label,
         sellingUnit: product.selling_unit || opUnit.label,
         rate,
-        isOutOfStock: availableStock <= 0
+        isOutOfStock: stockFormatted.isOutOfStock
       };
     }
   };
@@ -845,7 +847,7 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
                                 ? 'bg-rose-100 text-rose-800 border-rose-200' 
                                 : 'bg-emerald-100 text-emerald-800 border-emerald-200'
                             }`}>
-                              Stock: {info.availableStock} {info.unitLabel}
+                              Stock: {info.stockFormatted.text}
                             </span>
                           </div>
                         </div>
