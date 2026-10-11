@@ -15,7 +15,8 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
     summary, sales = [], refreshData, fetchExecutiveDashboard, 
     activeBill, setActiveBill, fetchExpenses, fetchDamages, 
     fetchMissingStockReport, companyInfo,
-    resetTransactionsAndInventory
+    resetTransactionsAndInventory,
+    shops = [], freezers = [], villages = []
   } = useApp();
   const [selectedSaleForDetails, setSelectedSaleForDetails] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -505,24 +506,80 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
       {/* Visual Analytics Chart */}
       <AdminAnalyticsChart data={dashboardData} />
 
-      {/* Freezer Asset Shortcut Card */}
-      <div
-        onClick={() => onNavigateTab && onNavigateTab('freezer')}
-        className="glass-panel p-4.5 rounded-3xl bg-gradient-to-r from-cyan-50 to-blue-50 border border-cyan-200 flex items-center justify-between cursor-pointer hover:shadow-md transition"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-cyan-600 text-white flex items-center justify-center font-bold text-2xl shadow-md">
-            🧊
+      {/* Freezer Asset Allocation Rich Card (Mobile & Desktop Responsive) */}
+      {(() => {
+        const shopsWithFreezer = (shops || []).filter(s => s.has_freezer || (freezers || []).some(f => String(f.shop_id) === String(s.id)));
+        const totalDeployedFreezers = (freezers && freezers.length > 0) ? freezers.length : shopsWithFreezer.length;
+        const totalShopsCount = (shops || []).length;
+        const totalVillagesWithFreezers = new Set(shopsWithFreezer.map(s => s.village_name || s.village_id || 'Salem')).size;
+
+        return (
+          <div
+            onClick={() => onNavigateTab && onNavigateTab('freezer')}
+            className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-cyan-600 via-sky-600 to-indigo-700 p-5 sm:p-6 text-white shadow-xl shadow-cyan-900/15 border border-cyan-400/30 cursor-pointer transition-all duration-300 hover:shadow-2xl hover:scale-[1.008] active:scale-[0.995]"
+          >
+            {/* Background Glow & Watermark */}
+            <div className="absolute -right-8 -top-8 w-44 h-44 rounded-full bg-white/10 blur-2xl pointer-events-none"></div>
+            <div className="absolute right-4 bottom-2 text-7xl opacity-10 select-none pointer-events-none font-sans font-black">
+              🧊
+            </div>
+
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
+              {/* Left Details */}
+              <div className="flex items-start sm:items-center gap-4">
+                <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-3xl shadow-lg flex-shrink-0 group-hover:rotate-6 transition-transform">
+                  🧊
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-black text-base sm:text-lg tracking-tight text-white drop-shadow-xs">
+                      SHOP FREEZER ASSETS ALLOCATION
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/25 text-white border border-white/30 backdrop-blur-xs">
+                      Cold Storage Fleet
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-cyan-100 font-medium leading-relaxed">
+                    Track, deploy and manage branded deep freezers & visicoolers allocated across retail store networks.
+                  </p>
+                </div>
+              </div>
+
+              {/* Middle Metrics (Badges) */}
+              <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
+                <div className="px-3.5 py-2 rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 text-center flex-1 sm:flex-none min-w-[85px]">
+                  <span className="block text-[10px] uppercase font-bold text-cyan-200">Deployed</span>
+                  <span className="font-mono font-black text-base sm:text-lg text-white">
+                    {totalDeployedFreezers} <span className="text-[11px] font-sans font-bold">Units</span>
+                  </span>
+                </div>
+
+                <div className="px-3.5 py-2 rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 text-center flex-1 sm:flex-none min-w-[85px]">
+                  <span className="block text-[10px] uppercase font-bold text-cyan-200">Shops</span>
+                  <span className="font-mono font-black text-base sm:text-lg text-white">
+                    {shopsWithFreezer.length} <span className="text-[11px] font-sans font-bold">Stores</span>
+                  </span>
+                </div>
+
+                <div className="px-3.5 py-2 rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 text-center flex-1 sm:flex-none min-w-[85px]">
+                  <span className="block text-[10px] uppercase font-bold text-cyan-200">Coverage</span>
+                  <span className="font-mono font-black text-base sm:text-lg text-white">
+                    {totalVillagesWithFreezers} <span className="text-[11px] font-sans font-bold">Villages</span>
+                  </span>
+                </div>
+
+                {/* Right Action Button */}
+                <div className="w-full sm:w-auto mt-1 sm:mt-0">
+                  <span className="w-full sm:w-auto px-4 py-2.5 rounded-2xl bg-white text-cyan-900 hover:bg-cyan-50 font-black text-xs sm:text-sm shadow-lg flex items-center justify-center gap-1.5 transition-colors">
+                    <span>Manage Freezers</span>
+                    <span className="group-hover:translate-x-1 transition-transform">→</span>
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div>
-            <h3 className="font-black text-sm text-slate-900">Shop Freezer Assets Allocation</h3>
-            <p className="text-xs text-slate-600 font-semibold">{summary?.freezerCount || 3} Shops Provided with Free Freezers</p>
-          </div>
-        </div>
-        <span className="px-3.5 py-2 bg-cyan-600 text-white font-extrabold text-xs rounded-xl shadow-sm">
-          Manage Freezers →
-        </span>
-      </div>
+        );
+      })()}
 
       {/* Sale Details Modal */}
       {selectedSaleForDetails && (
