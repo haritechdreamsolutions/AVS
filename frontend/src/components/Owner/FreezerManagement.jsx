@@ -62,6 +62,7 @@ export const FreezerManagement = () => {
   const [showCreateModelModal, setShowCreateModelModal] = useState(false);
   const [showManageModelsModal, setShowManageModelsModal] = useState(false);
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, freezer: null, shop: null });
+  const [villageDeleteModal, setVillageDeleteModal] = useState({ isOpen: false, village: null, isDeleting: false });
 
   // Assign / Edit Form State
   const [selectedShopId, setSelectedShopId] = useState('');
@@ -694,6 +695,39 @@ export const FreezerManagement = () => {
     }
   };
 
+  // Handle delete all freezer allocations from a village
+  const handleConfirmVillageFreezersDelete = async () => {
+    const vg = villageDeleteModal.village;
+    if (!vg) return;
+
+    setVillageDeleteModal(prev => ({ ...prev, isDeleting: true }));
+    try {
+      // Loop through all freezers in this village and unassign them
+      const freezersToRemove = vg.allFreezers || [];
+      if (freezersToRemove.length === 0) {
+        // Also check if any shop has has_freezer flag
+        for (const s of vg.shops || []) {
+          if (s.has_freezer) {
+            await unassignFreezer(s.id, s.id);
+          }
+        }
+      } else {
+        for (const frz of freezersToRemove) {
+          const targetId = frz.id && !String(frz.id).startsWith('legacy-') ? frz.id : frz.shop_id;
+          await unassignFreezer(targetId, frz.shop_id);
+        }
+      }
+      toast.success(`🗑️ Freezer assets successfully removed from village '${vg.name}'!`);
+      setVillageDeleteModal({ isOpen: false, village: null, isDeleting: false });
+      if (selectedVillage && (selectedVillage.id === vg.id || selectedVillage.name === vg.name)) {
+        setSelectedVillage(null);
+      }
+    } catch (err) {
+      toast.error('Failed to remove freezers: ' + (err.message || 'Unknown error'));
+      setVillageDeleteModal(prev => ({ ...prev, isDeleting: false }));
+    }
+  };
+
   const currentModalShop = useMemo(() => {
     return shops.find(s => String(s.id) === String(selectedShopId));
   }, [shops, selectedShopId]);
@@ -868,11 +902,25 @@ export const FreezerManagement = () => {
                           </div>
                         </div>
 
-                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-black border flex-shrink-0 ${
-                          totalFreezers > 0 ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-slate-100 text-slate-600 border-slate-200'
-                        }`}>
-                          {totalFreezers} {totalFreezers === 1 ? 'Freezer' : 'Freezers'}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <span className={`px-2.5 py-1 rounded-full text-[11px] font-black border ${
+                            totalFreezers > 0 ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-slate-100 text-slate-600 border-slate-200'
+                          }`}>
+                            {totalFreezers} {totalFreezers === 1 ? 'Freezer' : 'Freezers'}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setVillageDeleteModal({ isOpen: true, village: vg, isDeleting: false });
+                            }}
+                            className="p-1.5 bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl border border-slate-200 hover:border-rose-200 shadow-2xs transition"
+                            title={`Remove freezer assets from ${vg.name}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
 
                       <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200 text-xs space-y-2">
@@ -1772,6 +1820,50 @@ export const FreezerManagement = () => {
               </button>
               <button
                 onClick={() => setDeleteModal({ isOpen: false, freezer: null, shop: null })}
+                className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* MODAL 5: VILLAGE FREEZERS DELETE CONFIRMATION */}
+      {/* ==================================================================== */}
+      {villageDeleteModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            
+            <div className="text-center space-y-1">
+              <h4 className="font-black text-base text-slate-900">Remove Freezer Assets?</h4>
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                Are you sure you want to remove all freezer assets deployed in village <strong className="text-slate-900">{villageDeleteModal.village?.name}</strong>?
+              </p>
+            </div>
+
+            <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-xs space-y-1">
+              <p className="font-bold text-amber-800 text-[11px] leading-relaxed">
+                ℹ️ Village and Shop accounts will <strong>remain safe</strong>. Only freezer hardware allocations will be removed from this village.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                onClick={handleConfirmVillageFreezersDelete}
+                disabled={villageDeleteModal.isDeleting}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white font-extrabold text-xs shadow-md shadow-rose-600/20 transition flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                {villageDeleteModal.isDeleting ? 'Removing Assets...' : 'Yes, Remove Freezers'}
+              </button>
+              <button
+                onClick={() => setVillageDeleteModal({ isOpen: false, village: null, isDeleting: false })}
+                disabled={villageDeleteModal.isDeleting}
                 className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
               >
                 Cancel
