@@ -2020,6 +2020,7 @@ export async function createSale(cid, d, actorUserId) {
       }
     }
 
+    let emp = null;
     if (empId) {
       let eR = await client.query('SELECT * FROM employees WHERE id=$1 AND company_id=$2', [empId, cid]);
       if (eR.rows.length === 0) {
@@ -2036,18 +2037,20 @@ export async function createSale(cid, d, actorUserId) {
         }
       }
       if (eR.rows.length > 0) {
-        const emp = eR.rows[0];
+        emp = eR.rows[0];
         empName = emp.full_name;
       }
     } else if (d.employee_name && !d.employee_name.toLowerCase().includes('store')) {
       const eR = await client.query('SELECT * FROM employees WHERE LOWER(TRIM(full_name)) = LOWER(TRIM($1)) AND company_id=$2', [d.employee_name, cid]);
       if (eR.rows.length > 0) {
-        empId = eR.rows[0].id;
-        empName = eR.rows[0].full_name;
+        emp = eR.rows[0];
+        empId = emp.id;
+        empName = emp.full_name;
       }
     }
 
-      let empRouteId = emp.route_id;
+    if (empId) {
+      let empRouteId = emp ? emp.route_id : null;
       if (!empRouteId) {
         const today = new Date().toISOString().split('T')[0];
         const raR = await client.query(
