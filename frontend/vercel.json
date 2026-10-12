@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://avs-backend-ttrz.onrender.com/api/$1"
+      "destination": "https://avs-bcc8.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",
