@@ -1,33 +1,21 @@
 import express from 'express';
 import * as db from './db_pg.js';
-import { runAutoMigrations, resetTransactionAndInventoryData, resetAllDummyUsersAndKeepAdmins } from './database/auto_migrate.js';
+import { csrfToken, loginLimiter, authorize, requireAuth, requireRole } from './security.js';
+import { salesReport } from './reports.js';
+import { refundSale } from './payments.js';
 
 const router = express.Router();
 
 // ====== AUTH MIDDLEWARE ======
-export function requireAuth(req, res, next) {
-  if (!req.session || !req.session.userId) {
-    return res.status(401).json({ success: false, message: 'Unauthenticated. Please log in.' });
-  }
-  next();
-}
-
-export function requireRole(...roles) {
-  return (req, res, next) => {
-    if (!req.session || !req.session.userId) {
-      return res.status(401).json({ success: false, message: 'Unauthenticated.' });
-    }
-    if (!roles.includes(req.session.role)) {
-      return res.status(403).json({ success: false, message: 'Forbidden. Required: ' + roles.join(' or ') });
-    }
-    next();
-  };
-}
+export { requireAuth, requireRole };
 
 const getCid = (req) => req.session?.companyId || 1;
 
 // ====== AUTH ROUTES ======
-router.post('/auth/login', async (req, res) => {
+router.get('/auth/csrf', csrfToken);
+router.use(authorize);
+
+router.post('/auth/login', loginLimiter(), async (req, res) => {
   try {
     const { login_id, pin } = req.body;
     if (!login_id || !pin) {
@@ -35,12 +23,15 @@ router.post('/auth/login', async (req, res) => {
     }
     const result = await db.login(login_id, pin);
     if (!result.success) return res.status(401).json(result);
+    await new Promise((resolve, reject) => req.session.regenerate(error => error ? reject(error) : resolve()));
     req.session.userId = result.user.id;
     req.session.companyId = result.user.company_id;
     req.session.role = result.user.role;
     req.session.userRole = result.user.role;
     req.session.userName = result.user.name;
     req.session.employeeId = result.user.employee_id;
+    req.session.authVersion = result.user.auth_version;
+    await new Promise((resolve, reject) => req.session.save(error => error ? reject(error) : resolve()));
     res.json(result);
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
@@ -851,12 +842,22 @@ router.delete('/shops/:id/freezer', async (req, res) => {
 
 router.post('/shops/:id/collect-due', requireAuth, async (req, res) => {
   try {
-    const result = await db.collectShopDue(getCid(req), req.params.id, req.body);
+    const result = await db.collectShopDue(getCid(req), req.params.id, req.body, req.authUser);
     res.json(result);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
 // ====== SALES & BILLING ======
+router.get('/reports/sales', requireAuth, requireRole('OWNER'), async (req, res) => {
+  try {
+    const report = await salesReport(getCid(req), req.query);
+    res.json(report);
+  } catch (e) {
+    const clientError = /^(Invalid |PDF export exceeds|Search is too long)/.test(e.message || '');
+    res.status(clientError ? 400 : 500).json({ success: false, message: clientError ? e.message : 'Unable to load sales report.' });
+  }
+});
+
 router.get('/sales', requireAuth, async (req, res) => {
   try {
     const cid = getCid(req);
@@ -952,6 +953,12 @@ router.delete('/sales/:id', requireAuth, async (req, res) => {
     const result = await db.cancelSale(getCid(req), parseInt(req.params.id, 10), req.session.userId, userRole);
     res.json(result);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
+router.post('/sales/:id/refund', requireAuth, requireRole('OWNER', 'STORE_KEEPER'), async (req, res) => {
+  try {
+    res.json(await refundSale(getCid(req), req.params.id, req.body, req.authUser));
+  } catch (error) { res.status(400).json({ success: false, message: error.message }); }
 });
 
 router.post('/sales/:id/cancel', requireAuth, async (req, res) => {
@@ -1052,7 +1059,7 @@ router.get('/settlements', requireAuth, async (req, res) => {
 
 router.post('/settlements', requireAuth, async (req, res) => {
   try {
-    const result = await db.saveSettlement(getCid(req), req.body);
+    const result = await db.saveSettlement(getCid(req), req.body, req.authUser);
     res.json(result);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
@@ -1184,34 +1191,6 @@ router.get('/export/:reportType', requireAuth, requireRole('OWNER', 'ADMIN'), as
 
     res.json(data);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
-});
-
-// ====== SYSTEM MIGRATION & RESET TRIGGERS ======
-router.all(['/system/migrate', '/system/run-migrations'], async (req, res) => {
-  try {
-    await runAutoMigrations();
-    res.json({ success: true, message: 'Auto-migrations executed successfully on database.' });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-router.all(['/system/reset-transactions', '/admin/reset-transactions'], async (req, res) => {
-  try {
-    const result = await resetTransactionAndInventoryData();
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-router.all(['/system/reset-all-dummy-users', '/admin/reset-all-dummy-users'], async (req, res) => {
-  try {
-    const result = await resetAllDummyUsersAndKeepAdmins();
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
 });
 
 export default router;

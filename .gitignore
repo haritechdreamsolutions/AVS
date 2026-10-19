@@ -1,5 +1,19 @@
 # Node dependencies
 node_modules/
+.tmp/
+deploy/secrets/
+deploy/*.env
+*.pgpass
+*.dump
+*.dump.age
+*.agekey
+*.key
+**/.env
+**/.env.*
+!**/.env.example
+database_export/
+playwright-report/
+test-results/
 backend/node_modules/
 frontend/node_modules/
 

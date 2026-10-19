@@ -66,24 +66,14 @@ export async function login(loginId, pin) {
       await client.query('COMMIT');
       return { success: false, message: 'Account ' + row.account_status + '. Contact administrator.' };
     }
-    if (row.locked_until && new Date(row.locked_until) > new Date()) {
-      await client.query('COMMIT');
-      const m = Math.ceil((new Date(row.locked_until) - new Date()) / 60000);
-      return { success: false, message: 'Account temporarily locked. Try in ' + m + ' minutes.' };
-    }
-
-    const pinStr = String(pin).trim();
-    const ok = (await bcrypt.compare(pinStr, row.pin_hash)) || (row.pin_hash === pinStr);
+    const pinStr = String(pin);
+    const ok = await bcrypt.compare(pinStr, row.pin_hash);
     if (!ok) {
       const attempts = (row.failed_attempts || 0) + 1;
-      if (attempts >= 5) {
-        await client.query("UPDATE user_accounts SET failed_attempts=$1, locked_until=NOW()+INTERVAL '15 minutes' WHERE id=$2", [attempts, row.id]);
-      } else {
-        await client.query("UPDATE user_accounts SET failed_attempts=$1 WHERE id=$2", [attempts, row.id]);
-      }
+      await client.query('UPDATE user_accounts SET failed_attempts=$1, locked_until=NULL WHERE id=$2', [attempts, row.id]);
       await client.query('COMMIT');
       await auditLog({ companyId: row.company_id, action: 'LOGIN_FAILED', entityId: row.id });
-      return { success: false, message: 'Invalid credentials. ' + Math.max(0, 5 - attempts) + ' attempts remaining.' };
+      return { success: false, message: 'Invalid credentials.' };
     }
 
     await client.query('UPDATE user_accounts SET failed_attempts=0, locked_until=NULL, last_login_at=NOW() WHERE id=$1', [row.id]);
@@ -93,6 +83,7 @@ export async function login(loginId, pin) {
       success: true,
       user: {
         id: row.id,
+        auth_version: row.auth_version,
         company_id: row.company_id,
         employee_id: row.employee_id,
         login_id: row.login_id,
@@ -2212,7 +2203,7 @@ async function createSaleAttempt(cid, d, actorUserId) {
     if (oldCreditPaid === 0 && shopPrevDue > 0 && d.include_old_credit) {
       oldCreditPaid = shopPrevDue;
     }
-    oldCreditPaid = Math.min(shopPrevDue, Math.max(0, oldCreditPaid));
+    if (paise(oldCreditPaid) > paise(shopPrevDue)) throw new Error('Old credit payment exceeds the outstanding balance');
 
     const mode = String(payment_mode || 'CASH').toUpperCase();
     let cash = 0, gpay = 0, credit = 0;
@@ -2245,32 +2236,15 @@ async function createSaleAttempt(cid, d, actorUserId) {
 
     let billNo = d.bill_no || d.billNo;
     if (!billNo) {
-      try {
-        const sequence = await client.query("SELECT nextval('invoice_number_sequence')::text AS value");
-        billNo = 'AVS-' + cid + '-' + sequence.rows[0].value.padStart(6, '0');
-      } catch {
-        billNo = 'INV-' + Date.now().toString().slice(-6);
-      }
+      const sequence = await client.query("SELECT nextval('invoice_number_sequence')::text AS value");
+      billNo = 'AVS-' + cid + '-' + sequence.rows[0].value.padStart(6, '0');
     }
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
     const nowTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
 
-    let sR;
-    try {
-      sR = await client.query(
+    const sR = await client.query(
         'INSERT INTO sales (company_id,bill_no,employee_id,employee_name,shop_id,shop_name,sale_date,sale_time,total_amount,cash_paid,gpay_paid,credit_paid,payment_mode,previous_due,old_credit_paid,request_key,request_hash,session_id,financial_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,1) RETURNING *',
         [cid,billNo,empId,empName,shop.id,shop.name,today,nowTime,amount(totalPaise),cash,gpay,credit,mode,shopPrevDue,oldCreditPaid,clientRef,identity.hash,driverSession?.id || null]);
-    } catch {
-      try {
-        sR = await client.query(
-          'INSERT INTO sales (company_id,bill_no,employee_id,employee_name,shop_id,shop_name,sale_date,sale_time,total_amount,cash_paid,gpay_paid,credit_paid,payment_mode,previous_due,old_credit_paid) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
-          [cid,billNo,empId,empName,shop.id,shop.name,today,nowTime,amount(totalPaise),cash,gpay,credit,mode,shopPrevDue,oldCreditPaid]);
-      } catch {
-        sR = await client.query(
-          'INSERT INTO sales (company_id,bill_no,employee_id,employee_name,shop_id,shop_name,sale_date,sale_time,total_amount,cash_paid,gpay_paid,credit_paid,payment_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-          [cid,billNo,empId,empName,shop.id,shop.name,today,nowTime,amount(totalPaise),cash,gpay,credit,mode]);
-      }
-    }
     const sale = sR.rows[0];
     sale.shop_code = shop?.code || '';
     sale.previous_due = shopPrevDue;
@@ -2280,8 +2254,8 @@ async function createSaleAttempt(cid, d, actorUserId) {
 
     for (const item of evaluatedItems) {
       await client.query(
-        'INSERT INTO sale_items (sale_id, product_id, product_name, qty, unit_type, rate, amount) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-        [sale.id, item.product_id, item.product_name, item.qty, item.unit_type, item.rate, item.amount]
+        'INSERT INTO sale_items (sale_id, product_id, product_name, qty, unit_type, rate, amount, conversion_to_base, stock_qty_units) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        [sale.id, item.product_id, item.product_name, item.qty, item.unit_type, item.rate, item.amount, item.conversion, item.qtyInSellingUnits]
       );
       const movNo = 'MOV-SALE-' + Date.now() + '-' + Math.floor(Math.random()*1000);
       await client.query(

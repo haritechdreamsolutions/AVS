@@ -188,7 +188,7 @@ export const ShopsManagementView = ({ onNavigateVillages }) => {
       return;
     }
 
-    const res = await collectShopDue(selectedShopForPayment.id, { amount: payVal, mode: paymentModeInput });
+    const res = await collectShopDue(selectedShopForPayment.id, { amount: payVal, mode: paymentModeInput, idempotency_key: selectedShopForPayment.receiptRequestKey || (selectedShopForPayment.receiptRequestKey = crypto.randomUUID()) });
     if (res.success) {
       const remaining = res.remainingDue !== undefined ? res.remainingDue : Math.max(0, maxDue - payVal);
       if (remaining === 0) {

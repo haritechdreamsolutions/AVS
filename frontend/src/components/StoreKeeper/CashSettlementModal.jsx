@@ -4,7 +4,7 @@ import { DollarSign, X, Save, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const CashSettlementModal = ({ onClose }) => {
-  const { employees, saveSettlement } = useApp();
+  const { employees, saveSettlement, apiFetch } = useApp();
   const [selectedEmpId, setSelectedEmpId] = useState(employees[0]?.id || '');
   const [expectedCash, setExpectedCash] = useState(0);
   const [actualCash, setActualCash] = useState(0);
@@ -25,11 +25,11 @@ export const CashSettlementModal = ({ onClose }) => {
   const loadEmployeeSummary = async (empId) => {
     try {
       setLoadingSummary(true);
-      const res = await fetch(`${API_URL}/sk/employee-summary/${empId}`, { credentials: 'include' });
+      const res = await apiFetch(`${API_URL}/sk/employee-summary/${empId}`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
-        setExpectedCash(data.cashCollected || 0);
-        setActualCash(data.cashCollected || 0);
+        setExpectedCash(Math.max(0, Number(data.cash_collected || 0)-Number(data.total_expenses || 0)));
+        setActualCash(Math.max(0, Number(data.cash_collected || 0)-Number(data.total_expenses || 0)));
       }
     } catch (e) {
       console.error('Failed to load employee summary', e);
@@ -48,6 +48,7 @@ export const CashSettlementModal = ({ onClose }) => {
     const emp = employees.find(e => String(e.id) === String(selectedEmpId));
     setSaving(true);
     const res = await saveSettlement({
+      idempotency_key: crypto.randomUUID(),
       employee_id: Number(selectedEmpId),
       employee_name: emp ? emp.full_name : 'Employee',
       expected_amount: Number(expectedCash || 0),

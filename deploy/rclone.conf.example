@@ -1,0 +1,8 @@
+[offsite]
+type = s3
+provider = Other
+access_key_id = REPLACE_WITH_BUCKET_SCOPED_UPLOAD_KEY
+secret_access_key = REPLACE_WITH_UPLOAD_SECRET
+endpoint = https://REPLACE_WITH_B2_S3_ENDPOINT
+region = REPLACE_WITH_REGION
+acl = private

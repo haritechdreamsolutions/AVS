@@ -1,5 +1,5 @@
 import React, { useState, lazy, Suspense } from 'react';
-import { useApp } from './context/AppContext';
+import { apiFetch, useApp } from './context/AppContext';
 import { Header } from './components/common/Header';
 import { RoleLoginScreen } from './components/common/RoleLoginScreen';
 import { Home, Receipt, Store } from 'lucide-react';
@@ -39,7 +39,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      await fetch(`${API_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
+      await apiFetch(`${API_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
       window.location.reload();
     } catch (e) {
       toast.error("Logout failed");
@@ -67,7 +67,7 @@ export default function App() {
   };
 
   const handleProceedToPayment = (billInfo) => {
-    setPendingBillData(billInfo);
+    setPendingBillData({ ...billInfo, idempotency_key: crypto.randomUUID() });
     setEmpScreen('payment');
   };
 

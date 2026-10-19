@@ -120,12 +120,7 @@ export const ThermalBillModal = ({
   const rawBillNo = bill.bill_no || bill.sale?.bill_no || 'INV-000000';
   const displayBillNo = rawBillNo.length > 35 ? rawBillNo.substring(0, 35) : rawBillNo;
 
-  // Logged-in username display
-  const loggedInEmpName = (currentUser?.name || currentUser?.username)
-    ? (currentUser.name || currentUser.username)
-    : (bill.employee_name && bill.employee_name !== 'Store Keeper POS'
-        ? bill.employee_name
-        : (is80mm ? 'Store Keeper' : 'Driver'));
+  const loggedInEmpName = bill.employee_name || 'Not recorded';
 
   const handleSystemPrint = () => {
     window.print();
@@ -245,7 +240,7 @@ export const ThermalBillModal = ({
           </div>
 
           {/* Bill Meta (Strict 3-Row Layout) */}
-          <div className={`border-b border-dashed border-slate-400 pb-2 space-y-1 ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10px] sm:text-[10.5px]'}`}>
+          <div className={`receipt-meta border-b border-dashed border-slate-400 pb-2 space-y-1 ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10px] sm:text-[10.5px]'}`}>
             {/* Row 1: Bill ID (Half Width / Truncated) + Date (Right) */}
             <div className="flex justify-between items-center font-extrabold gap-2">
               <span className="truncate max-w-[55%] shrink-0">

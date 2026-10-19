@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getOperationalUnit, formatWarehouseStock } from '../../utils/unitHelper';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
@@ -67,6 +67,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
     return sortProductsCustom((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
   }, [products]);
 
+  const billingRequest = useRef({ key: crypto.randomUUID(), payload: '' });
   const [activeCategory, setActiveCategory] = useState('all');
   const [mobileTab, setMobileTab] = useState('products'); // 'products' | 'cart'
   const [cart, setCart] = useState({}); // { [prodId]: { product, qty, unit_type, rate, amount } }
@@ -266,7 +267,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
       return;
     }
 
-    const idempotencyKey = 'POS-SK-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+    const idempotencyKey = billingRequest.current.key;
 
     const salePayload = {
       is_store_direct_sale: true,
@@ -293,6 +294,10 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
       }))
     };
 
+    const fingerprint = JSON.stringify({...salePayload,idempotency_key:undefined,client_reference:undefined});
+    if (billingRequest.current.payload !== fingerprint) billingRequest.current = {payload:fingerprint,key:crypto.randomUUID()};
+    salePayload.idempotency_key = billingRequest.current.key;
+    salePayload.client_reference = billingRequest.current.key;
     setSubmitting(true);
     try {
       const res = await createSale(salePayload);
