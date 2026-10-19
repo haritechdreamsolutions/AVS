@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getOperationalUnit, formatWarehouseStock } from '../../utils/unitHelper';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
@@ -13,6 +13,7 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
   const { products = [], shops = [], villages = [], sales = [], createSale, currentUser } = useApp();
 
   // Navigation Steps: 'VILLAGES' | 'SHOPS' | 'BILLING' | 'PAYMENT'
+  const billingRequest = useRef({ key: crypto.randomUUID(), payload: '' });
   const [currentStep, setCurrentStep] = useState('VILLAGES');
   const [selectedVillage, setSelectedVillage] = useState(null);
   const [selectedShop, setSelectedShop] = useState(null);
@@ -377,7 +378,7 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
     }
 
     setIsSubmitting(true);
-    const idempotencyKey = 'POS-SK-SHOP-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+    const idempotencyKey = billingRequest.current.key;
     const oldCreditPaid = includeOldCredit ? shopPreviousDue : 0;
 
     const payload = {
@@ -396,6 +397,7 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
       credit_paid: paymentMode === 'CREDIT' ? totalBillAmount : (paymentMode === 'SPLIT' ? numCredit : 0),
       old_credit_paid: oldCreditPaid,
       clear_previous_due: includeOldCredit,
+      include_old_credit: includeOldCredit,
       previous_due: shopPreviousDue,
       total_amount: totalBillAmount,
       payable_amount: payableAmount,
@@ -412,6 +414,10 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
       }))
     };
 
+    const fingerprint = JSON.stringify({...payload,idempotency_key:undefined,client_reference:undefined});
+    if (billingRequest.current.payload !== fingerprint) billingRequest.current = {payload:fingerprint,key:crypto.randomUUID()};
+    payload.idempotency_key = billingRequest.current.key;
+    payload.client_reference = billingRequest.current.key;
     try {
       const res = await createSale(payload);
       if (res && res.success) {
@@ -971,42 +977,50 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
                 )}
               </div>
 
-              {/* Old Credit Due Selection Option */}
+              {/* Old Credit Due Selection Banner */}
               {shopPreviousDue > 0 && (
-                <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-2">
+                <div className="p-3.5 bg-gradient-to-r from-amber-50/90 to-orange-50/90 border-2 border-amber-300 rounded-2xl space-y-2 shadow-xs">
                   <div className="flex justify-between items-center text-xs">
                     <span className="font-black text-amber-900 flex items-center gap-1.5">
                       <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                      OLD CREDIT DUE (பழைய பாக்கி கடன்):
+                      OLD CREDIT (பழைய பாக்கி கடன்): ₹{shopPreviousDue.toFixed(2)}
                     </span>
-                    <span className="font-mono font-black text-amber-800 text-sm">₹{shopPreviousDue.toFixed(2)}</span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-0.5 text-xs font-black">
+                  <div className="grid grid-cols-2 gap-2.5 pt-0.5">
                     <button
                       type="button"
                       onClick={() => setIncludeOldCredit(false)}
-                      className={`py-2.5 px-2 rounded-xl transition text-center cursor-pointer ${
+                      className={`py-2.5 sm:py-3 px-2 rounded-xl text-xs font-black transition cursor-pointer text-center ${
                         !includeOldCredit
-                          ? 'bg-white text-slate-900 border-2 border-slate-800 shadow-sm'
-                          : 'bg-white/60 text-slate-600 border border-slate-200'
+                          ? 'bg-emerald-600 text-white shadow-md glow-green border-2 border-emerald-600'
+                          : 'bg-white text-slate-800 hover:bg-slate-50 border border-slate-200 shadow-xs'
                       }`}
                     >
-                      <div>பில் மட்டும்</div>
-                      <div className="font-mono text-[10px] text-slate-500">₹{totalBillAmount.toFixed(2)}</div>
+                      <div className="font-black text-xs sm:text-sm">பில் மட்டும்</div>
+                      <div className={`text-[11px] font-mono font-bold mt-0.5 ${!includeOldCredit ? 'text-emerald-100' : 'text-slate-500'}`}>
+                        ₹{totalBillAmount.toFixed(2)}
+                      </div>
                     </button>
 
                     <button
                       type="button"
-                      onClick={() => setIncludeOldCredit(true)}
-                      className={`py-2.5 px-2 rounded-xl transition text-center cursor-pointer ${
+                      onClick={() => {
+                        setIncludeOldCredit(true);
+                        if (paymentMode === 'CREDIT') setPaymentMode('CASH');
+                      }}
+                      className={`py-2.5 sm:py-3 px-2 rounded-xl text-xs font-black transition cursor-pointer text-center ${
                         includeOldCredit
-                          ? 'bg-emerald-600 text-white border-2 border-emerald-600 shadow-sm'
-                          : 'bg-white/60 text-amber-900 border border-amber-300'
+                          ? 'bg-emerald-600 text-white shadow-md glow-green border-2 border-emerald-600'
+                          : 'bg-white text-slate-800 hover:bg-slate-50 border border-slate-200 shadow-xs'
                       }`}
                     >
-                      <div>⚡ கடன் சேர்த்து செலுத்து</div>
-                      <div className="font-mono text-[10px] text-emerald-100">₹{(totalBillAmount + shopPreviousDue).toFixed(2)}</div>
+                      <div className="font-black text-xs sm:text-sm flex items-center justify-center gap-1">
+                        <span>⚡ கடன் சேர்த்து செலுத்து</span>
+                      </div>
+                      <div className={`text-[11px] font-mono font-bold mt-0.5 ${includeOldCredit ? 'text-emerald-100' : 'text-amber-700'}`}>
+                        ₹{(totalBillAmount + shopPreviousDue).toFixed(2)}
+                      </div>
                     </button>
                   </div>
                 </div>

@@ -3,16 +3,18 @@ import { ArrowLeft, Banknote, Smartphone, CreditCard, Split, CheckCircle2, Dolla
 import { toast } from 'sonner';
 
 export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
-  const [mode, setMode] = useState('SPLIT');
+  const [mode, setMode] = useState('CASH');
   const [splitOption, setSplitOption] = useState('CASH_GPAY'); // 'CASH_GPAY', 'CASH_CREDIT', 'GPAY_CREDIT'
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const totalBillAmount = Number(Number(billData?.total_amount || 0).toFixed(2));
   const previousDue = Number(Number(billData?.previous_due || 0).toFixed(2));
-  const [includeOldCredit, setIncludeOldCredit] = useState(previousDue > 0);
+  const [includeOldCredit, setIncludeOldCredit] = useState(false);
 
   // Total payable depends on whether old credit is included
   const payableAmount = Number((includeOldCredit ? totalBillAmount + previousDue : totalBillAmount).toFixed(2));
+  const creditTotal = Number((totalBillAmount + previousDue).toFixed(2));
+  const displayedAmount = mode === 'CREDIT' ? creditTotal : payableAmount;
 
   // Dynamic SPLIT state (Defaults to full payable amount in primary input; user changes it and remaining auto-updates in secondary box)
   const [cashReceived, setCashReceived] = useState(payableAmount.toString());
@@ -68,14 +70,13 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
       setCashReceived('');
       return;
     }
-    const numericVal = parseFloat(val);
-    if (isNaN(numericVal) || numericVal < 0) {
-      setCashReceived('');
+    if (!/^\d+(\.\d{0,2})?$/.test(val)) return;
+    const numericVal = Number(val);
+    if (!Number.isFinite(numericVal) || numericVal < 0) {
       return;
     }
     if (numericVal > payableAmount) {
       toast.error(`ரொக்கத் தொகை மொத்த தொகையை (₹${payableAmount.toFixed(2)}) விட அதிகமாக இருக்க முடியாது!`);
-      setCashReceived(payableAmount.toString());
       return;
     }
     setCashReceived(val);
@@ -86,14 +87,13 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
       setGpayReceived('');
       return;
     }
-    const numericVal = parseFloat(val);
-    if (isNaN(numericVal) || numericVal < 0) {
-      setGpayReceived('');
+    if (!/^\d+(\.\d{0,2})?$/.test(val)) return;
+    const numericVal = Number(val);
+    if (!Number.isFinite(numericVal) || numericVal < 0) {
       return;
     }
     if (numericVal > payableAmount) {
       toast.error(`ஜிபே தொகை மொத்த தொகையை (₹${payableAmount.toFixed(2)}) விட அதிகமாக இருக்க முடியாது!`);
-      setGpayReceived(payableAmount.toString());
       return;
     }
     setGpayReceived(val);
@@ -117,6 +117,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
         previous_due: previousDue,
         old_credit_paid: oldCreditPaid,
         clear_previous_due: includeOldCredit,
+        include_old_credit: includeOldCredit,
         total_amount: totalBillAmount,
         payable_amount: payableAmount,
         payment_mode: mode,
@@ -131,7 +132,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
   };
 
   return (
-    <div className="max-w-md mx-auto p-3 sm:p-4 space-y-4 pb-32 sm:pb-36">
+    <div className={`${mode === 'SPLIT' ? 'max-w-2xl' : 'max-w-md'} mx-auto p-3 sm:p-4 space-y-4 pb-32 sm:pb-36`}>
       
       {/* Top Header */}
       <div className="flex items-center justify-between bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
@@ -154,12 +155,12 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
       {/* Total Amount Display Card */}
       <div className="glass-panel p-4 sm:p-5 rounded-2xl text-center bg-white border border-emerald-300 shadow-sm glow-green">
         <span className="text-xs text-slate-500 uppercase font-extrabold tracking-wider">
-          {includeOldCredit ? 'Total Payable (மொத்தம் செலுத்த வேண்டியது)' : 'Total Bill Amount (பில் தொகை)'}
+          {mode === 'CREDIT' ? 'Outstanding After Credit Bill' : includeOldCredit ? 'Total Payable (மொத்தம் செலுத்த வேண்டியது)' : 'Direct Amount (பில் தொகை)'}
         </span>
         <div className="font-mono font-black text-3xl sm:text-4xl text-emerald-600 mt-1">
-          ₹{payableAmount.toFixed(2)}
+          ₹{displayedAmount.toFixed(2)}
         </div>
-        {includeOldCredit && (
+        {(mode === 'CREDIT' || includeOldCredit) && (
           <div className="text-[11px] font-bold text-slate-500 mt-1 flex items-center justify-center gap-2">
             <span>பில்: ₹{totalBillAmount.toFixed(2)}</span>
             <span>+</span>
@@ -170,40 +171,46 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
 
       {/* Old Credit Due Selection Banner (Only if shop has outstanding credit) */}
       {previousDue > 0 && (
-        <div className="p-3 bg-gradient-to-r from-amber-50/90 to-orange-50/90 border-2 border-amber-300 rounded-2xl space-y-2 shadow-xs">
+        <div className="p-3.5 bg-gradient-to-r from-amber-50/90 to-orange-50/90 border-2 border-amber-300 rounded-2xl space-y-2 shadow-xs">
           <div className="flex justify-between items-center text-xs">
             <span className="font-black text-amber-900 flex items-center gap-1.5">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              OLD CREDIT (பழைய பாக்கி கடன்):
+              OLD CREDIT (பழைய பாக்கி கடன்): ₹{previousDue.toFixed(2)}
             </span>
-            <span className="font-mono font-black text-amber-800 text-sm">₹{previousDue.toFixed(2)}</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 pt-0.5">
+          <div className="grid grid-cols-2 gap-2.5 pt-0.5">
             <button
               type="button"
               onClick={() => setIncludeOldCredit(false)}
-              className={`py-2.5 px-2 rounded-xl text-xs font-black transition cursor-pointer text-center ${
+              className={`py-2.5 sm:py-3 px-2 rounded-xl text-xs font-black transition cursor-pointer text-center ${
                 !includeOldCredit
-                  ? 'bg-white text-slate-900 border-2 border-slate-800 shadow-sm'
-                  : 'bg-white/60 text-slate-600 hover:bg-white border border-slate-200'
+                  ? 'bg-emerald-600 text-white shadow-md glow-green border-2 border-emerald-600'
+                  : 'bg-white text-slate-800 hover:bg-slate-50 border border-slate-200 shadow-xs'
               }`}
             >
-              <div>பில் மட்டும்</div>
-              <div className="text-[10px] font-mono text-slate-500 font-bold">₹{totalBillAmount.toFixed(2)}</div>
+              <div className="font-black text-xs sm:text-sm">பில் மட்டும்</div>
+              <div className={`text-[11px] font-mono font-bold mt-0.5 ${!includeOldCredit ? 'text-emerald-100' : 'text-slate-500'}`}>
+                ₹{totalBillAmount.toFixed(2)}
+              </div>
             </button>
 
             <button
               type="button"
-              onClick={() => setIncludeOldCredit(true)}
-              className={`py-2.5 px-2 rounded-xl text-xs font-black transition cursor-pointer text-center ${
+              onClick={() => {
+                setIncludeOldCredit(true);
+                if (mode === 'CREDIT') setMode('CASH');
+              }}
+              className={`py-2.5 sm:py-3 px-2 rounded-xl text-xs font-black transition cursor-pointer text-center ${
                 includeOldCredit
                   ? 'bg-emerald-600 text-white shadow-md glow-green border-2 border-emerald-600'
-                  : 'bg-white/70 text-amber-900 hover:bg-white border border-amber-300'
+                  : 'bg-white text-slate-800 hover:bg-slate-50 border border-slate-200 shadow-xs'
               }`}
             >
-              <div>⚡ கடன் சேர்த்து செலுத்து</div>
-              <div className={`text-[10px] font-mono font-bold ${includeOldCredit ? 'text-emerald-100' : 'text-amber-700'}`}>
+              <div className="font-black text-xs sm:text-sm flex items-center justify-center gap-1">
+                <span>⚡ கடன் சேர்த்து செலுத்து</span>
+              </div>
+              <div className={`text-[11px] font-mono font-bold mt-0.5 ${includeOldCredit ? 'text-emerald-100' : 'text-amber-700'}`}>
                 ₹{(totalBillAmount + previousDue).toFixed(2)}
               </div>
             </button>
@@ -217,9 +224,10 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
           SELECT PAYMENT MODE (பணம் செலுத்தும் முறை)
         </label>
         
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {/* CASH BUTTON */}
           <button
+            type="button"
             onClick={() => setMode('CASH')}
             className={`p-3 rounded-2xl border font-black text-xs flex flex-col items-center gap-2 transition active:scale-95 cursor-pointer ${
               mode === 'CASH'
@@ -236,6 +244,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
           
           {/* GPAY / UPI BUTTON */}
           <button
+            type="button"
             onClick={() => setMode('GPAY')}
             className={`p-3 rounded-2xl border font-black text-xs flex flex-col items-center gap-2 transition active:scale-95 cursor-pointer ${
               mode === 'GPAY'
@@ -252,6 +261,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
 
           {/* CREDIT BUTTON */}
           <button
+            type="button"
             onClick={() => {
               setIncludeOldCredit(false);
               setMode('CREDIT');
@@ -271,6 +281,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
 
           {/* SPLIT PAYMENT BUTTON */}
           <button
+            type="button"
             onClick={() => setMode('SPLIT')}
             className={`p-3 rounded-2xl border font-black text-xs flex flex-col items-center gap-2 transition active:scale-95 cursor-pointer ${
               mode === 'SPLIT'
@@ -301,11 +312,11 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
           </div>
 
           {/* Split Mode Sub-Options Tabs */}
-          <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button
               type="button"
               onClick={() => setSplitOption('CASH_GPAY')}
-              className={`py-2 px-1 rounded-lg text-[11px] font-black transition text-center cursor-pointer ${
+              className={`min-h-14 p-3 rounded-xl text-sm font-black transition text-center cursor-pointer ${
                 splitOption === 'CASH_GPAY'
                   ? 'bg-white text-purple-700 shadow-xs border border-purple-200'
                   : 'text-slate-600 hover:text-slate-900'
@@ -316,7 +327,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
             <button
               type="button"
               onClick={() => setSplitOption('CASH_CREDIT')}
-              className={`py-2 px-1 rounded-lg text-[11px] font-black transition text-center cursor-pointer ${
+              className={`min-h-14 p-3 rounded-xl text-sm font-black transition text-center cursor-pointer ${
                 splitOption === 'CASH_CREDIT'
                   ? 'bg-white text-amber-700 shadow-xs border border-amber-300'
                   : 'text-slate-600 hover:text-slate-900'
@@ -327,7 +338,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
             <button
               type="button"
               onClick={() => setSplitOption('GPAY_CREDIT')}
-              className={`py-2 px-1 rounded-lg text-[11px] font-black transition text-center cursor-pointer ${
+              className={`min-h-14 p-3 rounded-xl text-sm font-black transition text-center cursor-pointer ${
                 splitOption === 'GPAY_CREDIT'
                   ? 'bg-white text-blue-700 shadow-xs border border-blue-300'
                   : 'text-slate-600 hover:text-slate-900'
@@ -507,9 +518,9 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
               <span>Bill Amount:</span>
               <span className="text-slate-900 font-black">₹{totalBillAmount.toFixed(2)}</span>
             </div>
-            {includeOldCredit && (
+            {(mode === 'SPLIT' || includeOldCredit) && (
               <div className="flex justify-between text-amber-800 font-bold">
-                <span>Old Credit:</span>
+                <span>{mode === 'SPLIT' ? 'Old Credit (not collected):' : 'Old Credit:'}</span>
                 <span className="font-black">₹{previousDue.toFixed(2)}</span>
               </div>
             )}
@@ -517,19 +528,19 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
               <span>Total Payable:</span>
               <span>₹{payableAmount.toFixed(2)}</span>
             </div>
-            {numCash > 0 && (
+            {mode === 'SPLIT' && (
               <div className="flex justify-between text-slate-600 font-bold">
                 <span>Cash:</span>
                 <span className="text-emerald-700 font-bold">₹{numCash.toFixed(2)}</span>
               </div>
             )}
-            {numGpay > 0 && (
+            {mode === 'SPLIT' && (
               <div className="flex justify-between text-slate-600 font-bold">
                 <span>GPay / UPI:</span>
                 <span className="text-blue-700 font-bold">₹{numGpay.toFixed(2)}</span>
               </div>
             )}
-            {numCredit > 0 && (
+            {mode === 'SPLIT' && (
               <div className="flex justify-between text-amber-700 font-bold">
                 <span>Credit Due:</span>
                 <span className="text-amber-700 font-black">₹{numCredit.toFixed(2)}</span>

@@ -1,7 +1,12 @@
 import bcrypt from 'bcrypt';
+import { driverPerformance, routePerformance } from './performance-reports.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+const transactionContext = new AsyncLocalStorage();
+import { collectDue, settle, cashFlow } from './payments.js';
+import { businessDate, paise, amount, requestIdentity, credential, retryTransaction } from './financial.js';
 import { pool } from './database/pg_pool.js';
-import { getOperationalUnit, normalizeQuantity, checkReconciliationEquation, RECONCILIATION_EPSILON } from './unitHelper.js';
-export { getOperationalUnit, normalizeQuantity, checkReconciliationEquation, RECONCILIATION_EPSILON };
+import { getOperationalUnit, normalizeQuantity, checkReconciliationEquation, RECONCILIATION_EPSILON, quantityFromWholePieces } from './unitHelper.js';
+export { getOperationalUnit, normalizeQuantity, checkReconciliationEquation, RECONCILIATION_EPSILON, quantityFromWholePieces };
 
 const BCRYPT_ROUNDS = 12;
 const MAX_ATTEMPTS = 5;
@@ -9,6 +14,8 @@ const LOCKOUT_MIN = 15;
 
 // ====== DB QUERY HELPERS ======
 export async function query(text, params) {
+  const transaction = transactionContext.getStore();
+  if (transaction) return transaction.query(text,params || []);
   if (!params) params = [];
   const c = await pool.connect();
   try { return await c.query(text, params); }
@@ -26,52 +33,38 @@ export async function auditLog(opts) {
       'INSERT INTO audit_logs (company_id,actor_user_id,action,entity_type,entity_id,metadata,ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7)',
       [companyId||null,actorUserId||null,action,entityType||null,entityId||null,metadata?JSON.stringify(metadata):null,ipAddress||null]
     );
-  } catch(e) { console.error('[auditLog]', e.message); }
+  } catch(e) { console.error('[auditLog]', e.code || e.name); throw e; }
 }
 
 // ====== AUTH ======
 export async function login(loginId, pin) {
   const normLoginId = String(loginId || '').trim();
-  if (!normLoginId) return { success: false, message: 'Login ID is required.' };
-
-  const row = await queryOne(
-    'SELECT ua.*, r.role_name, e.full_name as employee_name, e.employee_code, e.route_id, e.vehicle_number, e.designation, e.phone as employee_phone, ' +
-    'rt.name as route_name, rt.code as route_code ' +
-    'FROM user_accounts ua ' +
-    'JOIN roles r ON r.id=ua.role_id ' +
-    'LEFT JOIN employees e ON e.id=ua.employee_id ' +
-    'LEFT JOIN routes rt ON rt.id=e.route_id ' +
-    'WHERE LOWER(TRIM(ua.login_id)) = LOWER($1) ' +
-    'OR (e.employee_code IS NOT NULL AND LOWER(TRIM(e.employee_code)) = LOWER($1)) ' +
-    'OR (e.full_name IS NOT NULL AND LOWER(TRIM(e.full_name)) = LOWER($1))', 
-    [normLoginId]
-  );
-
-  if (!row) return { success: false, message: 'Invalid credentials.' };
-  if (row.account_status !== 'ACTIVE') return { success: false, message: 'Account ' + row.account_status + '. Contact administrator.' };
-  if (row.locked_until && new Date(row.locked_until) > new Date()) {
-    const m = Math.ceil((new Date(row.locked_until)-new Date())/60000);
-    return { success: false, message: 'Locked. Try in '+m+' min.' };
-  }
-  const ok = await bcrypt.compare(String(pin).trim(), row.pin_hash);
-  if (!ok) {
-    const a = (row.failed_attempts||0)+1;
-    if (a >= MAX_ATTEMPTS) {
-      const lock = new Date(Date.now()+LOCKOUT_MIN*60000);
-      await query('UPDATE user_accounts SET failed_attempts=$1,locked_until=$2,updated_at=NOW() WHERE id=$3',[a,lock,row.id]);
-      await auditLog({companyId:row.company_id,actorUserId:row.id,action:'LOGIN_LOCKED'});
-      return { success:false, message:'Too many attempts. Locked '+LOCKOUT_MIN+'min.' };
+  if (!normLoginId || typeof pin !== 'string' || Buffer.byteLength(pin) > 72) return { success: false, message: 'Invalid credentials.' };
+  const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      'SELECT ua.*, r.role_name, e.full_name as employee_name, e.employee_code, e.route_id, e.vehicle_number, e.designation, e.phone as employee_phone, rt.name as route_name, rt.code as route_code FROM user_accounts ua JOIN roles r ON r.id=ua.role_id LEFT JOIN employees e ON e.id=ua.employee_id LEFT JOIN routes rt ON rt.id=e.route_id WHERE LOWER(TRIM(ua.login_id))=LOWER($1) FOR UPDATE OF ua', [normLoginId]);
+    const row = result.rows[0];
+    if (!row || row.account_status !== 'ACTIVE' || (row.locked_until && new Date(row.locked_until) > new Date())) {
+      await client.query('COMMIT');
+      return { success: false, message: 'Invalid credentials or temporarily locked.' };
     }
-    await query('UPDATE user_accounts SET failed_attempts=$1,updated_at=NOW() WHERE id=$2',[a,row.id]);
-    await auditLog({companyId:row.company_id,action:'LOGIN_FAILED',entityId:row.id});
-    return { success:false, message:'Invalid PIN. '+(MAX_ATTEMPTS-a)+' left.' };
-  }
-  await query('UPDATE user_accounts SET failed_attempts=0,locked_until=NULL,last_login_at=NOW(),updated_at=NOW() WHERE id=$1',[row.id]);
-  await auditLog({companyId:row.company_id,actorUserId:row.id,action:'LOGIN_SUCCESS'});
+    const privileged = ['OWNER', 'STORE_KEEPER'].includes(row.role_name);
+    if ((privileged && row.credential_kind !== 'password') || !(await bcrypt.compare(pin, row.pin_hash))) {
+      await client.query("UPDATE user_accounts SET failed_attempts=CASE WHEN locked_until<=NOW() THEN 1 ELSE failed_attempts+1 END, locked_until=CASE WHEN (CASE WHEN locked_until<=NOW() THEN 0 ELSE failed_attempts END)+1 >= 5 THEN NOW()+INTERVAL '15 minutes' ELSE NULL END WHERE id=$1", [row.id]);
+      await client.query('COMMIT');
+      return { success: false, message: 'Invalid credentials or temporarily locked.' };
+    }
+    await client.query('UPDATE user_accounts SET failed_attempts=0,locked_until=NULL,last_login_at=NOW() WHERE id=$1', [row.id]);
+    await client.query('COMMIT');
   return {
     success: true,
     user: {
       id: row.id,
+      auth_version: row.auth_version,
       company_id: row.company_id,
       employee_id: row.employee_id,
       login_id: row.login_id,
@@ -91,6 +84,11 @@ export async function login(loginId, pin) {
       last_login_at: row.last_login_at
     }
   };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
+  });
 }
 
 export async function getUserById(uid) {
@@ -107,6 +105,7 @@ export async function getUserById(uid) {
   if (!row) return null;
   return {
     id: row.id,
+    auth_version: row.auth_version,
     company_id: row.company_id,
     employee_id: row.employee_id,
     login_id: row.login_id,
@@ -145,18 +144,19 @@ export async function getUsers(cid) {
 }
 
 export async function addUser(cid, d, actorUserId) {
-  if(!d.employee_id||!d.login_id||!d.pin||!d.role) throw new Error('employee_id, login_id, pin, and role are required.');
+  const roleInput = String(d.role || '').trim().toUpperCase();
+  const privileged = ['OWNER', 'STORE_KEEPER'].includes(roleInput);
+  if((!d.employee_id && !privileged)||!d.login_id||!d.pin||!roleInput) throw new Error('Employee, login ID, role, and password/PIN are required.');
   const loginId = String(d.login_id).trim().toLowerCase();
-  const pinStr = String(d.pin).trim();
-  if(!/^\d{4}$/.test(pinStr)) throw new Error('PIN must be exactly 4 digits.');
-  const emp = await queryOne('SELECT * FROM employees WHERE id=$1 AND company_id=$2', [d.employee_id, cid]);
-  if (!emp) throw new Error('Selected employee does not exist or belongs to another company.');
-  if (emp.is_active === false || emp.is_active === 0) throw new Error('Cannot create user for inactive employee.');
-  const existingUser = await queryOne('SELECT id FROM user_accounts WHERE employee_id=$1', [d.employee_id]);
-  if (existingUser) throw new Error('This employee already has an active user account.');
-  const dupLogin = await queryOne('SELECT id FROM user_accounts WHERE LOWER(login_id)=$1', [loginId]);
+  const pinStr = credential(d.pin, roleInput);
+  const emp = d.employee_id ? await queryOne('SELECT * FROM employees WHERE id=$1 AND company_id=$2', [d.employee_id, cid]) : null;
+  if (d.employee_id && !emp) throw new Error('Selected employee does not exist or belongs to another company.');
+  if (!privileged && !emp) throw new Error('Select an employee for this role.');
+  if (emp?.is_active === false || emp?.is_active === 0) throw new Error('Cannot create user for inactive employee.');
+  const existingUser = emp ? await queryOne('SELECT id FROM user_accounts WHERE company_id=$1 AND employee_id=$2', [cid, d.employee_id]) : null;
+  if (existingUser) throw new Error('This employee already has a user account.');
+  const dupLogin = await queryOne('SELECT id FROM user_accounts WHERE company_id=$1 AND LOWER(login_id)=$2', [cid, loginId]);
   if (dupLogin) throw new Error('Login ID already taken. Please choose another.');
-  const roleInput = String(d.role || 'EMPLOYEE').trim().toUpperCase();
   let roleRow = await queryOne('SELECT id, role_name FROM roles WHERE UPPER(role_name)=UPPER($1)', [roleInput]);
   if (!roleRow && (roleInput === 'DRIVER' || roleInput === 'EMPLOYEE' || roleInput === 'STORE_KEEPER' || roleInput === 'OWNER')) {
     roleRow = await queryOne('INSERT INTO roles (role_name) VALUES ($1) ON CONFLICT (role_name) DO UPDATE SET role_name=EXCLUDED.role_name RETURNING id, role_name', [roleInput]);
@@ -170,10 +170,10 @@ export async function addUser(cid, d, actorUserId) {
     if (isNaN(targetRouteId)) targetRouteId = null;
   }
 
-  if (targetRouteId !== undefined) {
+  if (targetRouteId !== undefined && emp) {
     await query('UPDATE employees SET route_id=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3', [targetRouteId, d.employee_id, cid]);
     if (targetRouteId) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = businessDate();
       await query(
         'INSERT INTO route_assignments (route_id, employee_id, vehicle_number, assigned_date, status, dispatch_time) ' +
         'VALUES ($1, $2, $3, $4, $5, $6) ' +
@@ -185,11 +185,11 @@ export async function addUser(cid, d, actorUserId) {
 
   const hash = await bcrypt.hash(pinStr, BCRYPT_ROUNDS);
   const row = await queryOne(
-    'INSERT INTO user_accounts (company_id,employee_id,role_id,login_id,name,phone,pin_hash,account_status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,company_id,employee_id,role_id,login_id,name,phone,account_status,created_at',
-    [cid,d.employee_id,roleRow.id,loginId,d.name || emp.full_name,d.phone || emp.phone,hash,'ACTIVE']
+    'INSERT INTO user_accounts (company_id,employee_id,role_id,login_id,name,phone,pin_hash,account_status,credential_kind) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,company_id,employee_id,role_id,login_id,name,phone,account_status,created_at',
+    [cid,d.employee_id || null,roleRow.id,loginId,d.name || emp?.full_name || loginId,d.phone || emp?.phone || null,hash,'ACTIVE', ['OWNER', 'STORE_KEEPER'].includes(roleRow.role_name) ? 'password' : 'pin']
   );
   await auditLog({companyId:cid,actorUserId,action:'USER_CREATED',entityType:'user_accounts',entityId:row.id});
-  return {success:true, user:{...row, role: roleRow.role_name, route_id: targetRouteId !== undefined ? targetRouteId : emp.route_id}};
+  return {success:true, user:{...row, role: roleRow.role_name, route_id: targetRouteId !== undefined ? targetRouteId : emp?.route_id || null}};
 }
 
 export async function updateUser(cid, uid, d, actorUserId) {
@@ -219,6 +219,7 @@ export async function updateUser(cid, uid, d, actorUserId) {
   const displayName = d.name !== undefined ? (d.name ? String(d.name).trim() : null) : existingUser.name;
   const status = d.status || d.account_status || existingUser.account_status;
   const targetEmployeeId = d.employee_id !== undefined ? Number(d.employee_id) : existingUser.employee_id;
+  if (targetEmployeeId && !(await queryOne('SELECT id FROM employees WHERE id=$1 AND company_id=$2',[targetEmployeeId,cid]))) throw new Error('Employee must belong to this company');
 
   const row = await queryOne(
     'UPDATE user_accounts SET login_id=$1, role_id=$2, name=COALESCE($3, name), account_status=$4, employee_id=$5, updated_at=NOW() WHERE id=$6 AND company_id=$7 RETURNING id,company_id,employee_id,role_id,login_id,name,phone,account_status',
@@ -249,7 +250,7 @@ export async function updateUser(cid, uid, d, actorUserId) {
       await query('UPDATE employees SET route_id=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3', [updatedRouteId, existingUser.employee_id, cid]);
 
       if (updatedRouteId) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = businessDate();
         const empRec = await queryOne('SELECT vehicle_number FROM employees WHERE id=$1', [existingUser.employee_id]);
         await query(
           'INSERT INTO route_assignments (route_id, employee_id, vehicle_number, assigned_date, status, dispatch_time) ' +
@@ -265,11 +266,11 @@ export async function updateUser(cid, uid, d, actorUserId) {
 
   await auditLog({companyId:cid, actorUserId, action:'USER_UPDATED', entityType:'user_accounts', entityId:uid});
   return {
-    success: true, 
+    success: true,
     user: {
-      ...row, 
-      role: roleName, 
-      status: row.account_status, 
+      ...row,
+      role: roleName,
+      status: row.account_status,
       route_id: updatedRouteId
     }
   };
@@ -296,7 +297,7 @@ export async function deleteUser(cid, uid, actorUserId) {
     if (user.employee_id) {
       await query('UPDATE employees SET is_active=FALSE, updated_at=NOW() WHERE id=$1 AND company_id=$2', [user.employee_id, cid]);
     }
-    return { success: true, message: `User "${user.login_id}" has sales records and has been deactivated.`, user };
+    return { success: true, message: `User "${user.login_id}" has sales records and has been deactivated.`, user: { id: user.id, login_id: user.login_id } };
   }
 
   await query('DELETE FROM user_accounts WHERE id=$1 AND company_id=$2', [uid, cid]);
@@ -305,16 +306,17 @@ export async function deleteUser(cid, uid, actorUserId) {
   }
 
   await auditLog({ companyId: cid, actorUserId, action: 'USER_DELETED', entityType: 'user_accounts', entityId: uid });
-  return { success: true, message: `User "${user.login_id}" deleted successfully.`, user };
+  return { success: true, message: `User "${user.login_id}" deleted successfully.`, user: { id: user.id, login_id: user.login_id } };
 }
 
 export async function resetPin(cid, uid, newPin, actorUserId) {
-  const pinStr = String(newPin || '').trim();
-  if(!/^\d{4}$/.test(pinStr)) throw new Error('PIN must be exactly 4 digits.');
+  const account = await queryOne('SELECT r.role_name FROM user_accounts u JOIN roles r ON r.id=u.role_id WHERE u.id=$1 AND u.company_id=$2', [uid,cid]);
+  if (!account) throw new Error('User not found');
+  const pinStr = credential(newPin, account.role_name);
   const hash = await bcrypt.hash(pinStr, BCRYPT_ROUNDS);
   const row = await queryOne(
-    'UPDATE user_accounts SET pin_hash=$1,failed_attempts=0,locked_until=NULL,updated_at=NOW() WHERE id=$2 AND company_id=$3 RETURNING id,login_id',
-    [hash,uid,cid]
+    'UPDATE user_accounts SET pin_hash=$1,credential_kind=$4,failed_attempts=0,locked_until=NULL,updated_at=NOW() WHERE id=$2 AND company_id=$3 RETURNING id,login_id',
+    [hash,uid,cid,['OWNER','STORE_KEEPER'].includes(account.role_name) ? 'password' : 'pin']
   );
   if(!row) throw new Error('User not found.');
   await auditLog({companyId:cid,actorUserId,action:'PIN_RESET',entityType:'user_accounts',entityId:uid});
@@ -338,6 +340,8 @@ export async function toggleUserStatus(cid,uid,status,actorUserId) {
 
 export async function addEmployeeUserWizard(cid, data, actorUserId) {
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
     const fullName = (data.full_name || '').trim();
@@ -357,7 +361,7 @@ export async function addEmployeeUserWizard(cid, data, actorUserId) {
     );
     const employee = empRes.rows[0];
     if (routeId) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = businessDate();
       await client.query(
         'INSERT INTO route_assignments (route_id, employee_id, vehicle_number, assigned_date, status, dispatch_time) ' +
         'VALUES ($1, $2, $3, $4, $5, $6) ' +
@@ -368,8 +372,7 @@ export async function addEmployeeUserWizard(cid, data, actorUserId) {
 
     const loginId = (data.login_id || '').trim();
     if (!loginId) throw new Error('Login ID is required.');
-    const pinStr = String(data.pin || '');
-    if (!/^\d{4}$/.test(pinStr)) throw new Error('PIN must be exactly 4 digits.');
+    const pinStr = credential(data.pin, String(data.role || 'EMPLOYEE').toUpperCase());
 
     const dupCheck = await client.query('SELECT id FROM user_accounts WHERE login_id = $1', [loginId]);
     if (dupCheck.rows.length > 0) throw new Error('Login ID already taken. Please choose another.');
@@ -384,22 +387,24 @@ export async function addEmployeeUserWizard(cid, data, actorUserId) {
       [cid, employee.id, roleId, loginId, fullName, phone, hash, 'ACTIVE']
     );
     const user = userRes.rows[0];
+    await client.query('UPDATE user_accounts SET credential_kind=$1 WHERE id=$2', [['OWNER','STORE_KEEPER'].includes(roleName) ? 'password' : 'pin',user.id]);
 
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'EMPLOYEE_AND_USER_WIZARD_CREATED', entityType: 'user_accounts', entityId: user.id });
+    await client.query('COMMIT');
     return { success: true, user, employee };
   } catch (e) {
     await client.query('ROLLBACK');
     throw e;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 // ====== EMPLOYEES & DRIVERS ======
 export async function getDrivers(cid) {
   return await queryAll(
-    `SELECT 
+    `SELECT
        COALESCE(e.id, ua.id) AS id,
        COALESCE(e.id, ua.id) AS driver_id,
        COALESCE(e.id, ua.id) AS employee_id,
@@ -425,18 +430,18 @@ export async function getDrivers(cid) {
      INNER JOIN roles r_ua ON r_ua.id = ua.role_id AND (r_ua.role_name = 'DRIVER' OR r_ua.role_name = 'EMPLOYEE')
      LEFT JOIN employees e ON e.id = ua.employee_id
      LEFT JOIN routes r ON r.id = e.route_id
-     WHERE (ua.company_id = $1 OR ua.company_id = 1 OR ua.company_id IS NULL) 
+     WHERE (ua.company_id = $1)
        AND ua.account_status = 'ACTIVE'
      ORDER BY COALESCE(e.full_name, ua.name, ua.login_id) ASC`,
     [cid]
   );
 }
 
-export async function getEmployees(cid, filters) { 
+export async function getEmployees(cid, filters) {
   if (filters && (filters.role === 'DRIVER' || filters.driversOnly === true || filters.driversOnly === 'true')) {
     return await getDrivers(cid);
   }
-  let sql = 
+  let sql =
     'SELECT DISTINCT ON (e.id) e.*, r.name as route_name, r.code as route_code, ua.login_id, ua.id as user_account_id, r_ua.role_name as user_role ' +
     'FROM employees e ' +
     'LEFT JOIN routes r ON r.id = e.route_id ' +
@@ -448,7 +453,7 @@ export async function getEmployees(cid, filters) {
     sql += ' AND (r_ua.role_name IN (\'EMPLOYEE\', \'DRIVER\') OR e.designation ILIKE \'%driver%\' OR e.designation ILIKE \'%delivery%\') AND (r_ua.role_name IS NULL OR r_ua.role_name NOT IN (\'OWNER\', \'STORE_KEEPER\'))';
   }
   sql += ' ORDER BY e.id, ua.id DESC';
-  return await queryAll(sql, params); 
+  return await queryAll(sql, params);
 }
 export async function getUnlinkedEmployees(cid) {
   return await queryAll(
@@ -458,7 +463,8 @@ export async function getUnlinkedEmployees(cid) {
 }
 export async function addEmployee(cid,d) {
   if(!d.full_name) throw new Error('full_name is required.');
-  const code = d.employee_code || ('EMP' + Date.now().toString().slice(-4));
+  const code = String(d.employee_code || ('EMP' + Date.now().toString().slice(-4))).trim().toUpperCase();
+  if (await queryOne('SELECT id FROM employees WHERE company_id=$1 AND LOWER(employee_code)=LOWER($2)', [cid, code])) throw new Error('Employee code already exists. Choose a different employee code.');
   const desig = d.designation || d.role || 'Delivery Executive';
   let routeId = null;
   if (d.route_id !== undefined && d.route_id !== null && d.route_id !== '' && d.route_id !== 0 && d.route_id !== '0') {
@@ -470,7 +476,7 @@ export async function addEmployee(cid,d) {
     [cid,code,d.full_name,desig,d.phone||null,d.vehicle_number||null,routeId]
   );
   if (routeId) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = businessDate();
     await queryOne(
       'INSERT INTO route_assignments (route_id, employee_id, vehicle_number, assigned_date, status, dispatch_time) ' +
       'VALUES ($1, $2, $3, $4, $5, $6) ' +
@@ -493,7 +499,7 @@ export async function updateEmployee(cid,empId,d) {
   );
   if(!row) throw new Error('Employee not found.');
   if (routeId) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = businessDate();
     await queryOne(
       'INSERT INTO route_assignments (route_id, employee_id, vehicle_number, assigned_date, status, dispatch_time) ' +
       'VALUES ($1, $2, $3, $4, $5, $6) ' +
@@ -513,9 +519,9 @@ export async function deactivateEmployee(cid,empId) {
 export async function getCategories(cid,activeOnly) {
   const x=activeOnly?' AND c.is_active=TRUE':'';
   return await queryAll(`
-    SELECT c.*, 
+    SELECT c.*,
       COALESCE((SELECT COUNT(*)::int FROM products p WHERE p.category_id = c.id AND p.company_id = $1), 0) as product_count
-    FROM categories c 
+    FROM categories c
     WHERE c.company_id = $1 ${x}
     ORDER BY c.name ASC
   `, [cid]);
@@ -701,14 +707,14 @@ export async function getProducts(cid, filters) {
   }
   sql += ' ORDER BY p.name';
   const products = await queryAll(sql, params);
-  
+
   const uoms = await queryAll('SELECT * FROM product_uoms WHERE company_id=$1 AND is_active=TRUE ORDER BY is_base_uom DESC, id ASC', [cid]);
   const uomMap = {};
   uoms.forEach(u => {
     if (!uomMap[u.product_id]) uomMap[u.product_id] = [];
     uomMap[u.product_id].push(u);
   });
-  
+
   const mapped = products.map(p => ({
     ...p,
     image: p.image_url || p.image || null,
@@ -805,6 +811,8 @@ export async function addProduct(cid, d) {
   const directSaleRate = d.direct_sale_rate !== undefined && d.direct_sale_rate !== null && d.direct_sale_rate !== '' ? Number(d.direct_sale_rate) : pieceSellingPrice;
 
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
 
@@ -825,9 +833,9 @@ export async function addProduct(cid, d) {
     // 2. Both have the same display_name, OR
     // 3. Name is identical and neither has a pack_size specified.
     const dupCheck = await client.query(
-      `SELECT id, name, pack_size, display_name FROM products 
-       WHERE company_id = $1 
-         AND is_active = TRUE 
+      `SELECT id, name, pack_size, display_name FROM products
+       WHERE company_id = $1
+         AND is_active = TRUE
          AND (
            (LOWER(TRIM(name)) = LOWER(TRIM($2)) AND LOWER(TRIM(COALESCE(pack_size, ''))) = LOWER(TRIM(COALESCE($3, ''))))
            OR (LOWER(TRIM(display_name)) = LOWER(TRIM($4)))
@@ -874,20 +882,21 @@ export async function addProduct(cid, d) {
     }
 
     await client.query('COMMIT');
-    return { 
-      success: true, 
+    return {
+      success: true,
       product: {
         ...prod,
         image: prod.image_url || prod.image || null,
         image_url: prod.image_url || prod.image || null
-      } 
+      }
     };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 export async function updateProduct(cid, prodId, d) {
@@ -904,6 +913,10 @@ export async function updateProduct(cid, prodId, d) {
   const purchaseUnit = d.selling_unit || pOld.selling_unit || 'Tray';
   const buyRateUom = d.buy_rate_uom || pOld.buy_rate_uom || purchaseUnit;
   const unitSellingPrice = d.unit_selling_price !== undefined ? Number(d.unit_selling_price) : Number(pOld.unit_selling_price);
+  if ((d.pieces_per_unit !== undefined && Number(d.pieces_per_unit) !== Number(pOld.pieces_per_unit)) || (d.base_unit && d.base_unit !== pOld.base_unit) || (d.selling_unit && d.selling_unit !== pOld.selling_unit)) {
+    const history = await queryOne('SELECT id FROM stock_transactions WHERE product_id=$1 UNION ALL SELECT id FROM sale_items WHERE product_id=$1 UNION ALL SELECT id FROM employee_stock WHERE product_id=$1 AND qty_units<>0 LIMIT 1',[prodId]);
+    if (history || Number(pOld.warehouse_stock_units) !== 0) throw new Error('Product packaging with stock/history is immutable; create a new variant');
+  }
   const sellingRateUom = d.selling_rate_uom || pOld.selling_rate_uom || purchaseUnit;
   const pieceSellingPrice = d.piece_selling_price !== undefined ? Number(d.piece_selling_price) : parseFloat((unitSellingPrice / conversionFactor).toFixed(2));
   const directSaleRate = d.direct_sale_rate !== undefined && d.direct_sale_rate !== null && d.direct_sale_rate !== '' ? Number(d.direct_sale_rate) : (pOld.direct_sale_rate !== undefined ? Number(pOld.direct_sale_rate) : null);
@@ -930,6 +943,8 @@ export async function updateProduct(cid, prodId, d) {
   }
 
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
 
@@ -948,10 +963,10 @@ export async function updateProduct(cid, prodId, d) {
       const checkPack = d.pack_size !== undefined ? d.pack_size.trim() : (pOld.pack_size || '');
       const checkDisp = d.display_name ? d.display_name.trim() : (pOld.display_name || checkName);
       const dupCheck = await client.query(
-        `SELECT id, name, pack_size, display_name FROM products 
-         WHERE company_id = $1 
-           AND id != $2 
-           AND is_active = TRUE 
+        `SELECT id, name, pack_size, display_name FROM products
+         WHERE company_id = $1
+           AND id != $2
+           AND is_active = TRUE
            AND (
              (LOWER(TRIM(name)) = LOWER(TRIM($3)) AND LOWER(TRIM(COALESCE(pack_size, ''))) = LOWER(TRIM(COALESCE($4, ''))))
              OR (LOWER(TRIM(display_name)) = LOWER(TRIM($5)))
@@ -1009,20 +1024,21 @@ export async function updateProduct(cid, prodId, d) {
     }
 
     await client.query('COMMIT');
-    return { 
-      success: true, 
+    return {
+      success: true,
       product: {
         ...prod,
         image: prod.image_url || prod.image || null,
         image_url: prod.image_url || prod.image || null
-      } 
+      }
     };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 export async function updateProductPrice(cid, prodId, d, actorUserId) {
@@ -1030,6 +1046,8 @@ export async function updateProductPrice(cid, prodId, d, actorUserId) {
   if (!pOld) throw new Error('Product not found.');
 
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
 
@@ -1078,15 +1096,16 @@ export async function updateProductPrice(cid, prodId, d, actorUserId) {
       );
     }
 
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'PRODUCT_PRICE_UPDATED', entityType: 'products', entityId: prodId });
+    await client.query('COMMIT');
     return { success: true, product: pRes.rows[0] };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 export async function toggleProductStatus(cid, prodId, is_active) {
@@ -1096,33 +1115,9 @@ export async function toggleProductStatus(cid, prodId, is_active) {
 }
 
 export async function deleteProduct(cid, prodId) {
-  const prod = await queryOne('SELECT * FROM products WHERE id=$1 AND company_id=$2', [prodId, cid]);
-  if (!prod) throw new Error('Product not found.');
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query('DELETE FROM product_uoms WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
-    await client.query('DELETE FROM product_price_history WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
-    await client.query('DELETE FROM employee_stock WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
-    await client.query('DELETE FROM stock_transactions WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
-    await client.query('UPDATE sale_items SET product_id=NULL WHERE product_id=$1', [prodId]);
-    await client.query('UPDATE damages SET product_id=NULL WHERE product_id=$1', [prodId]);
-    await client.query('UPDATE inventory_movements SET product_id=NULL WHERE product_id=$1', [prodId]);
-
-    const res = await client.query('DELETE FROM products WHERE id=$1 AND company_id=$2 RETURNING *', [prodId, cid]);
-    await client.query('COMMIT');
-    return { 
-      success: true, 
-      message: `Product '${prod.display_name || prod.name}' deleted successfully.`, 
-      product: res.rows[0] 
-    };
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  const product = await queryOne('UPDATE products SET is_active=FALSE,updated_at=NOW() WHERE id=$1 AND company_id=$2 RETURNING *',[prodId,cid]);
+  if (!product) throw new Error('Product not found');
+  return {success:true,message:'Product deactivated; financial and stock history preserved.',product};
 }
 
 export async function getProductUoms(cid, prodId) {
@@ -1134,6 +1129,9 @@ export async function configureProductUom(cid, prodId, uData) {
   if (!uom) throw new Error('UOM is required.');
   const conversion = Number(uData.conversion_to_base || 1);
   if (isNaN(conversion) || conversion <= 0) throw new Error('Conversion factor must be greater than 0.');
+  const used = await queryOne('SELECT id FROM sale_items WHERE product_id=$1 LIMIT 1',[prodId]);
+  const previous = await queryOne('SELECT conversion_to_base FROM product_uoms WHERE product_id=$1 AND company_id=$2 AND uom=$3',[prodId,cid,uom]);
+  if (used && previous && Number(previous.conversion_to_base) !== conversion) throw new Error('Historical product conversions are immutable; create a new product variant');
   const buyRate = Number(uData.buy_rate || 0);
   if (isNaN(buyRate) || buyRate < 0) throw new Error('Buy rate cannot be negative.');
   const sellingRate = Number(uData.selling_rate || 0);
@@ -1172,25 +1170,18 @@ export async function getWarehouseStock(cid) {
   );
 }
 
-export async function receiveStock(cid, data, actorUserId) {
+async function receiveStockAttempt(cid, data, actorUserId) {
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
-    await client.query(`
-      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS supplier_id INTEGER;
-      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS supplier_name VARCHAR(150);
-      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS rate NUMERIC(10,2) DEFAULT 0.00;
-      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS total_amount NUMERIC(12,2) DEFAULT 0.00;
-      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS reference VARCHAR(255);
-      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS received_by VARCHAR(255);
-      ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS notes TEXT;
-    `).catch(() => {});
     await client.query('BEGIN');
     const items = data.items || [{ product_id: data.product_id, quantity: data.quantity, unit: data.unit }];
     const supplier_id = data.supplier_id ? Number(data.supplier_id) : null;
     let supplier_name = data.supplier_name || data.dealer_name || null;
 
     if (supplier_id && !supplier_name) {
-      const sRes = await client.query('SELECT name FROM suppliers WHERE id=$1 AND (company_id=$2 OR company_id=1 OR company_id IS NULL)', [supplier_id, cid]);
+      const sRes = await client.query('SELECT name FROM suppliers WHERE id=$1 AND (company_id=$2)', [supplier_id, cid]);
       if (sRes.rows.length > 0) supplier_name = sRes.rows[0].name;
     }
 
@@ -1198,14 +1189,17 @@ export async function receiveStock(cid, data, actorUserId) {
     const received_by = data.received_by || 'Store Keeper';
     const notes = data.notes || (supplier_name ? `Supplier: ${supplier_name}` : null);
     const results = [];
-    for (const item of items) {
+    for (const item of [...items].sort((first,second)=>Number(first.product_id)-Number(second.product_id))) {
       const qty = Number(item.quantity || item.qty_units);
       const pid = Number(item.product_id);
-      if (!qty || qty <= 0) throw new Error('Quantity must be greater than 0');
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error('Quantity must be greater than 0');
       if (!pid) throw new Error('Valid product_id is required');
-      const pRes = await client.query('SELECT * FROM products WHERE id=$1 AND (company_id=$2 OR company_id=1 OR company_id IS NULL) FOR UPDATE', [pid, cid]);
+      const pRes = await client.query('SELECT * FROM products WHERE id=$1 AND (company_id=$2) FOR UPDATE', [pid, cid]);
       if (pRes.rows.length === 0) throw new Error('Product not found');
       const prod = pRes.rows[0];
+      const operational = getOperationalUnit(prod);
+      if (item.unit && String(item.unit).toLowerCase() !== String(prod.selling_unit).toLowerCase()) throw new Error('Stock quantities must use the configured selling unit');
+      if (operational.isPieceBased ? Math.abs(qty*Number(prod.pieces_per_unit)-Math.round(qty*Number(prod.pieces_per_unit)))>0.000001 : !Number.isSafeInteger(qty)) throw new Error('Stock must correspond to whole operational pieces or selling units');
       if (prod.is_active === false || prod.is_active === 0) {
         throw new Error('Cannot receive stock for an inactive product.');
       }
@@ -1216,35 +1210,39 @@ export async function receiveStock(cid, data, actorUserId) {
       const itemTotal = itemRate * qty;
       const uRes = await client.query('UPDATE products SET warehouse_stock_units=warehouse_stock_units+$1, updated_at=NOW() WHERE id=$2 RETURNING *', [qty, pid]);
       const movNo = 'MOV-IN-' + Date.now() + '-' + Math.floor(Math.random()*1000);
-      let movRes;
-      try {
-        movRes = await client.query(
+        const movRes = await client.query(
           'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, supplier_id, supplier_name, qty_units, unit, rate, total_amount, reference, received_by, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
           [cid, movNo, 'INWARD', pid, prod.display_name, supplier_id, supplier_name, qty, item.unit || prod.selling_unit, itemRate, itemTotal, reference, received_by, notes]
         );
-      } catch (colErr) {
-        movRes = await client.query(
-          'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, qty_units, unit, reference, received_by, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-          [cid, movNo, 'INWARD', pid, prod.display_name, qty, item.unit || prod.selling_unit, reference, received_by, notes]
-        );
-      }
+
       results.push({ product: uRes.rows[0], movement: movRes.rows[0] });
     }
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'STOCK_RECEIVED', entityType: 'inventory_movements', metadata: { itemsCount: items.length, supplier_id, supplier_name, reference } });
+    await client.query('COMMIT');
     return { success: true, message: 'Stock received successfully', results };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
-export async function issueStockToEmployee(cid, data, actorUserId) {
+async function issueStockToEmployeeAttempt(cid, data, actorUserId) {
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
+    const identity = requestIdentity(data);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['allocation:' + cid + ':' + identity.key]);
+    const saved = await client.query("SELECT request_hash,result FROM operation_requests WHERE company_id=$1 AND operation='allocation' AND request_key=$2",[cid,identity.key]);
+    if (saved.rows.length) {
+      if (saved.rows[0].request_hash !== identity.hash) throw new Error('Idempotency key already used for a different allocation');
+      await client.query('COMMIT');
+      return {...saved.rows[0].result,isDuplicate:true};
+    }
     let employee_id = Number(data.employee_id);
     let items = data.items;
     if (!items && data.product_id && (data.quantity || data.qty_units)) {
@@ -1254,12 +1252,12 @@ export async function issueStockToEmployee(cid, data, actorUserId) {
     if (!employee_id) throw new Error('Employee ID is required');
     if (!items || !Array.isArray(items) || items.length === 0) throw new Error('Items array is required');
 
-    const clientRef = data.client_reference || data.idempotency_key || null;
+    const clientRef = identity.key;
     if (clientRef) {
       const existing = await client.query("SELECT * FROM inventory_movements WHERE company_id=$1 AND reference=$2 AND movement_type='OUTWARD'", [cid, clientRef]);
       if (existing.rows.length > 0) {
         await client.query('COMMIT');
-        return { success: true, message: 'Stock allocated previously (idempotent request)', isDuplicate: true };
+        throw new Error('Legacy allocation reference requires review');
       }
     }
 
@@ -1279,13 +1277,17 @@ export async function issueStockToEmployee(cid, data, actorUserId) {
     const session = await getOrCreateActiveDriverSession(cid, employee_id, client);
 
     const results = [];
-    for (const item of items) {
+    for (const item of [...items].sort((first,second)=>Number(first.product_id)-Number(second.product_id))) {
       const pid = Number(item.product_id);
-      const qty = Number(item.qty_units || item.quantity);
-      if (!qty || qty <= 0) throw new Error('Quantity must be greater than 0');
+      let qty = Number(item.qty_units || item.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error('Quantity must be greater than 0');
       const pRes = await client.query('SELECT * FROM products WHERE id=$1 AND company_id=$2 FOR UPDATE', [pid, cid]);
       if (pRes.rows.length === 0) throw new Error('Product not found');
       const prod = pRes.rows[0];
+      const operational = getOperationalUnit(prod);
+      if (operational.isPieceBased && item.total_pieces !== undefined) qty = quantityFromWholePieces(item.total_pieces, prod.pieces_per_unit);
+      if (item.unit && String(item.unit).toLowerCase() !== String(prod.selling_unit).toLowerCase()) throw new Error('Stock quantities must use the configured selling unit');
+      if (operational.isPieceBased ? Math.abs(qty*Number(prod.pieces_per_unit)-Math.round(qty*Number(prod.pieces_per_unit)))>0.000001 : !Number.isSafeInteger(qty)) throw new Error('Stock must correspond to whole operational pieces or selling units');
       if (prod.is_active === false || prod.is_active === 0) {
         throw new Error('Cannot allocate stock for an inactive product.');
       }
@@ -1301,17 +1303,10 @@ export async function issueStockToEmployee(cid, data, actorUserId) {
         [employee_id, pid, cid, qty, item.unit || prod.selling_unit]
       );
       const movNo = 'MOV-ISSUE-' + Date.now() + '-' + Math.floor(Math.random()*1000);
-      try {
         await client.query(
           'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes, reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
           [cid, movNo, 'OUTWARD', pid, prod.display_name, employee_id, emp.full_name, qty, item.unit || prod.selling_unit, notes || 'Dispatched to vehicle', clientRef]
         );
-      } catch (movErr) {
-        await client.query(
-          'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-          [cid, movNo, 'OUTWARD', pid, prod.display_name, employee_id, emp.full_name, qty, item.unit || prod.selling_unit, notes || 'Dispatched to vehicle']
-        );
-      }
 
       // Record immutable allocation transaction
       await client.query(
@@ -1321,15 +1316,18 @@ export async function issueStockToEmployee(cid, data, actorUserId) {
 
       results.push({ product_id: pid, product_name: prod.display_name, qty_issued: qty, unit: item.unit || prod.selling_unit });
     }
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'STOCK_ISSUED', entityType: 'employee_stock', entityId: employee_id, metadata: { results, sessionId: session.id } });
-    return { success: true, message: 'Stock allocated to driver vehicle successfully', results, session };
+    const result = { success:true,message:'Stock allocated to driver vehicle successfully',results,session };
+    await client.query("INSERT INTO operation_requests(company_id,operation,request_key,request_hash,result) VALUES($1,'allocation',$2,$3,$4)",[cid,identity.key,identity.hash,JSON.stringify(result)]);
+    await client.query('COMMIT');
+    return result;
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 export async function getEmployeeStockReport(cid, employeeId) {
@@ -1358,8 +1356,8 @@ export async function getAllEmployeeStockReport(cid) {
 }
 
 export async function getEmployeeAccountSummary(cid, empId, date) {
-  const targetDate = date || new Date().toISOString().split('T')[0];
-  const activeSession = await getOrCreateActiveDriverSession(cid, empId);
+  const targetDate = date || businessDate();
+  const activeSession = await getActiveDriverSession(cid, empId);
 
   const sRes = await query(
     'SELECT COALESCE(SUM(total_amount), 0) as total_sales, ' +
@@ -1400,8 +1398,9 @@ export async function getEmployeeAccountSummary(cid, empId, date) {
   const totalSales = Number(sRow.total_sales || 0);
   const totalExpenses = Number(eRow.expense_amount || 0);
   const netSales = Number((totalSales - totalExpenses).toFixed(2));
-  const cashCollected = Number(sRow.cash_collected || 0);
-  const gpayCollected = Number(sRow.gpay_collected || 0);
+  const receiptTotals = await cashFlow({query},cid,empId,{start:targetDate,end:targetDate});
+  const cashCollected = Number(receiptTotals.cash);
+  const gpayCollected = Number(receiptTotals.gpay);
   const creditSales = Number(sRow.credit_sales || 0);
 
   const setRes = await queryOne(
@@ -1457,14 +1456,14 @@ export async function getEmployeeAccountSummary(cid, empId, date) {
 }
 
 export async function getEmployeeAssignedShops(cid, empId, date) {
-  const targetDate = date || new Date().toISOString().split('T')[0];
-  const emp = await queryOne('SELECT * FROM employees WHERE id=$1 AND (company_id=$2 OR company_id=1 OR company_id IS NULL)', [empId, cid]);
+  const targetDate = date || businessDate();
+  const emp = await queryOne('SELECT * FROM employees WHERE id=$1 AND (company_id=$2)', [empId, cid]);
   if (!emp) return [];
 
   let routeId = emp.route_id;
   if (!routeId) {
     const ra = await queryOne(
-      "SELECT route_id FROM route_assignments WHERE employee_id=$1 AND (company_id=$2 OR company_id=1 OR company_id IS NULL) AND (assigned_date=$3 OR assigned_date::date=$3::date) AND (status IS NULL OR status != 'COMPLETED') ORDER BY id DESC LIMIT 1",
+      "SELECT route_id FROM route_assignments WHERE employee_id=$1 AND (company_id=$2) AND (assigned_date=$3 OR assigned_date::date=$3::date) AND (status IS NULL OR status != 'COMPLETED') ORDER BY id DESC LIMIT 1",
       [empId, cid, targetDate]
     );
     if (ra) routeId = ra.route_id;
@@ -1475,15 +1474,15 @@ export async function getEmployeeAssignedShops(cid, empId, date) {
   }
 
   return await queryAll(
-    `SELECT s.*, 
-       v.name as village_name, v.code as village_code, 
+    `SELECT s.*,
+       v.name as village_name, v.code as village_code,
        r.name as route_name, r.code as route_code,
        COALESCE(s.route_id, v.route_id) as effective_route_id
      FROM shops s
      LEFT JOIN villages v ON v.id = s.village_id
      LEFT JOIN routes r ON r.id = COALESCE(s.route_id, v.route_id)
-     WHERE (s.company_id = $1 OR s.company_id = 1 OR s.company_id IS NULL) 
-       AND s.is_active = TRUE 
+     WHERE (s.company_id = $1)
+       AND s.is_active = TRUE
        AND (s.route_id = $2 OR v.route_id = $2)
      ORDER BY s.id ASC`,
     [cid, routeId]
@@ -1494,10 +1493,13 @@ export async function processEmployeeReturn(cid, data, actorUserId) {
   return await acceptEmployeeReturns(cid, data, actorUserId);
 }
 
-export async function acceptEmployeeReturns(cid, data, actorUserId) {
+async function acceptEmployeeReturnsAttempt(cid, data, actorUserId) {
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
+    if (data.employee_id) await client.query('SELECT id FROM employees WHERE id=$1 AND company_id=$2 FOR UPDATE',[data.employee_id,cid]);
     const { employee_id, items, notes } = data;
     if (!employee_id) throw new Error('Employee ID is required');
     if (!items || !Array.isArray(items) || items.length === 0) throw new Error('Items array is required');
@@ -1534,21 +1536,25 @@ export async function acceptEmployeeReturns(cid, data, actorUserId) {
 
       results.push({ product_id: pid, product_name: prod.display_name, qty_returned: qty });
     }
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'STOCK_RETURNED', entityType: 'inventory_movements', metadata: { results, sessionId: session.id } });
+    await client.query('COMMIT');
     return { success: true, message: 'Returned stock accepted into warehouse successfully', results };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
-export async function processDamage(cid, data, actorUserId) {
+async function processDamageAttempt(cid, data, actorUserId) {
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
+    if (data.employee_id) await client.query('SELECT id FROM employees WHERE id=$1 AND company_id=$2 FOR UPDATE',[data.employee_id,cid]);
     const employee_id = data.employee_id ? Number(data.employee_id) : null;
     const isWarehouse = data.is_warehouse === true || data.is_warehouse === 'true' || data.damage_source === 'WAREHOUSE';
 
@@ -1622,10 +1628,10 @@ export async function processDamage(cid, data, actorUserId) {
       }
 
       const pRes = await client.query(
-        `SELECT p.*, c.name as category_name, c.operational_unit as category_operational_unit 
-         FROM products p 
-         LEFT JOIN categories c ON c.id = p.category_id 
-         WHERE p.id = $1 AND p.company_id = $2 AND p.is_active = TRUE 
+        `SELECT p.*, c.name as category_name, c.operational_unit as category_operational_unit
+         FROM products p
+         LEFT JOIN categories c ON c.id = p.category_id
+         WHERE p.id = $1 AND p.company_id = $2 AND p.is_active = TRUE
          FOR UPDATE OF p`,
         [pid, cid]
       );
@@ -1678,7 +1684,7 @@ export async function processDamage(cid, data, actorUserId) {
           [employee_id, pid, cid]
         );
         const currentDriverStock = esRes.rows.length > 0 ? Number(esRes.rows[0].qty_units) : 0;
-        
+
         // Strict Validation: Damage quantity MUST NEVER exceed current driver stock
         if (opUnit.isPieceBased) {
           const heldPieces = Math.round(currentDriverStock * ppu);
@@ -1720,8 +1726,8 @@ export async function processDamage(cid, data, actorUserId) {
       }
     }
 
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'DAMAGE_RECORDED', entityType: 'damages', entityId: recordedDamages[0]?.id });
+    await client.query('COMMIT');
 
     return {
       success: true,
@@ -1734,13 +1740,16 @@ export async function processDamage(cid, data, actorUserId) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 export async function deleteDamage(cid, damageId, actorUserId) {
   if (!damageId) throw new Error('Damage ID is required.');
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
     const dRes = await client.query('SELECT * FROM damages WHERE id=$1 AND company_id=$2 FOR UPDATE', [Number(damageId), cid]);
@@ -1790,20 +1799,23 @@ export async function deleteDamage(cid, damageId, actorUserId) {
     // 3. Delete from damages
     await client.query('DELETE FROM damages WHERE id=$1 AND company_id=$2', [Number(damageId), cid]);
 
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'DAMAGE_DELETED', entityType: 'damages', entityId: Number(damageId), metadata: { damage: dmg } });
+    await client.query('COMMIT');
     return { success: true, message: 'Damage entry removed and stock restored successfully.' };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 export async function updateDamage(cid, damageId, data, actorUserId) {
   if (!damageId) throw new Error('Damage ID is required.');
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
     const dRes = await client.query('SELECT * FROM damages WHERE id=$1 AND company_id=$2 FOR UPDATE', [Number(damageId), cid]);
@@ -1892,15 +1904,16 @@ export async function updateDamage(cid, damageId, data, actorUserId) {
       [newQtyInSellingUnits, calculationUnit, calculationUnit, newNormalizedPieces, newDamageCost, newReason, newNotes, Number(damageId), cid]
     );
 
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'DAMAGE_UPDATED', entityType: 'damages', entityId: Number(damageId), metadata: { updated: updated.rows[0] } });
+    await client.query('COMMIT');
     return { success: true, message: 'Damage entry updated successfully.', damage: updated.rows[0] };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 // ====== ORG / DEFAULT COUNTER SHOP RESOLUTION ======
@@ -1926,8 +1939,8 @@ export async function getOrCreateDefaultOrgShop(cid, client) {
   const code = 'SHP-' + String(nextNum).padStart(3, '0');
 
   const insertRes = await runner.query(
-    `INSERT INTO shops (company_id, name, code, owner_name, phone, address, village_id, route_id, opening_balance, current_due, is_active)
-     VALUES ($1, 'AVS AGENCIES', $2, 'AVS Main Counter', '0000000000', 'Warehouse Store Counter', NULL, NULL, 0, 0, TRUE)
+    `INSERT INTO shops (company_id, name, code, owner_name, phone, address, village_id, route_id, opening_balance, current_due, is_active,ledger_ready)
+     VALUES ($1, 'AVS AGENCIES', $2, 'AVS Main Counter', '0000000000', 'Warehouse Store Counter', NULL, NULL, 0, 0, TRUE,TRUE)
      RETURNING *`,
     [cid, code]
   );
@@ -1935,25 +1948,27 @@ export async function getOrCreateDefaultOrgShop(cid, client) {
 }
 
 // ====== SALES & POS BILLING ENGINE ======
-export async function createSale(cid, d, actorUserId) {
+async function createSaleAttempt(cid, d, actorUserId) {
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
-    await client.query(`
-      ALTER TABLE sales ALTER COLUMN "date" DROP NOT NULL;
-      ALTER TABLE sales ALTER COLUMN "time" DROP NOT NULL;
-    `).catch(() => {});
     await client.query('BEGIN');
     const { employee_id, shop_id, payment_mode, items, cash_paid, gpay_paid, credit_paid } = d;
     if (!items || !Array.isArray(items) || items.length === 0) throw new Error('Sale items array is required');
 
     const isStoreDirectSale = d.is_store_direct_sale === true || d.sale_type === 'STOREKEEPER_DIRECT' || (!employee_id && (!shop_id || d.shop_name === 'AVS AGENCIES') && (!d.employee_name || d.employee_name.toLowerCase().includes('store')));
 
-    const clientRef = d.client_reference || d.idempotency_key || d.bill_no || null;
+    const identity = requestIdentity(d);
+    const clientRef = identity.key;
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['sale:' + cid + ':' + clientRef]);
     if (clientRef) {
-      const existing = await client.query("SELECT * FROM sales WHERE company_id=$1 AND bill_no=$2", [cid, clientRef]);
+      const existing = await client.query("SELECT * FROM sales WHERE company_id=$1 AND request_key=$2", [cid, clientRef]);
       if (existing.rows.length > 0) {
+        if (existing.rows[0].request_hash !== identity.hash) throw new Error('Idempotency key already used for a different request');
+        const replayItems = (await client.query('SELECT * FROM sale_items WHERE sale_id=$1 ORDER BY id',[existing.rows[0].id])).rows;
         await client.query('COMMIT');
-        return { success: true, sale: existing.rows[0], message: 'Sale processed previously (idempotent request)', isDuplicate: true };
+        return { success:true,sale:{...existing.rows[0],items:replayItems},items:replayItems,isDuplicate:true };
       }
     }
 
@@ -2052,7 +2067,7 @@ export async function createSale(cid, d, actorUserId) {
     if (empId) {
       let empRouteId = emp ? emp.route_id : null;
       if (!empRouteId) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = businessDate();
         const raR = await client.query(
           "SELECT route_id FROM route_assignments WHERE employee_id=$1 AND assigned_date=$2 AND status != 'COMPLETED' ORDER BY id DESC LIMIT 1",
           [empId, today]
@@ -2066,13 +2081,13 @@ export async function createSale(cid, d, actorUserId) {
 
       // Security check: Verify shop belongs to driver's route via village -> route_id
       const shopRouteRes = await client.query(
-        `SELECT s.id, s.name, v.route_id as village_route_id, s.route_id as shop_route_id 
-         FROM shops s 
-         LEFT JOIN villages v ON v.id = s.village_id 
+        `SELECT s.id, s.name, v.route_id as village_route_id, s.route_id as shop_route_id
+         FROM shops s
+         LEFT JOIN villages v ON v.id = s.village_id
          WHERE s.id = $1 AND s.company_id = $2`,
         [shop.id, cid]
       );
-      const effectiveRouteId = shopRouteRes.rows.length > 0 
+      const effectiveRouteId = shopRouteRes.rows.length > 0
         ? (shopRouteRes.rows[0].village_route_id || shopRouteRes.rows[0].shop_route_id)
         : null;
 
@@ -2090,12 +2105,13 @@ export async function createSale(cid, d, actorUserId) {
     }
 
     let computedTotal = 0;
+    let totalPaise = 0;
     const evaluatedItems = [];
 
-    for (const item of items) {
+    for (const item of [...items].sort((first,second)=>Number(first.product_id)-Number(second.product_id))) {
       const pid = Number(item.product_id);
       const qty = Number(item.qty || item.quantity);
-      if (!qty || qty <= 0) throw new Error('Quantity must be greater than 0');
+      if (!Number.isSafeInteger(qty) || qty <= 0) throw new Error('Sale quantity must be a positive whole number');
       const pR = await client.query('SELECT * FROM products WHERE id=$1 AND company_id=$2 AND is_active=TRUE FOR UPDATE', [pid, cid]);
       if (pR.rows.length === 0) throw new Error(`Product ID ${pid} not found`);
       const prod = pR.rows[0];
@@ -2105,12 +2121,17 @@ export async function createSale(cid, d, actorUserId) {
       const ppu = Number(prod.pieces_per_unit || 1);
       const qtyInSellingUnits = isBaseUnit ? (qty / ppu) : qty;
 
-      let unitRate = (item.rate !== undefined && item.rate !== null && !isNaN(Number(item.rate)))
-        ? Number(item.rate)
-        : (isBaseUnit ? Number(prod.piece_selling_price || (Number(prod.unit_selling_price || 0) / ppu).toFixed(2)) : Number(prod.unit_selling_price || 0));
-      
-      const lineAmt = parseFloat((qty * unitRate).toFixed(2));
-      computedTotal += lineAmt;
+      if (![prod.base_unit, prod.selling_unit].some(unit => String(unit).toLowerCase() === String(itemUnit).toLowerCase())) throw new Error('Invalid sales unit');
+      const configuredRate = isStoreDirectSale && isBaseUnit && Number(prod.direct_sale_rate) > 0 ? prod.direct_sale_rate : isBaseUnit ? prod.piece_selling_price : prod.unit_selling_price;
+      const ratePaise = paise(configuredRate);
+      if (ratePaise <= 0) throw new Error('Product selling price must be configured');
+      if (item.rate !== undefined && paise(item.rate) !== ratePaise) throw new Error('Price changed. Refresh products and confirm the bill again.');
+      const unitRate = Number(amount(ratePaise));
+      const linePaise = qty * ratePaise;
+      if (!Number.isSafeInteger(linePaise) || linePaise > 9999999999) throw new Error('Line amount exceeds supported range');
+      const lineAmt = Number(amount(linePaise));
+      totalPaise += linePaise;
+      if (totalPaise > 9999999999) throw new Error('Invoice total exceeds supported range');
 
       if (empId) {
         const esR = await client.query('SELECT * FROM employee_stock WHERE employee_id=$1 AND product_id=$2 AND company_id=$3 FOR UPDATE', [empId, pid, cid]);
@@ -2146,54 +2167,43 @@ export async function createSale(cid, d, actorUserId) {
         product_name: prod.display_name,
         image_url: prod.image_url,
         icon: prod.icon,
-        qty: Math.floor(qty),
+        qty,
         qtyInSellingUnits,
+        conversion: ppu,
+        stockUnit: prod.selling_unit,
         unit_type: itemUnit,
         rate: unitRate,
         amount: lineAmt
       });
     }
 
-    computedTotal = parseFloat(computedTotal.toFixed(2));
+    computedTotal = Number(amount(totalPaise));
     const shopPrevDue = Number(shop?.current_due || 0);
     let oldCreditPaid = Number(d.old_credit_paid || (d.clear_previous_due ? shopPrevDue : 0));
-
-    // If client paid more than bill total in cash/gpay, attribute excess to old credit
-    if (oldCreditPaid === 0 && shopPrevDue > 0) {
-      const extraPaid = Math.max(0, (Number(cash_paid || 0) + Number(gpay_paid || 0)) - computedTotal);
-      if (extraPaid > 0) {
-        oldCreditPaid = Math.min(shopPrevDue, extraPaid);
-      }
+    if (oldCreditPaid === 0 && shopPrevDue > 0 && d.include_old_credit) {
+      oldCreditPaid = shopPrevDue;
     }
+    oldCreditPaid = Math.min(shopPrevDue, Math.max(0, oldCreditPaid));
 
+    const mode = String(payment_mode || 'CASH').toUpperCase();
     let cash = 0, gpay = 0, credit = 0;
-    const mode = (payment_mode || 'CASH').toUpperCase();
-
-    if (mode === 'CASH') {
-      cash = computedTotal + oldCreditPaid;
-    } else if (mode === 'GPAY') {
-      gpay = computedTotal + oldCreditPaid;
-    } else if (mode === 'CREDIT') {
-      credit = computedTotal;
-    } else if (mode === 'SPLIT') {
-      cash = Number(cash_paid || 0);
-      gpay = Number(gpay_paid || 0);
-      credit = Number(credit_paid || 0);
-      const sum = parseFloat((cash + gpay + credit).toFixed(2));
-      const expectedTotal = parseFloat((computedTotal + oldCreditPaid).toFixed(2));
-      if (Math.abs(sum - expectedTotal) > 0.5 && Math.abs(sum - computedTotal) > 0.5) {
-        throw new Error(`Split payment sum (₹${sum}) does not equal expected total (₹${expectedTotal})`);
+    if (mode === 'CASH') cash = computedTotal + oldCreditPaid;
+    else if (mode === 'GPAY') gpay = computedTotal + oldCreditPaid;
+    else if (mode === 'CREDIT') credit = computedTotal;
+    else if (mode === 'SPLIT') {
+      const cashPaise = paise(cash_paid || 0), gpayPaise = paise(gpay_paid || 0), creditPaise = paise(credit_paid || 0);
+      const totalExpectedPaise = totalPaise + paise(oldCreditPaid);
+      if (cashPaise + gpayPaise + creditPaise !== totalExpectedPaise && cashPaise + gpayPaise + creditPaise !== totalPaise) {
+        throw new Error('Split payment must equal the payable amount');
       }
-    } else {
-      throw new Error(`Invalid payment mode '${payment_mode}'`);
-    }
+      cash = Number(amount(cashPaise)); gpay = Number(amount(gpayPaise)); credit = Number(amount(creditPaise));
+    } else throw new Error('Invalid payment mode');
 
     if (oldCreditPaid > 0 && shop) {
-      await client.query('UPDATE shops SET current_due=GREATEST(0, current_due - $1), updated_at=NOW() WHERE id=$2', [oldCreditPaid, shop.id]);
+      await client.query('UPDATE shops SET current_due=GREATEST(0, current_due - $1), updated_at=NOW() WHERE id=$2', [amount(paise(oldCreditPaid)), shop.id]);
     }
-
     if (credit > 0 && shop) {
-      await client.query('UPDATE shops SET current_due=current_due+$1, updated_at=NOW() WHERE id=$2', [credit, shop.id]);
+      await client.query('UPDATE shops SET current_due=current_due+$1, updated_at=NOW() WHERE id=$2', [amount(paise(credit)), shop.id]);
     }
 
     let freshShopDue = Math.max(0, shopPrevDue - oldCreditPaid) + credit;
@@ -2204,32 +2214,14 @@ export async function createSale(cid, d, actorUserId) {
       }
     }
 
-    const billNo = clientRef || ('INV-' + Date.now().toString().slice(-6));
+    const sequence = await client.query("SELECT nextval('invoice_number_sequence')::text AS value");
+    const billNo = 'AVS-' + cid + '-' + sequence.rows[0].value.padStart(10, '0');
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
     const nowTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
 
-    let sR;
-    try {
-      sR = await client.query(
-        'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, sale_date, sale_time, total_amount, cash_paid, gpay_paid, credit_paid, payment_mode, previous_due, old_credit_paid) ' +
-        'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
-        [cid, billNo, empId, empName, shop ? shop.id : null, shop ? shop.name : (d.shop_name || 'Customer'), today, nowTime, computedTotal, cash, gpay, credit, mode, shopPrevDue, oldCreditPaid]
-      );
-    } catch (insertErr) {
-      try {
-        sR = await client.query(
-          'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, sale_date, sale_time, total_amount, cash_paid, gpay_paid, credit_paid, payment_mode) ' +
-          'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-          [cid, billNo, empId, empName, shop ? shop.id : null, shop ? shop.name : (d.shop_name || 'Customer'), today, nowTime, computedTotal, cash, gpay, credit, mode]
-        );
-      } catch (insertErr2) {
-        sR = await client.query(
-          'INSERT INTO sales (company_id, bill_no, employee_id, employee_name, shop_id, shop_name, "date", "time", total_amount, cash_paid, gpay_paid, credit_paid, payment_mode) ' +
-          'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-          [cid, billNo, empId, empName, shop ? shop.id : null, shop ? shop.name : (d.shop_name || 'Customer'), today, nowTime, computedTotal, cash, gpay, credit, mode]
-        );
-      }
-    }
+    const sR = await client.query(
+      'INSERT INTO sales (company_id,bill_no,employee_id,employee_name,shop_id,shop_name,sale_date,sale_time,total_amount,cash_paid,gpay_paid,credit_paid,payment_mode,previous_due,old_credit_paid,request_key,request_hash,session_id,financial_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,1) RETURNING *',
+      [cid,billNo,empId,empName,shop.id,shop.name,today,nowTime,amount(totalPaise),cash,gpay,credit,mode,shopPrevDue,oldCreditPaid,clientRef,identity.hash,driverSession?.id || null]);
     const sale = sR.rows[0];
     sale.shop_code = shop?.code || '';
     sale.previous_due = shopPrevDue;
@@ -2239,8 +2231,8 @@ export async function createSale(cid, d, actorUserId) {
 
     for (const item of evaluatedItems) {
       await client.query(
-        'INSERT INTO sale_items (sale_id, product_id, product_name, qty, unit_type, rate, amount) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-        [sale.id, item.product_id, item.product_name, item.qty, item.unit_type, item.rate, item.amount]
+        'INSERT INTO sale_items (sale_id, product_id, product_name, qty, unit_type, rate, amount, conversion_to_base, stock_qty_units) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+        [sale.id, item.product_id, item.product_name, item.qty, item.unit_type, item.rate, item.amount, item.conversion, item.qtyInSellingUnits]
       );
       const movNo = 'MOV-SALE-' + Date.now() + '-' + Math.floor(Math.random()*1000);
       await client.query(
@@ -2252,27 +2244,30 @@ export async function createSale(cid, d, actorUserId) {
       if (empId && driverSession) {
         await client.query(
           'INSERT INTO stock_transactions (company_id, session_id, employee_id, product_id, unit, transaction_type, qty_units, unit_cost, total_cost, reference_id, notes, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-          [cid, driverSession.id, empId, item.product_id, item.unit_type, 'SALE', item.qtyInSellingUnits, item.rate, item.amount, billNo, 'Sold to shop: ' + shop.name, actorUserId || null]
+          [cid, driverSession.id, empId, item.product_id, item.stockUnit, 'SALE', item.qtyInSellingUnits, item.rate, item.amount, billNo, 'Sold to shop: ' + shop.name, actorUserId || null]
         );
       }
     }
 
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'SALE_CREATED', entityType: 'sales', entityId: sale.id, metadata: { billNo, total: computedTotal, mode } });
+    await client.query('COMMIT');
     return { success: true, sale, items: evaluatedItems };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 export async function createEmployeeSale(cid, empId, empName, d, actorUserId) {
   return await createSale(cid, {
     ...d,
     employee_id: empId,
-    employee_name: empName
+    employee_name: empName,
+    is_store_direct_sale: false,
+    sale_type: 'DRIVER_DELIVERY'
   }, actorUserId);
 }
 
@@ -2287,15 +2282,15 @@ export async function createKeeperSale(cid, d, actorUserId) {
 export async function getSales(cid, filters) {
   if (!filters) filters = {};
   let sql = `
-    SELECT s.*, 
+    SELECT s.*,
       s.sale_date::text as sale_date,
       COALESCE(s.sale_date::text, to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD')) as date,
       COALESCE(s.sale_time, to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'HH12:MI AM')) as time,
-      CASE 
-        WHEN LOWER(COALESCE(s.employee_name, '')) LIKE '%store%' 
+      CASE
+        WHEN LOWER(COALESCE(s.employee_name, '')) LIKE '%store%'
              OR (s.employee_id IS NULL AND (s.employee_name IS NULL OR LOWER(s.employee_name) LIKE '%counter%' OR LOWER(s.employee_name) LIKE '%store%'))
-        THEN TRUE 
-        ELSE FALSE 
+        THEN TRUE
+        ELSE FALSE
       END as is_store_direct_sale,
       COALESCE((
         SELECT json_agg(json_build_object(
@@ -2316,7 +2311,7 @@ export async function getSales(cid, filters) {
         LEFT JOIN products p ON p.id = si.product_id
         WHERE si.sale_id = s.id
       ), '[]'::json) as items
-    FROM sales s 
+    FROM sales s
     WHERE s.company_id = $1
       AND (s.status IS NULL OR s.status = 'ACTIVE' OR s.status != 'CANCELLED')
   `;
@@ -2353,46 +2348,51 @@ export async function getSaleById(cid, saleId) {
   let sale = null;
   if (isNumeric) {
     sale = await queryOne(`
-      SELECT s.*, sh.code as shop_code, COALESCE(sh.current_due, 0) as shop_current_due, 
-             COALESCE(s.previous_due, sh.current_due, 0) as previous_due, 
+      SELECT s.*, sh.code as shop_code, COALESCE(sh.current_due, 0) as shop_current_due,
+             COALESCE(s.previous_due, sh.current_due, 0) as previous_due,
              COALESCE(s.old_credit_paid, 0) as old_credit_paid,
-             COALESCE(e.vehicle_number, '') as vehicle_no 
-      FROM sales s 
-      LEFT JOIN shops sh ON sh.id = s.shop_id 
-      LEFT JOIN employees e ON e.id = s.employee_id 
+             COALESCE(e.vehicle_number, '') as vehicle_no
+      FROM sales s
+      LEFT JOIN shops sh ON sh.id = s.shop_id
+      LEFT JOIN employees e ON e.id = s.employee_id
       WHERE s.id=$1 AND s.company_id=$2
     `, [Number(saleId), cid]);
   }
   if (!sale) {
     sale = await queryOne(`
-      SELECT s.*, sh.code as shop_code, COALESCE(sh.current_due, 0) as shop_current_due, 
-             COALESCE(s.previous_due, sh.current_due, 0) as previous_due, 
+      SELECT s.*, sh.code as shop_code, COALESCE(sh.current_due, 0) as shop_current_due,
+             COALESCE(s.previous_due, sh.current_due, 0) as previous_due,
              COALESCE(s.old_credit_paid, 0) as old_credit_paid,
-             COALESCE(e.vehicle_number, '') as vehicle_no 
-      FROM sales s 
-      LEFT JOIN shops sh ON sh.id = s.shop_id 
-      LEFT JOIN employees e ON e.id = s.employee_id 
+             COALESCE(e.vehicle_number, '') as vehicle_no
+      FROM sales s
+      LEFT JOIN shops sh ON sh.id = s.shop_id
+      LEFT JOIN employees e ON e.id = s.employee_id
       WHERE s.bill_no=$1 AND s.company_id=$2
     `, [String(saleId), cid]);
   }
   if (!sale) return null;
   const items = await queryAll(`
-    SELECT si.*, si.product_name as name, si.amount as total, p.image_url, p.icon 
-    FROM sale_items si 
-    LEFT JOIN products p ON p.id = si.product_id 
-    WHERE si.sale_id=$1 
+    SELECT si.*, si.product_name as name, si.amount as total, p.image_url, p.icon
+    FROM sale_items si
+    LEFT JOIN products p ON p.id = si.product_id
+    WHERE si.sale_id=$1
     ORDER BY si.id ASC
   `, [sale.id]);
   return { ...sale, items };
 }
 
-export async function cancelSale(cid, saleId, actorUserId, actorRole) {
-  if (actorRole === 'DRIVER') {
+async function cancelSaleAttempt(cid, saleId, actorUserId, actorRole) {
+  if (!['OWNER', 'STORE_KEEPER'].includes(actorRole)) {
     throw new Error('Drivers cannot cancel or reverse finalized bills. Contact Store Keeper or Owner.');
   }
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
+    const saleShop = await client.query('SELECT shop_id FROM sales WHERE id=$1 AND company_id=$2', [saleId,cid]);
+    if (!saleShop.rows.length) throw new Error('Sale not found');
+    await client.query('SELECT id FROM shops WHERE id=$1 AND company_id=$2 FOR UPDATE',[saleShop.rows[0].shop_id,cid]);
     const sR = await client.query('SELECT * FROM sales WHERE id=$1 AND company_id=$2 FOR UPDATE', [saleId, cid]);
     if (sR.rows.length === 0) throw new Error('Sale not found');
     const sale = sR.rows[0];
@@ -2412,17 +2412,23 @@ export async function cancelSale(cid, saleId, actorUserId, actorRole) {
       }
     }
 
-    const itemsRes = await client.query('SELECT * FROM sale_items WHERE sale_id=$1', [sale.id]);
+    if (sale.financial_version !== 1) throw new Error('Legacy invoice requires reviewed payment and stock reconciliation before cancellation');
+    const allocated = await client.query('SELECT COALESCE(SUM(amount),0)::text AS total FROM receipt_allocations WHERE sale_id=$1', [sale.id]);
+    const refunded = await client.query('SELECT COALESCE(SUM(amount),0)::text AS total FROM payment_reversals WHERE sale_id=$1 AND company_id=$2', [sale.id,cid]);
+    const received = paise(sale.cash_paid) + paise(sale.gpay_paid) + paise(allocated.rows[0].total);
+    if (paise(refunded.rows[0].total) !== received) throw new Error('Record all payment refunds/reversals before cancelling');
+    const itemsRes = await client.query('SELECT * FROM sale_items WHERE sale_id=$1 ORDER BY product_id', [sale.id]);
     for (const item of itemsRes.rows) {
       const pid = item.product_id;
       const qty = Number(item.qty);
       const unit = item.unit_type;
-      
+
       const pR = await client.query('SELECT * FROM products WHERE id=$1', [pid]);
       const prod = pR.rows[0];
       const ppu = Number(prod?.pieces_per_unit || 1);
       const isBaseUnit = unit.toLowerCase() === (prod?.base_unit || 'piece').toLowerCase();
-      const qtyInSellingUnits = isBaseUnit ? (qty / ppu) : qty;
+      if (!item.conversion_to_base || item.stock_qty_units === null) throw new Error('Missing original stock conversion');
+      const qtyInSellingUnits = Number(item.stock_qty_units);
 
       if (sale.employee_id) {
         await client.query(
@@ -2443,8 +2449,9 @@ export async function cancelSale(cid, saleId, actorUserId, actorRole) {
       );
     }
 
-    if (Number(sale.credit_paid || 0) > 0 && sale.shop_id) {
-      await client.query('UPDATE shops SET current_due=GREATEST(0, current_due-$1), updated_at=NOW() WHERE id=$2', [Number(sale.credit_paid), sale.shop_id]);
+    if (sale.employee_id) await client.query("INSERT INTO stock_transactions(company_id,session_id,employee_id,product_id,unit,transaction_type,qty_units,unit_cost,total_cost,reference_id,notes,created_by) SELECT company_id,session_id,employee_id,product_id,unit,'SALE',-qty_units,unit_cost,-total_cost,reference_id,'Cancellation reversal', $3 FROM stock_transactions WHERE company_id=$1 AND reference_id=$2 AND transaction_type='SALE' AND qty_units>0", [cid,sale.bill_no,actorUserId]);
+    if (Number(sale.total_amount || 0) > 0 && sale.shop_id) {
+      await client.query('UPDATE shops SET current_due=GREATEST(0, current_due-$1), updated_at=NOW() WHERE id=$2', [Number(sale.total_amount), sale.shop_id]);
     }
 
     const updatedRes = await client.query(
@@ -2452,28 +2459,29 @@ export async function cancelSale(cid, saleId, actorUserId, actorRole) {
       [sale.id]
     );
 
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'SALE_CANCELLED', entityType: 'sales', entityId: sale.id, metadata: { billNo: sale.bill_no, total: sale.total_amount } });
+    await client.query('COMMIT');
     return { success: true, message: 'Sale cancelled and stock reversed successfully', sale: updatedRes.rows[0] };
   } catch (e) {
     await client.query('ROLLBACK');
     throw e;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 // ====== ROUTES & ASSIGNMENTS ======
 export async function getRoutes(cid) {
   return await queryAll(`
-    SELECT r.*, 
+    SELECT r.*,
       ra.employee_id, e.full_name as driver_name, e.vehicle_number, ra.status as assignment_status, ra.dispatch_time,
       (SELECT COUNT(*)::int FROM villages v WHERE v.route_id = r.id AND v.company_id = $1 AND v.status = 'ACTIVE') as village_count,
       (SELECT COUNT(*)::int FROM shops s JOIN villages v ON v.id = s.village_id WHERE v.route_id = r.id AND s.company_id = $1 AND s.is_active = TRUE) as shop_count
     FROM routes r
     LEFT JOIN route_assignments ra ON ra.route_id = r.id AND ra.assigned_date = CURRENT_DATE
     LEFT JOIN employees e ON e.id = COALESCE(ra.employee_id, (SELECT id FROM employees WHERE route_id = r.id AND company_id = $1 LIMIT 1))
-    WHERE r.company_id = $1 AND r.is_active = TRUE 
+    WHERE r.company_id = $1 AND r.is_active = TRUE
     ORDER BY r.code ASC, r.name ASC
   `, [cid]);
 }
@@ -2546,7 +2554,7 @@ export async function deleteRoute(cid, routeId) {
 }
 
 export async function assignRoute(cid, routeId, employeeId, vehicleNumber, assignedDate) {
-  const date = assignedDate || new Date().toISOString().split('T')[0];
+  const date = assignedDate || businessDate();
   const r = await queryOne('SELECT * FROM routes WHERE id=$1 AND company_id=$2 AND is_active=TRUE', [routeId, cid]);
   if (!r) throw new Error('Route not found.');
   const e = await queryOne('SELECT * FROM employees WHERE id=$1 AND company_id=$2', [employeeId, cid]);
@@ -2565,7 +2573,7 @@ export async function assignRoute(cid, routeId, employeeId, vehicleNumber, assig
 }
 
 export async function getRouteAssignments(cid, date) {
-  const targetDate = date || new Date().toISOString().split('T')[0];
+  const targetDate = date || businessDate();
   return await queryAll(
     'SELECT ra.*, r.code as route_code, r.name as route_name, e.full_name as employee_name, e.phone as employee_phone ' +
     'FROM route_assignments ra JOIN routes r ON r.id=ra.route_id JOIN employees e ON e.id=ra.employee_id ' +
@@ -2579,7 +2587,7 @@ export async function getVillages(cid, filters = {}) {
   let sql = `
     SELECT v.*, r.name as route_name, r.code as route_code,
       (SELECT COUNT(*)::int FROM shops s WHERE s.village_id = v.id AND s.company_id = $1 AND s.is_active = TRUE) as shop_count
-    FROM villages v 
+    FROM villages v
     LEFT JOIN routes r ON r.id = v.route_id
     WHERE v.company_id = $1 AND v.status = 'ACTIVE'
   `;
@@ -2635,14 +2643,14 @@ export async function addVillage(cid, d) {
     'INSERT INTO villages (company_id, code, name, route_id, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
     [cid, code, name, route.id, d.status || 'ACTIVE']
   );
-  return { 
-    success: true, 
-    village: { 
-      ...row, 
-      route_name: route.name, 
+  return {
+    success: true,
+    village: {
+      ...row,
+      route_name: route.name,
       route_code: route.code,
       shop_count: 0
-    } 
+    }
   };
 }
 
@@ -2666,12 +2674,12 @@ export async function updateVillage(cid, id, d) {
   }
 
   const row = await queryOne(
-    `UPDATE villages SET 
-       name = COALESCE($1, name), 
-       route_id = CASE WHEN $2::boolean THEN $3::integer ELSE route_id END, 
-       status = COALESCE($4, status), 
-       updated_at = NOW() 
-     WHERE id = $5 AND company_id = $6 
+    `UPDATE villages SET
+       name = COALESCE($1, name),
+       route_id = CASE WHEN $2::boolean THEN $3::integer ELSE route_id END,
+       status = COALESCE($4, status),
+       updated_at = NOW()
+     WHERE id = $5 AND company_id = $6
      RETURNING *`,
     [name, routeId !== undefined, routeId || null, d.status || null, id, cid]
   );
@@ -2711,13 +2719,13 @@ export async function deleteVillage(cid, id) {
 // ====== SHOPS ======
 export async function getShops(cid, filters = {}) {
   let sql = `
-    SELECT s.*, 
-      v.name as village_name, v.code as village_code, 
+    SELECT s.*,
+      v.name as village_name, v.code as village_code,
       COALESCE(r.name, vr.name) as route_name, COALESCE(r.code, vr.code) as route_code,
       COALESCE(v.route_id, s.route_id) as route_id,
       COALESCE((
-        SELECT COUNT(*)::int 
-        FROM sales sa 
+        SELECT COUNT(*)::int
+        FROM sales sa
         WHERE sa.shop_id = s.id AND sa.company_id = s.company_id
       ), 0) as bills_count
     FROM shops s
@@ -2801,8 +2809,8 @@ export async function addShop(cid, d) {
   const row = await queryOne(
     `INSERT INTO shops (
       company_id, code, name, owner_name, phone, address, distance, distance_km,
-      village_id, route_id, credit_limit, opening_balance, has_freezer, freezer_model, freezer_status
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      village_id, route_id, credit_limit, opening_balance, has_freezer, freezer_model, freezer_status, ledger_ready, opening_due_remaining, current_due
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,TRUE,$12,$12) RETURNING *`,
     [
       cid, code, name,
       d.owner_name ? String(d.owner_name).trim() : null,
@@ -2813,14 +2821,14 @@ export async function addShop(cid, d) {
       vil.id,
       routeId,
       Number(d.credit_limit) || 0,
-      Number(d.opening_balance) || 0,
+      amount(paise(d.opening_balance || 0)),
       hasFreezer, freezerModel, freezerStatus
     ]
   );
 
   const populated = await queryOne(
-    `SELECT s.*, 
-       v.name as village_name, v.code as village_code, 
+    `SELECT s.*,
+       v.name as village_name, v.code as village_code,
        COALESCE(r.name, vr.name) as route_name, COALESCE(r.code, vr.code) as route_code,
        COALESCE(v.route_id, s.route_id) as route_id
      FROM shops s
@@ -2860,8 +2868,8 @@ export async function updateShop(cid, shopId, d) {
   const distanceStr = d.distance !== undefined ? String(d.distance).trim() : (distanceKm !== undefined ? `${distanceKm} km` : undefined);
 
   const row = await queryOne(
-    `UPDATE shops SET 
-      name=COALESCE($1,name), owner_name=COALESCE($2,owner_name), 
+    `UPDATE shops SET
+      name=COALESCE($1,name), owner_name=COALESCE($2,owner_name),
       phone=COALESCE($3,phone), address=COALESCE($4,address), distance=COALESCE($5,distance), distance_km=COALESCE($6,distance_km),
       village_id = CASE WHEN $7::boolean THEN $8::integer ELSE village_id END,
       route_id = CASE WHEN $7::boolean THEN $9::integer ELSE COALESCE($9, route_id) END,
@@ -2887,8 +2895,8 @@ export async function updateShop(cid, shopId, d) {
   if(!row) throw new Error('Shop not found.');
 
   const populated = await queryOne(
-    `SELECT s.*, 
-       v.name as village_name, v.code as village_code, 
+    `SELECT s.*,
+       v.name as village_name, v.code as village_code,
        COALESCE(r.name, vr.name) as route_name, COALESCE(r.code, vr.code) as route_code,
        COALESCE(v.route_id, s.route_id) as route_id
      FROM shops s
@@ -2949,7 +2957,7 @@ export async function deleteFreezerModel(cid, id) {
 
 export async function getFreezers(cid, shopId = null) {
   let sql = `
-    SELECT 
+    SELECT
       sf.id,
       sf.company_id,
       sf.shop_id,
@@ -2986,7 +2994,7 @@ export async function getFreezers(cid, shopId = null) {
 export async function assignFreezer(cid, shopId, d) {
   const fModel = d.freezer_model || d.model || d.model_name || 'Deep Freezer';
   const fSerial = String(d.freezer_serial || d.serial || d.serial_no || `FRZ-${Date.now().toString().slice(-6)}`).trim();
-  const fDate = d.freezer_date || d.date || d.allocation_date || new Date().toISOString().split('T')[0];
+  const fDate = d.freezer_date || d.date || d.allocation_date || businessDate();
   const fStatus = d.freezer_status || d.status || 'Active';
   const fNotes = d.notes || null;
 
@@ -3016,9 +3024,9 @@ export async function assignFreezer(cid, shopId, d) {
 
   // 3. Mark shop has_freezer = true on shops table
   const updatedShop = await queryOne(`
-    UPDATE shops 
-    SET has_freezer = TRUE, freezer_model = $1, freezer_serial = $2, freezer_date = $3, freezer_status = $4, updated_at = NOW() 
-    WHERE id = $5 AND (company_id = $6 OR $6 = 1 OR company_id IS NULL) 
+    UPDATE shops
+    SET has_freezer = TRUE, freezer_model = $1, freezer_serial = $2, freezer_date = $3, freezer_status = $4, updated_at = NOW()
+    WHERE id = $5 AND (company_id = $6 OR $6 = 1 OR company_id IS NULL)
     RETURNING *
   `, [fModel, fSerial, fDate, fStatus, shopId, cid]);
 
@@ -3050,7 +3058,7 @@ export async function updateFreezer(cid, freezerId, d) {
   // Update shop record with latest freezer info if applicable
   if (freezerRow.shop_id) {
     await query(`
-      UPDATE shops 
+      UPDATE shops
       SET freezer_model = $1, freezer_serial = $2, freezer_date = $3, freezer_status = $4, updated_at = NOW()
       WHERE id = $5
     `, [freezerRow.model_name, freezerRow.serial_no, freezerRow.allocation_date, freezerRow.status, freezerRow.shop_id]);
@@ -3061,7 +3069,7 @@ export async function updateFreezer(cid, freezerId, d) {
 
 export async function unassignFreezer(cid, targetId, shopId = null) {
   let deletedFreezer = await queryOne(`
-    DELETE FROM shop_freezers 
+    DELETE FROM shop_freezers
     WHERE id = $1 AND (company_id = $2 OR $2 = 1 OR company_id IS NULL)
     RETURNING *
   `, [targetId, cid]);
@@ -3083,16 +3091,16 @@ export async function unassignFreezer(cid, targetId, shopId = null) {
     const remCount = Number(remaining?.count || 0);
     if (remCount === 0) {
       await query(`
-        UPDATE shops 
-        SET has_freezer = FALSE, freezer_model = NULL, freezer_serial = NULL, freezer_date = NULL, freezer_status = NULL, updated_at = NOW() 
+        UPDATE shops
+        SET has_freezer = FALSE, freezer_model = NULL, freezer_serial = NULL, freezer_date = NULL, freezer_status = NULL, updated_at = NOW()
         WHERE id = $1
       `, [targetShopId]);
     } else {
       const latest = await queryOne(`SELECT * FROM shop_freezers WHERE shop_id = $1 ORDER BY id DESC LIMIT 1`, [targetShopId]);
       if (latest) {
         await query(`
-          UPDATE shops 
-          SET has_freezer = TRUE, freezer_model = $1, freezer_serial = $2, freezer_date = $3, freezer_status = $4, updated_at = NOW() 
+          UPDATE shops
+          SET has_freezer = TRUE, freezer_model = $1, freezer_serial = $2, freezer_date = $3, freezer_status = $4, updated_at = NOW()
           WHERE id = $5
         `, [latest.model_name, latest.serial_no, latest.allocation_date, latest.status, targetShopId]);
       }
@@ -3102,18 +3110,15 @@ export async function unassignFreezer(cid, targetId, shopId = null) {
   return { success: true, message: 'Freezer removed successfully.', freezer: deletedFreezer };
 }
 
-export async function collectShopDue(cid,shopId,d) {
-  const amt=Number(d.amount)||0;
-  const row = await queryOne('UPDATE shops SET current_due=GREATEST(0,current_due-$1) WHERE id=$2 AND company_id=$3 RETURNING current_due',[amt,shopId,cid]);
-  if(!row) throw new Error('Shop not found.');
-  return {success:true,remainingDue:Number(row.current_due)};
+export async function collectShopDue(cid,shopId,data,actor) {
+  return collectDue(cid,shopId,data,actor);
 }
 
 // ====== EXPENSES ======
 export async function getExpenses(cid, filters) {
   if (!filters) filters = {};
   let sql = `
-    SELECT 
+    SELECT
       ex.id,
       ex.company_id,
       ex.employee_id,
@@ -3235,13 +3240,16 @@ export async function deleteExpense(cid, expenseId, actorUserId) {
   return { success: true, message: 'Expense deleted successfully.' };
 }
 
-export async function submitDriverEndDay(cid, employeeId, data, actorUserId) {
+async function submitDriverEndDayAttempt(cid, employeeId, data, actorUserId) {
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
+    if (employeeId) await client.query('SELECT id FROM employees WHERE id=$1 AND company_id=$2 FOR UPDATE',[employeeId,cid]);
     const sessionRes = await client.query(
-      `SELECT * FROM driver_sessions 
-       WHERE company_id = $1 AND employee_id = $2 
+      `SELECT * FROM driver_sessions
+       WHERE company_id = $1 AND employee_id = $2
        ORDER BY id DESC LIMIT 1 FOR UPDATE`,
       [cid, employeeId]
     );
@@ -3253,7 +3261,7 @@ export async function submitDriverEndDay(cid, employeeId, data, actorUserId) {
       throw new Error("Today's working day has already been submitted.");
     }
 
-    const todayStr = session.session_date ? new Date(session.session_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    const todayStr = session.session_date ? String(session.session_date).slice(0,10) : businessDate();
 
     // Authoritative calculations from real database records
     const sRes = await client.query(
@@ -3264,15 +3272,16 @@ export async function submitDriverEndDay(cid, employeeId, data, actorUserId) {
               COALESCE(SUM(CASE WHEN payment_mode = 'SPLIT' THEN total_amount ELSE 0 END), 0) as split_total,
               COUNT(CASE WHEN payment_mode = 'SPLIT' THEN 1 ELSE NULL END) as split_count,
               COUNT(*) as bills_count
-       FROM sales 
+       FROM sales
        WHERE company_id = $1 AND employee_id = $2 AND (status IS NULL OR status = 'ACTIVE' OR status != 'CANCELLED')
          AND (sale_date = $3::date OR created_at::date = $3::date)`,
       [cid, employeeId, todayStr]
     );
     const sRow = sRes.rows[0] || {};
     const totalSales = Number(sRow.total_sales || 0);
-    const cashCollected = Number(sRow.cash_collected || 0);
-    const gpayCollected = Number(sRow.gpay_collected || 0);
+    const flow = await cashFlow(client,cid,employeeId,{start:todayStr,end:todayStr});
+    const cashCollected = Number(flow.cash);
+    const gpayCollected = Number(flow.gpay);
     const creditSales = Number(sRow.credit_sales || 0);
     const splitTotal = Number(sRow.split_total || 0);
     const splitCount = Number(sRow.split_count || 0);
@@ -3280,7 +3289,7 @@ export async function submitDriverEndDay(cid, employeeId, data, actorUserId) {
 
     const eRes = await client.query(
       `SELECT COALESCE(SUM(amount), 0) as total_expenses, COUNT(*) as expense_count
-       FROM expenses 
+       FROM expenses
        WHERE company_id = $1 AND employee_id = $2 AND (session_id = $3 OR expense_date = $4::date OR created_at::date = $4::date)`,
       [cid, employeeId, session.id, todayStr]
     );
@@ -3304,30 +3313,31 @@ export async function submitDriverEndDay(cid, employeeId, data, actorUserId) {
     };
 
     const updatedRes = await client.query(
-      `UPDATE driver_sessions 
-       SET status='END_DAY_SUBMITTED', closed_at=NOW(), 
+      `UPDATE driver_sessions
+       SET status='END_DAY_SUBMITTED', closed_at=NOW(),
            total_sales=$1, total_expenses=$2, cash_collected=$3, gpay_collected=$4, credit_sales=$5,
-           closing_summary=$6, updated_at=NOW() 
+           closing_summary=$6, updated_at=NOW()
        WHERE id=$7 RETURNING *`,
       [totalSales, totalExpenses, cashCollected, gpayCollected, creditSales, JSON.stringify(closingSummary), session.id]
     );
 
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'DRIVER_END_DAY_SUBMITTED', entityType: 'driver_sessions', entityId: session.id, metadata: closingSummary });
+    await client.query('COMMIT');
     return { success: true, message: "Today's working day submitted successfully.", session: updatedRes.rows[0], summary: closingSummary };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 // ====== DAMAGES & SETTLEMENTS ======
 export async function getDamages(cid, filters, userRole, sessionEmpId) {
   if (!filters) filters = {};
   let sql = `
-    SELECT 
+    SELECT
       d.id,
       d.company_id,
       d.session_id,
@@ -3349,10 +3359,10 @@ export async function getDamages(cid, filters, userRole, sessionEmpId) {
       d.qty_units,
       d.unit,
       COALESCE(d.damage_unit, d.unit, 'Tray') as damage_unit,
-      COALESCE(d.base_quantity, 
-        CASE 
-          WHEN LOWER(COALESCE(d.damage_unit, d.unit, 'Tray')) IN ('piece', 'pieces') THEN d.qty_units 
-          ELSE d.qty_units * COALESCE(p.pieces_per_unit, 1) 
+      COALESCE(d.base_quantity,
+        CASE
+          WHEN LOWER(COALESCE(d.damage_unit, d.unit, 'Tray')) IN ('piece', 'pieces') THEN d.qty_units
+          ELSE d.qty_units * COALESCE(p.pieces_per_unit, 1)
         END
       ) as base_quantity,
       d.damage_cost,
@@ -3428,6 +3438,8 @@ export async function getDamages(cid, filters, userRole, sessionEmpId) {
 
 export async function verifyOrRejectDamage(cid, damageId, action, notes, actorUserId) {
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
     const act = (action || '').toUpperCase();
@@ -3452,9 +3464,9 @@ export async function verifyOrRejectDamage(cid, damageId, action, notes, actorUs
     const updatedNotes = notes ? (damage.notes ? `${damage.notes} | ${notes}` : notes) : damage.notes;
 
     const uRes = await client.query(
-      `UPDATE damages 
-       SET status = $1, verified_by = $2, verified_at = NOW(), notes = $3, updated_at = NOW() 
-       WHERE id = $4 AND company_id = $5 
+      `UPDATE damages
+       SET status = $1, verified_by = $2, verified_at = NOW(), notes = $3, updated_at = NOW()
+       WHERE id = $4 AND company_id = $5
        RETURNING *`,
       [nextStatus, actorUserId || null, updatedNotes, damageId, cid]
     );
@@ -3467,13 +3479,12 @@ export async function verifyOrRejectDamage(cid, damageId, action, notes, actorUs
       const movementNotes = `Verified Damage: ${damage.qty_units} ${damage.damage_unit || damage.unit || 'Tray'} (${baseQty} Pieces) - ${damage.reason || 'Wastage'}`;
 
       await client.query(
-        `INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes, created_at) 
+        `INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes, created_at)
          VALUES ($1, $2, 'DAMAGE', $3, $4, $5, $6, $7, $8, $9, NOW())`,
         [cid, movNo, damage.product_id, damage.product_name, damage.employee_id, damage.employee_name, damage.qty_units, damage.damage_unit || damage.unit || 'Tray', movementNotes]
       );
     }
 
-    await client.query('COMMIT');
     await auditLog({
       companyId: cid,
       actorUserId,
@@ -3482,6 +3493,7 @@ export async function verifyOrRejectDamage(cid, damageId, action, notes, actorUs
       entityId: damageId,
       metadata: { status: nextStatus, damage_cost: damage.damage_cost, notes: updatedNotes }
     });
+    await client.query('COMMIT');
 
     return {
       success: true,
@@ -3492,13 +3504,14 @@ export async function verifyOrRejectDamage(cid, damageId, action, notes, actorUs
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 export async function getDamageAnalyticsSummary(cid, filters) {
   if (!filters) filters = {};
-  
+
   let dateFilterSql = '';
   const params = [cid];
   let idx = 2;
@@ -3529,13 +3542,13 @@ export async function getDamageAnalyticsSummary(cid, filters) {
 
   // Summary aggregation
   const summarySql = `
-    SELECT 
+    SELECT
       COUNT(*) as total_records,
       COALESCE(SUM(d.damage_cost), 0) as total_damage_cost,
       COALESCE(SUM(
-        CASE 
-          WHEN LOWER(COALESCE(d.damage_unit, d.unit, 'Tray')) IN ('piece', 'pieces') THEN d.qty_units 
-          ELSE d.qty_units * COALESCE(p.pieces_per_unit, 1) 
+        CASE
+          WHEN LOWER(COALESCE(d.damage_unit, d.unit, 'Tray')) IN ('piece', 'pieces') THEN d.qty_units
+          ELSE d.qty_units * COALESCE(p.pieces_per_unit, 1)
         END
       ), 0) as total_base_pieces,
       COALESCE(SUM(CASE WHEN COALESCE(d.status, 'PENDING') = 'PENDING' THEN 1 ELSE 0 END), 0) as pending_count,
@@ -3552,16 +3565,16 @@ export async function getDamageAnalyticsSummary(cid, filters) {
 
   // Top drivers by damage
   const topDriversSql = `
-    SELECT 
+    SELECT
       d.employee_id,
       COALESCE(e.full_name, d.employee_name, 'Warehouse') as driver_name,
       r.name as route_name,
       COUNT(*) as damage_count,
       COALESCE(SUM(d.damage_cost), 0) as total_cost,
       COALESCE(SUM(
-        CASE 
-          WHEN LOWER(COALESCE(d.damage_unit, d.unit, 'Tray')) IN ('piece', 'pieces') THEN d.qty_units 
-          ELSE d.qty_units * COALESCE(p.pieces_per_unit, 1) 
+        CASE
+          WHEN LOWER(COALESCE(d.damage_unit, d.unit, 'Tray')) IN ('piece', 'pieces') THEN d.qty_units
+          ELSE d.qty_units * COALESCE(p.pieces_per_unit, 1)
         END
       ), 0) as total_pieces
     FROM damages d
@@ -3577,7 +3590,7 @@ export async function getDamageAnalyticsSummary(cid, filters) {
 
   // Top products by damage
   const topProductsSql = `
-    SELECT 
+    SELECT
       d.product_id,
       COALESCE(p.display_name, p.name, d.product_name) as product_name,
       p.image_url,
@@ -3586,9 +3599,9 @@ export async function getDamageAnalyticsSummary(cid, filters) {
       COUNT(*) as damage_count,
       COALESCE(SUM(d.damage_cost), 0) as total_cost,
       COALESCE(SUM(
-        CASE 
-          WHEN LOWER(COALESCE(d.damage_unit, d.unit, 'Tray')) IN ('piece', 'pieces') THEN d.qty_units 
-          ELSE d.qty_units * COALESCE(p.pieces_per_unit, 1) 
+        CASE
+          WHEN LOWER(COALESCE(d.damage_unit, d.unit, 'Tray')) IN ('piece', 'pieces') THEN d.qty_units
+          ELSE d.qty_units * COALESCE(p.pieces_per_unit, 1)
         END
       ), 0) as total_pieces
     FROM damages d
@@ -3602,7 +3615,7 @@ export async function getDamageAnalyticsSummary(cid, filters) {
 
   // Breakdown by reason
   const reasonsSql = `
-    SELECT 
+    SELECT
       COALESCE(d.reason, 'Other') as reason,
       COUNT(*) as count,
       COALESCE(SUM(d.damage_cost), 0) as total_cost
@@ -3649,31 +3662,12 @@ export async function getSettlements(cid, filters) {
   sql += ' ORDER BY created_at DESC';
   return await queryAll(sql, params);
 }
-export async function saveSettlement(cid, d) {
-  const targetDate = d.settlement_date || new Date().toISOString().split('T')[0];
-  const empId = d.employee_id || null;
-  if (empId) {
-    const existing = await queryOne(
-      'SELECT * FROM settlements WHERE company_id = $1 AND employee_id = $2 AND settlement_date = $3::date',
-      [cid, empId, targetDate]
-    );
-    if (existing) {
-      return { success: true, message: 'Day already closed', settlement: existing };
-    }
-  }
-  const diff = (Number(d.collected_amount) || 0) - (Number(d.expected_amount) || 0);
-  const status = Math.abs(diff) < 0.01 ? 'BALANCED' : diff > 0 ? 'SURPLUS' : 'DEFICIT';
-  const row = await queryOne(
-    'INSERT INTO settlements (company_id, employee_id, employee_name, settlement_date, expected_amount, collected_amount, difference, reason, remarks, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
-    [cid, empId, d.employee_name || null, targetDate, d.expected_amount || 0, d.collected_amount || 0, diff, d.reason || null, d.remarks || null, status]
-  );
-  return { success: true, settlement: row };
-}
+export async function saveSettlement(cid,data,actor) { return settle(cid,data,actor); }
 
 // ====== INVENTORY MOVEMENTS ======
 export async function getStockMovements(cid,f) {
   if(!f) f={};
-  let sql = 'SELECT * FROM inventory_movements WHERE (company_id=$1 OR company_id=1 OR company_id IS NULL)';
+  let sql = 'SELECT * FROM inventory_movements WHERE (company_id=$1)';
   const params = [cid || 1]; let idx = 2;
   if(f.movement_type) { sql += ' AND movement_type=$'+idx++; params.push(f.movement_type); }
   if(f.employee_id) { sql += ' AND employee_id=$'+idx++; params.push(f.employee_id); }
@@ -3725,6 +3719,10 @@ function parseDateFilters(filters = {}, defaultCol = 'sale_date') {
     end = todayStr;
   }
 
+  for (const value of [start,end]) {
+    if (value !== null && (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value+'T00:00:00Z').toISOString().slice(0,10)!==value)) throw new Error('Invalid report date');
+  }
+  if(start && end && start>end)throw new Error('Invalid report date range');
   return { start, end, period, todayStr };
 }
 
@@ -3754,7 +3752,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
 
   // 1. Sales & Multi-Payment Breakdown (0 Double Counting)
   const salesSql = `
-    SELECT 
+    SELECT
       COUNT(*) as total_bills,
       COALESCE(SUM(s.total_amount), 0) as gross_sales,
       COALESCE(SUM(s.cash_paid), 0) as cash_sales,
@@ -3768,7 +3766,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
 
   // 2. Expenses Breakdown
   const expSql = `
-    SELECT 
+    SELECT
       COUNT(*) as total_records,
       COALESCE(SUM(e.amount), 0) as total_expenses
     FROM expenses e
@@ -3777,7 +3775,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
   const expRow = await queryOne(expSql, [cid]);
 
   const expCategoriesSql = `
-    SELECT 
+    SELECT
       COALESCE(e.category, 'Other') as category,
       COUNT(*) as count,
       COALESCE(SUM(e.amount), 0) as amount
@@ -3790,7 +3788,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
 
   // 3. Damages Breakdown
   const dmgSql = `
-    SELECT 
+    SELECT
       COUNT(*) as total_records,
       COALESCE(SUM(d.damage_cost), 0) as total_damage_cost,
       COALESCE(SUM(CASE WHEN d.status = 'VERIFIED' THEN d.damage_cost ELSE 0 END), 0) as verified_damage_cost,
@@ -3802,7 +3800,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
 
   // 4. Returns Breakdown
   const retSql = `
-    SELECT 
+    SELECT
       COUNT(*) as total_returns,
       COALESCE(SUM(dr.total_accepted_good), 0) as total_accepted_good
     FROM driver_returns dr
@@ -3812,10 +3810,10 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
 
   // 5. Product Buying Cost & Profit/Loss Calculation
   const costSql = `
-    SELECT 
+    SELECT
       COALESCE(SUM(
-        CASE 
-          WHEN LOWER(COALESCE(si.unit_type, p.selling_unit, 'Tray')) IN ('piece', 'pieces') 
+        CASE
+          WHEN LOWER(COALESCE(si.unit_type, p.selling_unit, 'Tray')) IN ('piece', 'pieces')
           THEN si.qty * (COALESCE(p.purchase_price, 0) / GREATEST(1, COALESCE(p.pieces_per_unit, 1)))
           ELSE si.qty * COALESCE(p.purchase_price, 0)
         END
@@ -3843,7 +3841,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
   const empQ = await query('SELECT COUNT(*) as t FROM employees WHERE company_id=$1 AND is_active=TRUE', [cid]);
   const prQ = await query('SELECT COUNT(*) as t FROM products WHERE company_id=$1 AND is_active=TRUE', [cid]);
   const shQ = await query('SELECT COUNT(*) as t, COALESCE(SUM(current_due),0) as td FROM shops WHERE company_id=$1 AND is_active=TRUE', [cid]);
-  
+
   // 7. Recent Invoices
   const inv = await queryAll(
     "SELECT id, bill_no, employee_name, shop_name, total_amount, payment_mode, cash_paid, gpay_paid, credit_paid, created_at, sale_date FROM sales WHERE company_id=$1 AND (status IS NULL OR status = 'ACTIVE' OR status != 'CANCELLED') ORDER BY created_at DESC LIMIT 10",
@@ -3856,7 +3854,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
         SELECT (CURRENT_DATE - i)::date AS d
         FROM generate_series(6, 0, -1) AS i
       )
-      SELECT 
+      SELECT
         d.d::text AS date,
         TO_CHAR(d.d, 'Dy') AS day_short,
         CASE WHEN d.d = CURRENT_DATE THEN 'Today (' || TRIM(TO_CHAR(d.d, 'Dy')) || ')' ELSE TRIM(TO_CHAR(d.d, 'Dy')) END AS day_label,
@@ -3866,8 +3864,8 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
         COALESCE(SUM(s.gpay_paid), 0)::numeric(12,2) AS gpay,
         COALESCE(SUM(s.credit_paid), 0)::numeric(12,2) AS credit
       FROM last_7_days d
-      LEFT JOIN sales s ON s.company_id = $1 
-        AND COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) = d.d 
+      LEFT JOIN sales s ON s.company_id = $1
+        AND COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) = d.d
         AND (s.status IS NULL OR s.status = 'ACTIVE' OR s.status != 'CANCELLED')
       GROUP BY d.d
       ORDER BY d.d ASC
@@ -3897,8 +3895,8 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
         label = `₹${r.revenue.toLocaleString()}`;
       }
       const isPeak = Boolean(maxDayRevenue > 0 && r.revenue === maxDayRevenue);
-      const heightPct = maxDayRevenue > 0 && r.revenue > 0 
-        ? Math.max(12, Math.round((r.revenue / maxDayRevenue) * 100)) + '%' 
+      const heightPct = maxDayRevenue > 0 && r.revenue > 0
+        ? Math.max(12, Math.round((r.revenue / maxDayRevenue) * 100)) + '%'
         : '8%';
 
       return {
@@ -3911,13 +3909,13 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
       };
     });
 
-    const highestDayStr = peakRow 
-      ? `${peakRow.is_today ? 'Today' : peakRow.day_short} (${peakRow.revenue >= 1000 ? `₹${(peakRow.revenue / 1000).toFixed(1)}k` : `₹${peakRow.revenue.toLocaleString()}`})` 
+    const highestDayStr = peakRow
+      ? `${peakRow.is_today ? 'Today' : peakRow.day_short} (${peakRow.revenue >= 1000 ? `₹${(peakRow.revenue / 1000).toFixed(1)}k` : `₹${peakRow.revenue.toLocaleString()}`})`
       : 'None (₹0)';
 
     // 9. Top Products Sold Today (Real DB Line Items Aggregation)
     const topProdSql = `
-      SELECT 
+      SELECT
         p.id AS product_id,
         COALESCE(NULLIF(p.display_name, ''), p.name) AS product_name,
         COALESCE(p.icon, '🥛') AS icon,
@@ -3928,7 +3926,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
       FROM sale_items si
       JOIN sales s ON s.id = si.sale_id
       JOIN products p ON p.id = si.product_id
-      WHERE s.company_id = $1 
+      WHERE s.company_id = $1
         AND COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) = '${start || todayStr}'
         AND (s.status IS NULL OR s.status = 'ACTIVE' OR s.status != 'CANCELLED')
       GROUP BY p.id, p.display_name, p.name, p.icon, p.selling_unit
@@ -3955,8 +3953,9 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
     });
 
     // 10. Payment Breakdown & Share
-    const cashAmt = Number(salesRow?.cash_sales || 0);
-    const gpayAmt = Number(salesRow?.gpay_sales || 0);
+    const flow = await cashFlow({query},cid,null,{start,end});
+    const cashAmt = Number(flow.cash);
+    const gpayAmt = Number(flow.gpay);
     const creditAmt = Number(salesRow?.credit_sales || 0);
     const totalPaymentAmt = parseFloat((cashAmt + gpayAmt + creditAmt).toFixed(2));
 
@@ -4027,7 +4026,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
       pendingDamageCost: Number(dmgRow?.pending_damage_cost || 0),
       totalGoodReturns: Number(retRow?.total_accepted_good || 0),
       netCollection: parseFloat((grossSales - totalExpenses - damageCost).toFixed(2)),
-      
+
       // Profit & Loss
       profitLoss: {
         gross_sales: grossSales,
@@ -4244,172 +4243,11 @@ export async function getAdvancedReconciliation(cid, filters = {}) {
 }
 
 export async function getDriverPerformanceReport(cid, filters = {}) {
-  const { start, end } = parseDateFilters(filters);
-  let dateFilterSql = '';
-  if (start && end) {
-    dateFilterSql = ` AND s.sale_date >= '${start}' AND s.sale_date <= '${end}'`;
-  }
-
-  const drivers = await queryAll(
-    `SELECT e.id, e.full_name as driver_name, e.vehicle_number, r.name as route_name, r.code as route_code
-     FROM employees e
-     LEFT JOIN routes r ON r.id = e.route_id
-     WHERE e.company_id = $1 AND e.is_active = TRUE
-     ORDER BY e.full_name ASC`,
-    [cid]
-  );
-
-  const report = [];
-
-  for (const d of drivers) {
-    // Sales summary
-    const sRow = await queryOne(
-      `SELECT 
-         COUNT(*) as total_bills,
-         COALESCE(SUM(s.total_amount), 0) as total_sales,
-         COALESCE(SUM(s.cash_paid), 0) as cash_collected,
-         COALESCE(SUM(s.gpay_paid), 0) as gpay_collected,
-         COALESCE(SUM(s.credit_paid), 0) as credit_sales
-       FROM sales s
-       WHERE s.company_id = $1 AND s.employee_id = $2 ${dateFilterSql}`,
-      [cid, d.id]
-    );
-
-    // Expenses summary
-    const expRow = await queryOne(
-      `SELECT COALESCE(SUM(e.amount), 0) as total_expenses, COUNT(*) as count 
-       FROM expenses e 
-       WHERE e.company_id = $1 AND e.employee_id = $2 ${start && end ? ` AND e.created_at::date >= '${start}' AND e.created_at::date <= '${end}'` : ''}`,
-      [cid, d.id]
-    );
-
-    // Returns summary
-    const retRow = await queryOne(
-      `SELECT COALESCE(SUM(dr.total_accepted_good), 0) as total_good_returns 
-       FROM driver_returns dr 
-       WHERE dr.company_id = $1 AND dr.employee_id = $2 ${start && end ? ` AND dr.created_at::date >= '${start}' AND dr.created_at::date <= '${end}'` : ''}`,
-      [cid, d.id]
-    );
-
-    // Damages summary
-    const dmgRow = await queryOne(
-      `SELECT COALESCE(SUM(d.damage_cost), 0) as total_damage_cost, COALESCE(SUM(d.base_quantity), 0) as total_damage_pieces 
-       FROM damages d 
-       WHERE d.company_id = $1 AND d.employee_id = $2 ${start && end ? ` AND d.created_at::date >= '${start}' AND d.created_at::date <= '${end}'` : ''}`,
-      [cid, d.id]
-    );
-
-    // Working days count
-    const sessionRow = await queryOne(
-      `SELECT COUNT(DISTINCT ds.session_date) as working_days_count 
-       FROM driver_sessions ds 
-       WHERE ds.company_id = $1 AND ds.employee_id = $2 ${start && end ? ` AND ds.session_date >= '${start}' AND ds.session_date <= '${end}'` : ''}`,
-      [cid, d.id]
-    );
-
-    // Items sold quantity
-    const itemSoldRow = await queryOne(
-      `SELECT COALESCE(SUM(si.qty), 0) as total_qty_sold 
-       FROM sale_items si 
-       JOIN sales s ON s.id = si.sale_id 
-       WHERE s.company_id = $1 AND s.employee_id = $2 ${dateFilterSql}`,
-      [cid, d.id]
-    );
-
-    const totalSales = Number(sRow?.total_sales || 0);
-    const totalExpenses = Number(expRow?.total_expenses || 0);
-    const totalDmgCost = Number(dmgRow?.total_damage_cost || 0);
-
-    report.push({
-      driver_id: d.id,
-      driver_name: d.driver_name,
-      vehicle_number: d.vehicle_number || 'Route Vehicle',
-      route_name: d.route_name || 'Assigned Route',
-      working_days: Number(sessionRow?.working_days_count || 0),
-      total_bills: Number(sRow?.total_bills || 0),
-      total_sales: totalSales,
-      cash_collected: Number(sRow?.cash_collected || 0),
-      gpay_collected: Number(sRow?.gpay_collected || 0),
-      credit_sales: Number(sRow?.credit_sales || 0),
-      total_expenses: totalExpenses,
-      total_good_returns: Number(retRow?.total_good_returns || 0),
-      total_damage_cost: totalDmgCost,
-      total_damage_pieces: Number(dmgRow?.total_damage_pieces || 0),
-      total_quantity_sold: Number(itemSoldRow?.total_qty_sold || 0),
-      net_financial_contribution: parseFloat((totalSales - totalExpenses - totalDmgCost).toFixed(2))
-    });
-  }
-
-  return report.sort((a, b) => b.total_sales - a.total_sales);
+  return driverPerformance(cid,parseDateFilters(filters),{query});
 }
 
 export async function getRoutePerformanceReport(cid, filters = {}) {
-  const { start, end } = parseDateFilters(filters);
-  let dateFilterSql = '';
-  if (start && end) {
-    dateFilterSql = ` AND s.sale_date >= '${start}' AND s.sale_date <= '${end}'`;
-  }
-
-  const routes = await queryAll(
-    `SELECT r.id, r.code as route_code, r.name as route_name, r.is_active
-     FROM routes r
-     WHERE r.company_id = $1
-     ORDER BY r.name ASC`,
-    [cid]
-  );
-
-  const report = [];
-
-  for (const r of routes) {
-    // Village and shop counts
-    const vCount = await queryOne('SELECT COUNT(*) as t FROM villages WHERE route_id = $1 AND company_id = $2', [r.id, cid]);
-    const shCount = await queryOne(
-      'SELECT COUNT(*) as total, COUNT(CASE WHEN is_active = TRUE THEN 1 END) as active, COALESCE(SUM(current_due), 0) as dues FROM shops WHERE route_id = $1 AND company_id = $2',
-      [r.id, cid]
-    );
-
-    // Sales metrics for shops on this route
-    const sRow = await queryOne(
-      `SELECT 
-         COUNT(*) as total_bills,
-         COALESCE(SUM(s.total_amount), 0) as total_sales,
-         COALESCE(SUM(s.cash_paid), 0) as cash_collected,
-         COALESCE(SUM(s.gpay_paid), 0) as gpay_collected,
-         COALESCE(SUM(s.credit_paid), 0) as credit_sales
-       FROM sales s
-       JOIN shops sh ON sh.id = s.shop_id
-       WHERE sh.route_id = $1 AND s.company_id = $2 ${dateFilterSql}`,
-      [r.id, cid]
-    );
-
-    // Quantities sold
-    const itemRow = await queryOne(
-      `SELECT COALESCE(SUM(si.qty), 0) as total_qty
-       FROM sale_items si
-       JOIN sales s ON s.id = si.sale_id
-       JOIN shops sh ON sh.id = s.shop_id
-       WHERE sh.route_id = $1 AND s.company_id = $2 ${dateFilterSql}`,
-      [r.id, cid]
-    );
-
-    report.push({
-      route_id: r.id,
-      route_code: r.route_code,
-      route_name: r.route_name,
-      villages_count: Number(vCount?.t || 0),
-      total_shops: Number(shCount?.total || 0),
-      active_shops: Number(shCount?.active || 0),
-      outstanding_dues: Number(shCount?.dues || 0),
-      total_bills: Number(sRow?.total_bills || 0),
-      total_sales: Number(sRow?.total_sales || 0),
-      cash_collected: Number(sRow?.cash_collected || 0),
-      gpay_collected: Number(sRow?.gpay_collected || 0),
-      credit_sales: Number(sRow?.credit_sales || 0),
-      total_quantity_sold: Number(itemRow?.total_qty || 0)
-    });
-  }
-
-  return report.sort((a, b) => b.total_sales - a.total_sales);
+  return routePerformance(cid,parseDateFilters(filters),{query});
 }
 
 export async function getShopPerformanceReport(cid, filters = {}) {
@@ -4420,7 +4258,7 @@ export async function getShopPerformanceReport(cid, filters = {}) {
   }
 
   const shops = await queryAll(
-    `SELECT 
+    `SELECT
        sh.id as shop_id,
        sh.code as shop_code,
        sh.name as shop_name,
@@ -4438,7 +4276,7 @@ export async function getShopPerformanceReport(cid, filters = {}) {
      FROM shops sh
      LEFT JOIN villages v ON v.id = sh.village_id
      LEFT JOIN routes r ON r.id = sh.route_id
-     LEFT JOIN sales s ON s.shop_id = sh.id AND s.company_id = $1 ${dateFilterSql}
+     LEFT JOIN sales s ON s.shop_id = sh.id AND s.company_id = $1 AND s.status IS DISTINCT FROM 'CANCELLED' ${dateFilterSql}
      WHERE sh.company_id = $1
      GROUP BY sh.id, sh.code, sh.name, sh.owner_name, sh.phone, sh.current_due, sh.credit_limit, sh.opening_balance, v.name, r.name
      ORDER BY total_sales DESC`,
@@ -4475,7 +4313,7 @@ export async function getProductPerformanceReport(cid, filters = {}) {
   }
 
   const products = await queryAll(
-    `SELECT 
+    `SELECT
        p.id as product_id,
        p.name,
        p.display_name,
@@ -4494,33 +4332,24 @@ export async function getProductPerformanceReport(cid, filters = {}) {
     [cid]
   );
 
+  const soldStats = await queryAll(
+    `SELECT si.product_id,COUNT(DISTINCT si.sale_id) AS bills_count,
+      COALESCE(SUM(COALESCE(si.stock_qty_units,CASE WHEN LOWER(si.unit_type) IN ('piece','pieces') OR LOWER(si.unit_type)=LOWER(p.base_unit) THEN si.qty/NULLIF(p.pieces_per_unit,0) ELSE si.qty END)),0) AS total_qty_sold,
+      COALESCE(SUM(si.amount),0) AS total_sales_value
+     FROM sale_items si JOIN sales s ON s.id=si.sale_id JOIN products p ON p.id=si.product_id AND p.company_id=s.company_id
+     WHERE s.company_id=$1 AND s.status IS DISTINCT FROM 'CANCELLED' ${salesDateCond} GROUP BY si.product_id`,[cid]);
+  const damageStats = await queryAll(
+    `SELECT d.product_id,COALESCE(SUM(d.qty_units),0) AS total_damage_units,COALESCE(SUM(d.damage_cost),0) AS total_damage_cost FROM damages d WHERE d.company_id=$1 ${dmgDateCond} GROUP BY d.product_id`,[cid]);
+  const soldMap = new Map(soldStats.map(row=>[row.product_id,row]));
+  const damageMap = new Map(damageStats.map(row=>[row.product_id,row]));
   const report = [];
 
   for (const p of products) {
     const ppu = Math.max(1, Number(p.pieces_per_unit || 1));
     const buyRate = Number(p.purchase_price || 0);
 
-    // Sold stats
-    const soldRow = await queryOne(
-      `SELECT 
-         COUNT(DISTINCT si.sale_id) as bills_count,
-         COALESCE(SUM(si.qty), 0) as total_qty_sold,
-         COALESCE(SUM(si.amount), 0) as total_sales_value
-       FROM sale_items si
-       JOIN sales s ON s.id = si.sale_id
-       WHERE si.product_id = $1 AND s.company_id = $2 ${salesDateCond}`,
-      [p.product_id, cid]
-    );
-
-    // Damage stats
-    const dmgRow = await queryOne(
-      `SELECT 
-         COALESCE(SUM(d.qty_units), 0) as total_damage_units,
-         COALESCE(SUM(d.damage_cost), 0) as total_damage_cost
-       FROM damages d
-       WHERE d.product_id = $1 AND d.company_id = $2 ${dmgDateCond}`,
-      [p.product_id, cid]
-    );
+    const soldRow = soldMap.get(p.product_id);
+    const dmgRow = damageMap.get(p.product_id);
 
     const qtySold = Number(soldRow?.total_qty_sold || 0);
     const salesValue = Number(soldRow?.total_sales_value || 0);
@@ -4596,7 +4425,7 @@ export async function getAuditTrail(cid, filters = {}) {
   params.push(limit);
 
   const logs = await queryAll(
-    `SELECT 
+    `SELECT
        a.id,
        a.company_id,
        a.actor_user_id,
@@ -4620,7 +4449,20 @@ export async function getAuditTrail(cid, filters = {}) {
 // ====== DRIVER SESSIONS & AUDITABLE STOCK LEDGER ======
 
 export async function getOrCreateActiveDriverSession(cid, employeeId, client = null) {
-  const runner = client || pool;
+  if (!client) {
+    const connection = await pool.connect();
+    try {
+      await connection.query('BEGIN');
+      const result = await getOrCreateActiveDriverSession(cid, employeeId, connection);
+      await connection.query('COMMIT');
+      return result;
+    } catch (error) { await connection.query('ROLLBACK'); throw error; }
+    finally { connection.release(); }
+  }
+  const runner = client;
+  await runner.query('SELECT id FROM employees WHERE id=$1 AND company_id=$2 FOR UPDATE', [employeeId,cid]);
+  const settled = await runner.query('SELECT id FROM settlements WHERE company_id=$1 AND employee_id=$2 AND settlement_date=CURRENT_DATE',[cid,employeeId]);
+  if(settled.rows.length)throw new Error('Daily settlement is finalized');
   const existingToday = await runner.query(
     `SELECT ds.*, r.name as route_name, r.code as route_code
      FROM driver_sessions ds
@@ -4651,7 +4493,7 @@ export async function getOrCreateActiveDriverSession(cid, employeeId, client = n
   const empRouteId = empRes.rows.length > 0 ? empRes.rows[0].route_id : null;
 
   const created = await runner.query(
-    `INSERT INTO driver_sessions (company_id, employee_id, route_id, session_date, status, opened_at) 
+    `INSERT INTO driver_sessions (company_id, employee_id, route_id, session_date, status, opened_at)
      VALUES ($1, $2, $3, CURRENT_DATE, 'OPEN', NOW()) RETURNING *`,
     [cid, employeeId, empRouteId]
   );
@@ -4801,9 +4643,9 @@ export async function getDriverSessionReconciliation(cid, employeeId, sessionId 
 
 export async function getFleetStockReconciliation(cid, filterDriverId = null) {
   let driversSql = `
-    SELECT DISTINCT e.id, e.full_name, e.vehicle_number 
-    FROM employees e 
-    LEFT JOIN user_accounts ua ON ua.employee_id = e.id 
+    SELECT DISTINCT e.id, e.full_name, e.vehicle_number
+    FROM employees e
+    LEFT JOIN user_accounts ua ON ua.employee_id = e.id
     WHERE e.company_id = $1 AND e.is_active = TRUE
   `;
   const driversParams = [cid];
@@ -4907,7 +4749,7 @@ export async function getFleetStockReconciliation(cid, filterDriverId = null) {
 
 export async function getEligibleDriversForReturn(cid) {
   const sql = `
-    SELECT 
+    SELECT
       COALESCE(e.id, ua.id) as driver_id,
       COALESCE(e.id, ua.id) as employee_id,
       COALESCE(e.full_name, ua.name, ua.login_id) as driver_name,
@@ -4931,12 +4773,12 @@ export async function getEligibleDriversForReturn(cid) {
     LEFT JOIN employees e ON e.id = ua.employee_id
     LEFT JOIN routes r ON r.id = e.route_id
     LEFT JOIN LATERAL (
-      SELECT * FROM driver_sessions ds2 
-      WHERE (ds2.company_id = ua.company_id OR ds2.company_id = $1) 
+      SELECT * FROM driver_sessions ds2
+      WHERE (ds2.company_id = ua.company_id OR ds2.company_id = $1)
         AND (ds2.employee_id = e.id OR ds2.employee_id = ua.id)
       ORDER BY ds2.id DESC LIMIT 1
     ) ds ON true
-    WHERE (ua.company_id = $1 OR ua.company_id = 1 OR ua.company_id IS NULL) 
+    WHERE (ua.company_id = $1)
       AND ua.account_status = 'ACTIVE'
     ORDER BY COALESCE(e.full_name, ua.name, ua.login_id) ASC
   `;
@@ -4944,15 +4786,15 @@ export async function getEligibleDriversForReturn(cid) {
 }
 
 export async function getDriverExpectedReturn(cid, employeeId, sessionId = null) {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = businessDate();
   const empId = Number(employeeId);
 
   // 1. Fetch Driver info
   const driverRes = await queryOne(
     `SELECT e.*, r.name as route_name, r.code as route_code, r.id as route_id
-     FROM employees e 
-     LEFT JOIN routes r ON r.id = e.route_id 
-     WHERE e.id = $1 AND (e.company_id = $2 OR e.company_id = 1 OR e.company_id IS NULL)`,
+     FROM employees e
+     LEFT JOIN routes r ON r.id = e.route_id
+     WHERE e.id = $1 AND (e.company_id = $2)`,
     [empId, cid]
   );
   if (!driverRes) throw new Error('Driver record not found');
@@ -4965,8 +4807,8 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
        FROM driver_sessions ds
        LEFT JOIN employees e ON e.id = ds.employee_id
        LEFT JOIN routes r ON r.id = COALESCE(ds.route_id, e.route_id)
-       WHERE ds.id = $1 AND ds.company_id = $2`,
-      [Number(sessionId), cid]
+       WHERE ds.id = $1 AND ds.company_id = $2 AND ds.employee_id = $3`,
+      [Number(sessionId), cid, empId]
     );
   } else {
     session = await queryOne(
@@ -4978,38 +4820,36 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
        ORDER BY ds.id DESC LIMIT 1`,
       [cid, empId]
     );
-    if (!session) {
-      session = await getOrCreateActiveDriverSession(cid, empId);
-    }
   }
 
   // 3. Authoritative Sales Summary directly from existing sales / bills records
   const salesRes = await queryOne(
-    `SELECT 
+    `SELECT
       COALESCE(SUM(total_amount), 0) as total_sales,
       COUNT(*) as total_bills,
       COALESCE(SUM(cash_paid), 0) as cash_collected,
       COALESCE(SUM(gpay_paid), 0) as gpay_collected,
       COALESCE(SUM(credit_paid), 0) as credit_sales
      FROM sales
-     WHERE company_id = $1 AND employee_id = $2 
-       AND (sale_date = $3::date OR created_at::date = $3::date) 
+     WHERE company_id = $1 AND employee_id = $2
+       AND (sale_date = $3::date OR created_at::date = $3::date)
        AND (status IS NULL OR status = 'ACTIVE' OR status != 'CANCELLED')`,
     [cid, empId, todayStr]
   );
 
+  const expectedFlow = await cashFlow({query},cid,empId,{start:todayStr,end:todayStr});
   const salesSummary = {
     total_sales: Number(Number(salesRes?.total_sales || 0).toFixed(2)),
     total_bills: Number(salesRes?.total_bills || 0),
-    cash_collected: Number(Number(salesRes?.cash_collected || 0).toFixed(2)),
-    gpay_collected: Number(Number(salesRes?.gpay_collected || 0).toFixed(2)),
+    cash_collected: Number(expectedFlow.cash),
+    gpay_collected: Number(expectedFlow.gpay),
     credit_sales: Number(Number(salesRes?.credit_sales || 0).toFixed(2))
   };
 
   // 3.5 Authoritative Expenses today for driver
   const expenseRows = await queryAll(
-    `SELECT * FROM expenses 
-     WHERE company_id = $1 AND employee_id = $2 
+    `SELECT * FROM expenses
+     WHERE company_id = $1 AND employee_id = $2
        AND (expense_date = $3::date OR created_at::date = $3::date)
      ORDER BY id ASC`,
     [cid, empId, todayStr]
@@ -5048,21 +4888,21 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
 
   // b. Sold items today
   const soldRows = await queryAll(
-    `SELECT 
-      si.product_id, 
-      p.name as product_name, 
-      p.display_name, 
-      p.pieces_per_unit, 
-      p.selling_unit, 
+    `SELECT
+      si.product_id,
+      p.name as product_name,
+      p.display_name,
+      p.pieces_per_unit,
+      p.selling_unit,
       COALESCE(SUM(
-        CASE 
+        CASE
           WHEN LOWER(si.unit_type) = LOWER(COALESCE(p.base_unit, 'piece')) OR LOWER(si.unit_type) = 'piece' OR LOWER(si.unit_type) = 'pieces'
             THEN si.qty
           ELSE si.qty * COALESCE(NULLIF(p.pieces_per_unit, 0), 1)
         END
       ), 0) as sold_pieces,
       COALESCE(SUM(
-        CASE 
+        CASE
           WHEN LOWER(si.unit_type) = LOWER(COALESCE(p.base_unit, 'piece')) OR LOWER(si.unit_type) = 'piece' OR LOWER(si.unit_type) = 'pieces'
             THEN (si.qty::numeric / COALESCE(NULLIF(p.pieces_per_unit, 0), 1))
           ELSE si.qty::numeric
@@ -5071,7 +4911,7 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
      FROM sale_items si
      JOIN sales s ON s.id = si.sale_id
      JOIN products p ON p.id = si.product_id
-     WHERE s.company_id = $1 AND s.employee_id = $2 
+     WHERE s.company_id = $1 AND s.employee_id = $2
        AND (s.status IS NULL OR s.status = 'ACTIVE' OR s.status != 'CANCELLED')
        AND (s.sale_date = $3::date OR s.created_at::date = $3::date)
      GROUP BY si.product_id, p.name, p.display_name, p.pieces_per_unit, p.selling_unit, p.base_unit`,
@@ -5085,11 +4925,11 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
 
   // c. Damaged items today / session
   const dmgRows = await queryAll(
-    `SELECT product_id, 
+    `SELECT product_id,
             COALESCE(SUM(qty_units), 0) as damaged_qty,
             COALESCE(SUM(CASE WHEN base_quantity IS NOT NULL AND base_quantity > 0 THEN base_quantity ELSE qty_units END), 0) as damaged_pieces
      FROM damages
-     WHERE company_id = $1 AND employee_id = $2 
+     WHERE company_id = $1 AND employee_id = $2
        AND (CASE WHEN $3 > 0 THEN session_id = $3 ELSE created_at::date = $4::date END)
      GROUP BY product_id`,
     [cid, empId, session?.id || 0, todayStr]
@@ -5104,7 +4944,7 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
     `SELECT d.*, p.display_name as product_name, p.selling_unit, p.base_unit
      FROM damages d
      LEFT JOIN products p ON p.id = d.product_id
-     WHERE d.company_id = $1 AND d.employee_id = $2 
+     WHERE d.company_id = $1 AND d.employee_id = $2
        AND (CASE WHEN $3 > 0 THEN d.session_id = $3 ELSE d.created_at::date = $4::date END)
      ORDER BY d.created_at DESC`,
     [cid, empId, session?.id || 0, todayStr]
@@ -5114,7 +4954,7 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
   const allocRows = await queryAll(
     `SELECT product_id, COALESCE(SUM(qty_units), 0) as allocated_qty
      FROM stock_transactions
-     WHERE company_id = $1 AND employee_id = $2 AND transaction_type = 'ALLOCATION' 
+     WHERE company_id = $1 AND employee_id = $2 AND transaction_type = 'ALLOCATION'
        AND (CASE WHEN $3 > 0 THEN session_id = $3 ELSE created_at::date = $4::date END)
      GROUP BY product_id`,
     [cid, empId, session?.id || 0, todayStr]
@@ -5154,7 +4994,7 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
       returnPieces = Math.round(currentStockUnits * ppu);
       soldPieces = Math.round(soldInfo.sold_pieces);
       dmgPieces = Math.round(damagedInfo.damaged_pieces || (damagedInfo.damaged_qty * ppu));
-      allocPieces = allocatedUnitsFromDb > 0 
+      allocPieces = allocatedUnitsFromDb > 0
         ? Math.round(allocatedUnitsFromDb * ppu)
         : (returnPieces + soldPieces + dmgPieces);
 
@@ -5166,7 +5006,7 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
       // 2. NON-TRAY CATEGORY (Case, Bag, Box) -> ALL RECONCILIATION METRICS IN BUNDLE UNITS
       soldVal = normalizeQuantity(soldInfo.sold_units);
       dmgVal = normalizeQuantity(damagedInfo.damaged_qty);
-      allocVal = allocatedUnitsFromDb > 0 
+      allocVal = allocatedUnitsFromDb > 0
         ? normalizeQuantity(allocatedUnitsFromDb)
         : normalizeQuantity(currentStockUnits + soldVal + dmgVal);
       returnVal = normalizeQuantity(Math.max(0, allocVal - soldVal - dmgVal)); // Expected return in units
@@ -5223,7 +5063,7 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
   // Helper to prioritize products in standard dairy & beverage sequence
   function getProductSortRank(prod) {
     const name = `${prod.product_name || prod.display_name || prod.name || ''} ${prod.category_name || prod.category || ''} ${prod.pack_size || ''}`.toLowerCase();
-    
+
     // 1. Milk 120ml / 125ml / 100ml
     if (name.includes('milk') && (name.includes('120') || name.includes('125') || name.includes('100')) && !name.includes('curd')) {
       return 10;
@@ -5269,7 +5109,7 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
   }
 
   // Filter only products that were actually assigned, sold, damaged, or currently held by this driver
-  const assignedProductsList = productsList.filter(p => 
+  const assignedProductsList = productsList.filter(p =>
     (Number(p.allocated || 0) > 0 || Number(p.sold || 0) > 0 || Number(p.damage || 0) > 0 || Number(p.current_stock || 0) > 0 || Number(p.current_return_stock || 0) > 0)
   );
 
@@ -5320,9 +5160,9 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
   }
 
   const visitedShopsRes = await queryOne(
-    `SELECT COUNT(DISTINCT shop_id) as count FROM sales 
-     WHERE company_id = $1 AND employee_id = $2 
-       AND (sale_date = $3::date OR created_at::date = $3::date) 
+    `SELECT COUNT(DISTINCT shop_id) as count FROM sales
+     WHERE company_id = $1 AND employee_id = $2
+       AND (sale_date = $3::date OR created_at::date = $3::date)
        AND (status IS NULL OR status = 'ACTIVE' OR status != 'CANCELLED')`,
     [cid, empId, todayStr]
   );
@@ -5366,10 +5206,13 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
   };
 }
 
-export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUserId) {
+async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUserId) {
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
+    if (employeeId) await client.query('SELECT id FROM employees WHERE id=$1 AND company_id=$2 FOR UPDATE',[employeeId,cid]);
     const empId = Number(employeeId);
     const { session_id, items, notes, shortage_reason } = data;
 
@@ -5404,7 +5247,7 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
       throw new Error('Driver return has already been submitted and finalized.');
     }
 
-    const todayStr = session.session_date || new Date().toISOString().split('T')[0];
+    const todayStr = session.session_date || businessDate();
 
     // Lock and retrieve all current employee_stock rows for this driver
     const heldStockRes = await client.query(
@@ -5416,17 +5259,17 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
 
     // Fetch Sold units today/session
     const soldRes = await client.query(
-      `SELECT 
+      `SELECT
         si.product_id,
         COALESCE(SUM(
-          CASE 
+          CASE
             WHEN LOWER(si.unit_type) = LOWER(COALESCE(p.base_unit, 'piece')) OR LOWER(si.unit_type) = 'piece' OR LOWER(si.unit_type) = 'pieces'
               THEN si.qty
             ELSE si.qty * COALESCE(NULLIF(p.pieces_per_unit, 0), 1)
           END
         ), 0) as sold_pieces,
         COALESCE(SUM(
-          CASE 
+          CASE
             WHEN LOWER(si.unit_type) = LOWER(COALESCE(p.base_unit, 'piece')) OR LOWER(si.unit_type) = 'piece' OR LOWER(si.unit_type) = 'pieces'
               THEN (si.qty::numeric / COALESCE(NULLIF(p.pieces_per_unit, 0), 1))
             ELSE si.qty::numeric
@@ -5435,7 +5278,7 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
        FROM sale_items si
        JOIN sales s ON s.id = si.sale_id
        JOIN products p ON p.id = si.product_id
-       WHERE s.company_id = $1 AND s.employee_id = $2 
+       WHERE s.company_id = $1 AND s.employee_id = $2
          AND (s.status IS NULL OR s.status = 'ACTIVE' OR s.status != 'CANCELLED')
          AND (s.sale_date = $3::date OR s.created_at::date = $3::date)
        GROUP BY si.product_id, p.pieces_per_unit, p.base_unit`,
@@ -5449,11 +5292,11 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
 
     // Fetch Damaged units today/session
     const dmgRes = await client.query(
-      `SELECT product_id, 
+      `SELECT product_id,
               COALESCE(SUM(qty_units), 0) as damaged_qty,
               COALESCE(SUM(CASE WHEN base_quantity IS NOT NULL AND base_quantity > 0 THEN base_quantity ELSE qty_units END), 0) as damaged_pieces
        FROM damages
-       WHERE company_id = $1 AND employee_id = $2 
+       WHERE company_id = $1 AND employee_id = $2
          AND (CASE WHEN $3 > 0 THEN session_id = $3 ELSE created_at::date = $4::date END)
        GROUP BY product_id`,
       [cid, empId, session.id || 0, todayStr]
@@ -5497,9 +5340,9 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
 
       // Lock product row
       const pRes = await client.query(
-        `SELECT p.*, c.name as category_name, c.operational_unit as category_operational_unit 
-         FROM products p 
-         LEFT JOIN categories c ON c.id = p.category_id 
+        `SELECT p.*, c.name as category_name, c.operational_unit as category_operational_unit
+         FROM products p
+         LEFT JOIN categories c ON c.id = p.category_id
          WHERE p.id = $1 AND p.company_id = $2 FOR UPDATE OF p`,
         [pid, cid]
       );
@@ -5523,7 +5366,7 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
         currentVal = Math.max(0, allocVal - soldVal - dmgVal); // Expected Return Pieces
 
         // Requested return in pieces
-        requestedReturnVal = it.actual_quantity != null 
+        requestedReturnVal = it.actual_quantity != null
           ? (it.unit?.toLowerCase() === 'tray' ? Math.round(Number(it.actual_quantity) * ppu) : Math.round(Number(it.actual_quantity)))
           : currentVal;
 
@@ -5585,14 +5428,14 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
           ? `Final verified return accepted into warehouse from Driver ${empName} (${requestedReturnVal} ${opUnit.operationalUnit}, including ${excessQty} excess)`
           : `Final verified return accepted into warehouse from Driver ${empName} (${requestedReturnVal} ${opUnit.operationalUnit})`;
         await client.query(
-          `INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes) 
+          `INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes)
            VALUES ($1, $2, 'RETURN', $3, $4, $5, $6, $7, $8, $9)`,
           [cid, movNo, pid, prod.display_name, empId, empName, returnStockUnitsToWarehouse, prod.selling_unit || 'Unit', returnMovementNote]
         );
 
         // 3. Record stock transaction ledger
         await client.query(
-          `INSERT INTO stock_transactions (company_id, session_id, employee_id, product_id, unit, transaction_type, qty_units, unit_cost, total_cost, reference_id, notes, created_by) 
+          `INSERT INTO stock_transactions (company_id, session_id, employee_id, product_id, unit, transaction_type, qty_units, unit_cost, total_cost, reference_id, notes, created_by)
            VALUES ($1, $2, $3, $4, $5, 'GOOD_RETURN', $6, $7, $8, $9, $10, $11)`,
           [cid, session.id, empId, pid, prod.selling_unit || 'Unit', returnStockUnitsToWarehouse, buyRate, itemReturnCost, 'SESSION-' + session.id, 'Driver return accepted into warehouse', actorUserId || null]
         );
@@ -5601,12 +5444,12 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
       if (shortageStockUnits > 0) {
         const shortageRef = 'SHO-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
         await client.query(
-          `INSERT INTO stock_transactions (company_id, session_id, employee_id, product_id, unit, transaction_type, qty_units, unit_cost, total_cost, reference_id, notes, created_by) 
+          `INSERT INTO stock_transactions (company_id, session_id, employee_id, product_id, unit, transaction_type, qty_units, unit_cost, total_cost, reference_id, notes, created_by)
            VALUES ($1, $2, $3, $4, $5, 'SHORTAGE', $6, $7, $8, $9, $10, $11)`,
           [cid, session.id, empId, pid, prod.selling_unit || 'Unit', shortageStockUnits, buyRate, shortageCost, shortageRef, itemShortageReason, actorUserId || null]
         );
         await client.query(
-          `INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes) 
+          `INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes)
            VALUES ($1, $2, 'ADJUSTMENT', $3, $4, $5, $6, $7, $8, $9)`,
           [cid, shortageRef, pid, prod.display_name, empId, empName, shortageStockUnits, prod.selling_unit || 'Unit', 'Driver return shortage: ' + itemShortageReason]
         );
@@ -5614,7 +5457,7 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
 
       // 4. Zero out driver's stock for this product in employee_stock
       await client.query(
-        `UPDATE employee_stock SET qty_units = 0, updated_at = NOW() 
+        `UPDATE employee_stock SET qty_units = 0, updated_at = NOW()
          WHERE employee_id = $1 AND product_id = $2 AND company_id = $3`,
         [empId, pid, cid]
       );
@@ -5644,17 +5487,17 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
     // 5. Create authoritative Driver Return Record
     const returnNo = 'RET-' + Date.now().toString().slice(-6);
     const retRes = await client.query(
-      `INSERT INTO driver_returns (company_id, session_id, employee_id, route_id, return_no, status, items, total_accepted_good, total_damage_cost, variance_summary, notes, checked_by, checked_at) 
+      `INSERT INTO driver_returns (company_id, session_id, employee_id, route_id, return_no, status, items, total_accepted_good, total_damage_cost, variance_summary, notes, checked_by, checked_at)
        VALUES ($1, $2, $3, $4, $5, 'VERIFIED', $6, $7, $8, $9, $10, $11, NOW()) RETURNING *`,
       [
-        cid, 
-        session.id, 
-        empId, 
-        session.route_id || null, 
-        returnNo, 
-        JSON.stringify(evaluatedItems), 
-        totalGoodReturnedUnits, 
-        0, 
+        cid,
+        session.id,
+        empId,
+        session.route_id || null,
+        returnNo,
+        JSON.stringify(evaluatedItems),
+        totalGoodReturnedUnits,
+        0,
         JSON.stringify({ total_returned_units: totalGoodReturnedUnits, total_shortage_units: totalShortageUnits, total_shortage_cost: totalShortageCost, total_items_count: evaluatedItems.length }),
         notes || 'Driver stock return verified, reconciled and accepted into warehouse',
         actorUserId || null
@@ -5682,17 +5525,18 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
     );
     const finalSales = Number(salesRes.rows[0]?.total_sales || 0);
     const finalExpenses = Number(expRes.rows[0]?.total_expenses || 0);
-    const finalCash = Number(salesRes.rows[0]?.cash_collected || 0);
-    const finalGpay = Number(salesRes.rows[0]?.gpay_collected || 0);
+    const finalFlow = await cashFlow(client,cid,employeeId,{start:todayStr,end:todayStr});
+    const finalCash = Number(finalFlow.cash);
+    const finalGpay = Number(finalFlow.gpay);
     const finalCredit = Number(salesRes.rows[0]?.credit_sales || 0);
     const finalNetAmount = Number((finalSales - finalExpenses).toFixed(2));
 
     await client.query(
-      `UPDATE driver_sessions 
-       SET status = 'CLOSED', closed_at = NOW(), 
+      `UPDATE driver_sessions
+       SET status = 'CLOSED', closed_at = NOW(),
            total_sales = $1, total_expenses = $2,
            cash_collected = $3, gpay_collected = $4, credit_sales = $5,
-           updated_at = NOW() 
+           updated_at = NOW()
        WHERE id = $6`,
       [finalSales, finalExpenses, finalCash, finalGpay, finalCredit, session.id]
     );
@@ -5700,15 +5544,15 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
     // Commit atomic database transaction
     await client.query('COMMIT');
 
-    await auditLog({ 
-      companyId: cid, 
-      actorUserId, 
-      action: 'DRIVER_RETURN_VERIFIED_ACCEPTED', 
-      entityType: 'driver_returns', 
+    await auditLog({
+      companyId: cid,
+      actorUserId,
+      action: 'DRIVER_RETURN_VERIFIED_ACCEPTED',
+      entityType: 'driver_returns',
       entityId: retRes.rows[0].id,
-      metadata: { 
-        driver_id: empId, 
-        session_id: session.id, 
+      metadata: {
+        driver_id: empId,
+        session_id: session.id,
         return_no: returnNo,
         total_returned_units: totalGoodReturnedUnits,
         total_shortage_units: totalShortageUnits,
@@ -5742,13 +5586,14 @@ export async function verifyAndAcceptDriverReturn(cid, employeeId, data, actorUs
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
-export async function getDriverReturnHistory(cid, limit = 20) {
+export async function getDriverReturnHistory(cid, limit = 20, employeeId = null) {
   const sql = `
-    SELECT 
+    SELECT
       dr.id,
       dr.session_id,
       dr.return_no,
@@ -5775,18 +5620,18 @@ export async function getDriverReturnHistory(cid, limit = 20) {
     LEFT JOIN driver_sessions ds ON ds.id = dr.session_id
     LEFT JOIN routes r ON r.id = COALESCE(dr.route_id, ds.route_id, e.route_id)
     LEFT JOIN user_accounts u ON u.id = dr.checked_by
-    WHERE dr.company_id = $1
+    WHERE dr.company_id = $1 AND ($3::integer IS NULL OR dr.employee_id=$3)
     ORDER BY dr.created_at DESC
     LIMIT $2
   `;
-  return await queryAll(sql, [cid, Number(limit) || 20]);
+  return await queryAll(sql, [cid, Math.min(100, Math.max(1, Number(limit) || 20)), employeeId]);
 }
 
 export async function getMissingStockReport(cid, filters = {}) {
   const { driver_id, date, product_id, status } = filters;
-  
+
   let query = `
-    SELECT 
+    SELECT
       dr.id as return_id,
       dr.session_id,
       dr.return_no,
@@ -5837,7 +5682,7 @@ export async function getMissingStockReport(cid, filters = {}) {
   query += ` ORDER BY dr.created_at DESC`;
 
   const rows = await queryAll(query, params);
-  
+
   const missingRecords = [];
   const driversWithMissing = new Set();
   const missingProducts = new Set();
@@ -5865,7 +5710,7 @@ export async function getMissingStockReport(cid, filters = {}) {
           return_id: row.return_id,
           session_id: row.session_id,
           return_no: row.return_no,
-          date: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : (row.session_date || 'Today'),
+          date: row.created_at ? businessDate(new Date(row.created_at)) : (row.session_date || 'Today'),
           created_at: row.created_at || row.checked_at,
           driver_id: row.driver_id,
           driver_name: row.driver_name,
@@ -5908,6 +5753,8 @@ export async function getMissingStockReport(cid, filters = {}) {
 
 export async function submitDriverReturn(cid, employeeId, data, actorUserId) {
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
     const { items, notes } = data;
@@ -5955,7 +5802,7 @@ export async function submitDriverReturn(cid, employeeId, data, actorUserId) {
 
     const retNo = 'RET-' + Date.now().toString().slice(-6);
     const retRes = await client.query(
-      `INSERT INTO driver_returns (company_id, session_id, employee_id, return_no, status, items, notes) 
+      `INSERT INTO driver_returns (company_id, session_id, employee_id, return_no, status, items, notes)
        VALUES ($1, $2, $3, $4, 'PENDING_STOREKEEPER_CHECK', $5, $6) RETURNING *`,
       [cid, session.id, employeeId, retNo, JSON.stringify(evaluatedItems), notes || 'Submitted for Storekeeper physical verification']
     );
@@ -5965,15 +5812,16 @@ export async function submitDriverReturn(cid, employeeId, data, actorUserId) {
       [session.id]
     );
 
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'DRIVER_RETURN_SUBMITTED', entityType: 'driver_returns', entityId: retRes.rows[0].id });
+    await client.query('COMMIT');
     return { success: true, message: 'Stock return submitted. Pending Storekeeper physical check.', return: retRes.rows[0] };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 export async function getPendingDriverReturns(cid, employeeId = null) {
@@ -5993,10 +5841,15 @@ export async function getPendingDriverReturns(cid, employeeId = null) {
   return await queryAll(sql, params);
 }
 
-export async function acceptStorekeeperReturn(cid, returnId, data, actorUserId) {
+async function acceptStorekeeperReturnAttempt(cid, returnId, data, actorUserId) {
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
+    const owner = await client.query('SELECT employee_id FROM driver_returns WHERE id=$1 AND company_id=$2',[returnId,cid]);
+    if (!owner.rows.length)throw new Error('Return not found');
+    await client.query('SELECT id FROM employees WHERE id=$1 AND company_id=$2 FOR UPDATE',[owner.rows[0].employee_id,cid]);
     const retRes = await client.query(
       `SELECT * FROM driver_returns WHERE id=$1 AND company_id=$2 FOR UPDATE`,
       [returnId, cid]
@@ -6052,12 +5905,12 @@ export async function acceptStorekeeperReturn(cid, returnId, data, actorUserId) 
         );
         const movNo = 'MOV-RET-' + Date.now() + '-' + Math.floor(Math.random()*1000);
         await client.query(
-          `INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes) 
+          `INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes)
            VALUES ($1, $2, 'RETURN', $3, $4, $5, $6, $7, $8, $9)`,
           [cid, movNo, pid, prod.display_name, employeeId, empName, goodReturnQty, it.unit || prod.selling_unit, 'Good return accepted to warehouse from: ' + ret.return_no]
         );
         await client.query(
-          `INSERT INTO stock_transactions (company_id, session_id, employee_id, product_id, unit, transaction_type, qty_units, unit_cost, total_cost, reference_id, notes, created_by) 
+          `INSERT INTO stock_transactions (company_id, session_id, employee_id, product_id, unit, transaction_type, qty_units, unit_cost, total_cost, reference_id, notes, created_by)
            VALUES ($1, $2, $3, $4, $5, 'GOOD_RETURN', $6, $7, $8, $9, $10, $11)`,
           [cid, sessionId, employeeId, pid, it.unit || prod.selling_unit, goodReturnQty, unitCost, parseFloat((goodReturnQty * unitCost).toFixed(2)), ret.return_no, 'Good stock returned to warehouse', actorUserId || null]
         );
@@ -6067,17 +5920,17 @@ export async function acceptStorekeeperReturn(cid, returnId, data, actorUserId) 
       if (damageQty > 0) {
         const dmgMovNo = 'MOV-DMG-' + Date.now() + '-' + Math.floor(Math.random()*1000);
         await client.query(
-          `INSERT INTO damages (company_id, product_id, product_name, employee_id, employee_name, qty_units, unit, damage_cost, reason, session_id) 
+          `INSERT INTO damages (company_id, product_id, product_name, employee_id, employee_name, qty_units, unit, damage_cost, reason, session_id)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [cid, pid, prod.display_name, employeeId, empName, damageQty, it.unit || prod.selling_unit, damageCost, reason, sessionId]
         );
         await client.query(
-          `INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes) 
+          `INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, employee_id, employee_name, qty_units, unit, notes)
            VALUES ($1, $2, 'DAMAGE', $3, $4, $5, $6, $7, $8, $9)`,
           [cid, dmgMovNo, pid, prod.display_name, employeeId, empName, damageQty, it.unit || prod.selling_unit, reason]
         );
         await client.query(
-          `INSERT INTO stock_transactions (company_id, session_id, employee_id, product_id, unit, transaction_type, qty_units, unit_cost, total_cost, reference_id, notes, created_by) 
+          `INSERT INTO stock_transactions (company_id, session_id, employee_id, product_id, unit, transaction_type, qty_units, unit_cost, total_cost, reference_id, notes, created_by)
            VALUES ($1, $2, $3, $4, $5, 'DAMAGE', $6, $7, $8, $9, $10, $11)`,
           [cid, sessionId, employeeId, pid, it.unit || prod.selling_unit, damageQty, unitCost, damageCost, ret.return_no, 'Damaged on route: ' + reason, actorUserId || null]
         );
@@ -6085,7 +5938,7 @@ export async function acceptStorekeeperReturn(cid, returnId, data, actorUserId) 
 
       // 3. Deduct total returned qty from employee_stock
       await client.query(
-        `UPDATE employee_stock SET qty_units = GREATEST(0, qty_units - $1), updated_at=NOW() 
+        `UPDATE employee_stock SET qty_units = GREATEST(0, qty_units - $1), updated_at=NOW()
          WHERE employee_id=$2 AND product_id=$3 AND company_id=$4`,
         [returnedQty, employeeId, pid, cid]
       );
@@ -6114,21 +5967,25 @@ export async function acceptStorekeeperReturn(cid, returnId, data, actorUserId) 
       [totalDmgCost, sessionId]
     );
 
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'DRIVER_RETURN_ACCEPTED', entityType: 'driver_returns', entityId: returnId, metadata: { processedItems, totalDmgCost } });
+    await client.query('COMMIT');
     return { success: true, message: 'Returned stock accepted into inventory successfully', processedItems, totalDmgCost };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 export async function closeDriverSession(cid, employeeId, data = {}, actorUserId = null) {
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
+    await client.query('SELECT id FROM employees WHERE id=$1 AND company_id=$2 FOR UPDATE',[employeeId,cid]);
     const session = await getActiveDriverSession(cid, employeeId);
     if (!session) {
       throw new Error('No active driver session found to close.');
@@ -6157,20 +6014,8 @@ export async function closeDriverSession(cid, employeeId, data = {}, actorUserId
       [employeeId, cid]
     );
 
-    // Record settlement if provided
-    const targetDate = data.settlement_date || session.session_date || new Date().toISOString().split('T')[0];
-    const diff = (Number(data.collected_amount) || 0) - (Number(data.expected_amount) || 0);
-    const setStatus = Math.abs(diff) < 0.01 ? 'BALANCED' : diff > 0 ? 'SURPLUS' : 'DEFICIT';
-
-    let settlementRow = null;
-    if (data.expected_amount !== undefined || data.collected_amount !== undefined) {
-      const sRes = await client.query(
-        `INSERT INTO settlements (company_id, employee_id, employee_name, settlement_date, expected_amount, collected_amount, difference, reason, remarks, status) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-        [cid, employeeId, data.employee_name || 'Driver', targetDate, data.expected_amount || 0, data.collected_amount || 0, diff, data.reason || null, data.remarks || 'Driver session closed', setStatus]
-      );
-      settlementRow = sRes.rows[0];
-    }
+    if (data.expected_amount !== undefined || data.collected_amount !== undefined) throw new Error('Use the authorized settlement workflow separately');
+    const settlementRow = null;
 
     // Close session
     const closeSummary = {
@@ -6186,21 +6031,22 @@ export async function closeDriverSession(cid, employeeId, data = {}, actorUserId
     };
 
     const closedRes = await client.query(
-      `UPDATE driver_sessions 
-       SET status='CLOSED', closed_at=NOW(), closing_summary=$1, updated_at=NOW() 
+      `UPDATE driver_sessions
+       SET status='CLOSED', closed_at=NOW(), closing_summary=$1, updated_at=NOW()
        WHERE id=$2 RETURNING *`,
       [JSON.stringify(closeSummary), session.id]
     );
 
-    await client.query('COMMIT');
     await auditLog({ companyId: cid, actorUserId, action: 'DRIVER_SESSION_CLOSED', entityType: 'driver_sessions', entityId: session.id });
+    await client.query('COMMIT');
     return { success: true, message: 'Driver session closed successfully. Driver stock balance is 0.', session: closedRes.rows[0], settlement: settlementRow };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 export async function getDriverSessionHistory(cid, employeeId, limit = 20) {
@@ -6224,7 +6070,7 @@ export async function getDriverSessionHistory(cid, employeeId, limit = 20) {
 // ====== FLEET & ROUTE MANAGEMENT SUMMARIES ======
 export async function getFleetRouteSummary(cid) {
   const drivers = await queryAll(`
-    SELECT DISTINCT e.*, 
+    SELECT DISTINCT e.*,
       ua.id as user_id, ua.login_id,
       r.id as route_id, r.name as route_name, r.code as route_code,
       ra.status as assignment_status, ra.dispatch_time
@@ -6247,7 +6093,7 @@ export async function getFleetRouteSummary(cid) {
     let routeVillages = [];
     if (routeId) {
       routeVillages = await queryAll(`
-        SELECT v.* FROM villages v 
+        SELECT v.* FROM villages v
         WHERE v.route_id = $1 AND v.company_id = $2 AND v.status = 'ACTIVE'
         ORDER BY v.name ASC
       `, [routeId, cid]);
@@ -6264,7 +6110,7 @@ export async function getFleetRouteSummary(cid) {
 
     // Driver sales for today
     const driverSales = await queryAll(`
-      SELECT s.*, 
+      SELECT s.*,
         (SELECT json_agg(si.*) FROM sale_items si WHERE si.sale_id = s.id) as items
       FROM sales s
       WHERE s.company_id = $1 AND s.employee_id = $2
@@ -6291,7 +6137,7 @@ export async function getFleetRouteSummary(cid) {
 
     if (activeSession) {
       const transRows = await queryAll(`
-        SELECT st.*, p.pieces_per_unit 
+        SELECT st.*, p.pieces_per_unit
         FROM stock_transactions st
         JOIN products p ON p.id = st.product_id
         WHERE st.company_id = $1 AND st.session_id = $2
@@ -6307,7 +6153,7 @@ export async function getFleetRouteSummary(cid) {
       });
 
       const empStocks = await queryAll(`
-        SELECT es.*, p.pieces_per_unit 
+        SELECT es.*, p.pieces_per_unit
         FROM employee_stock es
         JOIN products p ON p.id = es.product_id
         WHERE es.company_id = $1 AND es.employee_id = $2
@@ -6456,7 +6302,7 @@ export async function getDriverDetailSummary(cid, driverId) {
   const card = fleet.driverCards.find(c => Number(c.driver_id) === empId);
 
   const sales = await queryAll(`
-    SELECT s.*, 
+    SELECT s.*,
       (SELECT json_agg(si.*) FROM sale_items si WHERE si.sale_id = s.id) as items
     FROM sales s
     WHERE s.company_id = $1 AND s.employee_id = $2
@@ -6497,7 +6343,7 @@ export async function reassignDriverRoute(cid, routeId, newDriverId) {
 
 export async function getInventoryAlertsAndReorders(cid) {
   const products = await queryAll(`
-    SELECT 
+    SELECT
       p.id,
       p.name,
       p.display_name,
@@ -6613,6 +6459,8 @@ export async function adjustStock(cid, payload, actorUserId) {
   if (!validTypes.includes(adjType)) throw new Error('Invalid adjustment_type. Must be ADD, SUBTRACT, or SET.');
 
   const client = await pool.connect();
+  return transactionContext.run(client, async () => {
+  let clientReleased = false;
   try {
     await client.query('BEGIN');
 
@@ -6664,9 +6512,9 @@ export async function adjustStock(cid, payload, actorUserId) {
 
     // Insert into inventory_movements ledger
     await client.query(
-      `INSERT INTO inventory_movements 
+      `INSERT INTO inventory_movements
         (company_id, movement_no, movement_type, product_id, product_name, qty_units, unit, notes, movement_date, movement_time, reference, received_by)
-       VALUES 
+       VALUES
         ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_DATE, TO_CHAR(NOW(), 'HH24:MI:SS'), $9, $10)`,
       [
         cid,
@@ -6684,9 +6532,9 @@ export async function adjustStock(cid, payload, actorUserId) {
 
     // Insert into audit_logs
     await client.query(
-      `INSERT INTO audit_logs 
+      `INSERT INTO audit_logs
         (company_id, actor_user_id, action, entity_type, entity_id, metadata)
-       VALUES 
+       VALUES
         ($1, $2, $3, $4, $5, $6)`,
       [
         cid,
@@ -6726,19 +6574,20 @@ export async function adjustStock(cid, payload, actorUserId) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release();
+    if (!clientReleased) client.release();
   }
+  });
 }
 
 export async function getKeeperDashboard(cid) {
   const [products, movements, pendingReturns, alerts] = await Promise.all([
     getProducts(cid, { active: true }),
     queryAll(`
-      SELECT st.*, p.name as product_name, p.display_name, p.selling_unit 
+      SELECT st.*, p.name as product_name, p.display_name, p.selling_unit
       FROM stock_transactions st
       LEFT JOIN products p ON p.id = st.product_id
-      WHERE st.company_id = $1 
-      ORDER BY st.created_at DESC 
+      WHERE st.company_id = $1
+      ORDER BY st.created_at DESC
       LIMIT 20
     `, [cid]),
     queryAll(`
@@ -6750,9 +6599,9 @@ export async function getKeeperDashboard(cid) {
       ORDER BY ds.created_at DESC
     `, [cid]),
     queryAll(`
-      SELECT * FROM notifications 
+      SELECT * FROM notifications
       WHERE company_id = $1 AND (recipient_role = 'STORE_KEEPER' OR recipient_role = 'OWNER') AND is_read = FALSE
-      ORDER BY created_at DESC 
+      ORDER BY created_at DESC
       LIMIT 10
     `, [cid])
   ]);
@@ -6781,7 +6630,7 @@ export async function generateSystemAlertNotifications(cid) {
     // 1. Low Stock & Out of Stock Alerts
     const lowStockProds = await queryAll(`
       SELECT id, display_name, name, warehouse_stock_units, min_stock_level, selling_unit
-      FROM products 
+      FROM products
       WHERE company_id = $1 AND is_active = TRUE AND warehouse_stock_units <= min_stock_level
     `, [cid]);
 
@@ -6789,13 +6638,13 @@ export async function generateSystemAlertNotifications(cid) {
       const isOut = Number(p.warehouse_stock_units || 0) <= 0;
       const notifType = isOut ? 'OUT_OF_STOCK' : 'LOW_STOCK';
       const title = isOut ? `Out of Stock: ${p.display_name || p.name}` : `Low Stock Alert: ${p.display_name || p.name}`;
-      const msg = isOut 
+      const msg = isOut
         ? `Product "${p.display_name || p.name}" has reached 0 ${p.selling_unit}s. Immediate reorder required.`
         : `Product "${p.display_name || p.name}" stock (${p.warehouse_stock_units} ${p.selling_unit}) is at or below min level (${p.min_stock_level}).`;
 
       // Check if unread alert exists within last 12 hours
       const existing = await queryOne(`
-        SELECT id FROM notifications 
+        SELECT id FROM notifications
         WHERE company_id = $1 AND notification_type = $2 AND reference_type = 'product' AND reference_id = $3 AND is_read = FALSE
       `, [cid, notifType, String(p.id)]);
 
@@ -6817,7 +6666,7 @@ export async function generateSystemAlertNotifications(cid) {
 
     for (const pr of pendingReturns) {
       const existing = await queryOne(`
-        SELECT id FROM notifications 
+        SELECT id FROM notifications
         WHERE company_id = $1 AND notification_type = 'PENDING_RETURN' AND reference_type = 'driver_session' AND reference_id = $2 AND is_read = FALSE
       `, [cid, String(pr.id)]);
 
@@ -6842,7 +6691,7 @@ export async function generateSystemAlertNotifications(cid) {
     const count = Number(pendingDamages?.count || 0);
     if (count > 0) {
       const existing = await queryOne(`
-        SELECT id FROM notifications 
+        SELECT id FROM notifications
         WHERE company_id = $1 AND notification_type = 'PENDING_DAMAGE' AND is_read = FALSE AND created_at >= NOW() - INTERVAL '6 hours'
       `, [cid]);
 
@@ -6895,8 +6744,8 @@ export async function getNotifications(cid, role, userId, filters = {}) {
   `, params);
 
   const unreadCountRow = await queryOne(`
-    SELECT COUNT(*) as count FROM notifications 
-    WHERE company_id = $1 AND is_read = FALSE 
+    SELECT COUNT(*) as count FROM notifications
+    WHERE company_id = $1 AND is_read = FALSE
     AND (recipient_role IN ('OWNER', 'ADMIN', 'STORE_KEEPER', 'ALL') OR recipient_role IS NULL)
   `, [cid]);
 
@@ -6969,7 +6818,7 @@ export async function getExportData(cid, exportType, filters = {}) {
     }
 
     const sales = await queryAll(`
-      SELECT 
+      SELECT
         s.bill_no,
         s.sale_date,
         s.created_at,
@@ -7273,7 +7122,7 @@ export async function getExportData(cid, exportType, filters = {}) {
 
 export async function getSuppliers(cid, query = {}) {
   const companyId = cid || 1;
-  let sql = 'SELECT * FROM suppliers WHERE (company_id = $1 OR company_id = 1 OR company_id IS NULL)';
+  let sql = 'SELECT * FROM suppliers WHERE (company_id = $1)';
   const params = [companyId];
 
   // Default: only return active suppliers unless explicitly requested otherwise
@@ -7408,7 +7257,7 @@ export async function updateSupplier(cid, id, data, actorUserId) {
 }
 
 export async function deleteSupplier(cid, id, actorUserId) {
-  const sRes = await pool.query('SELECT * FROM suppliers WHERE id = $1 AND (company_id = $2 OR company_id = 1 OR company_id IS NULL)', [id, cid]);
+  const sRes = await pool.query('SELECT * FROM suppliers WHERE id = $1 AND (company_id = $2)', [id, cid]);
   if (sRes.rows.length === 0) {
     return { success: true, message: 'Supplier removed' };
   }
@@ -7426,7 +7275,7 @@ export async function deleteSupplier(cid, id, actorUserId) {
 
 export async function getSupplierInwardStockReport(cid, filters = {}) {
   const companyId = cid || 1;
-  let where = ["(im.company_id = $1 OR im.company_id = 1 OR im.company_id IS NULL)", "im.movement_type = 'INWARD'"];
+  let where = ["(im.company_id = $1)", "im.movement_type = 'INWARD'"];
   const params = [companyId];
 
   if (filters.supplier_id && filters.supplier_id !== 'ALL') {
@@ -7483,7 +7332,7 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
 
   // 1. Raw Inward Movement Records
   const recordsRes = await pool.query(
-    `SELECT 
+    `SELECT
        im.id,
        im.movement_no,
        im.product_id,
@@ -7613,3 +7462,20 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
     records: records
   };
 }
+export async function createSale(...args) { return retryTransaction(()=>createSaleAttempt(...args)); }
+
+export async function issueStockToEmployee(...args) { return retryTransaction(()=>issueStockToEmployeeAttempt(...args)); }
+
+export async function receiveStock(...args) { return retryTransaction(()=>receiveStockAttempt(...args)); }
+
+export async function cancelSale(...args) { return retryTransaction(()=>cancelSaleAttempt(...args)); }
+
+export async function acceptEmployeeReturns(...args) { return retryTransaction(()=>acceptEmployeeReturnsAttempt(...args)); }
+
+export async function processDamage(...args) { return retryTransaction(()=>processDamageAttempt(...args)); }
+
+export async function verifyAndAcceptDriverReturn(...args) { return retryTransaction(()=>verifyAndAcceptDriverReturnAttempt(...args)); }
+
+export async function submitDriverEndDay(...args) { return retryTransaction(()=>submitDriverEndDayAttempt(...args)); }
+
+export async function acceptStorekeeperReturn(...args) { return retryTransaction(()=>acceptStorekeeperReturnAttempt(...args)); }
