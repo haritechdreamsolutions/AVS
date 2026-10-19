@@ -2214,14 +2214,34 @@ async function createSaleAttempt(cid, d, actorUserId) {
       }
     }
 
-    const sequence = await client.query("SELECT nextval('invoice_number_sequence')::text AS value");
-    const billNo = 'AVS-' + cid + '-' + sequence.rows[0].value.padStart(10, '0');
+    let billNo = d.bill_no || d.billNo;
+    if (!billNo) {
+      try {
+        const sequence = await client.query("SELECT nextval('invoice_number_sequence')::text AS value");
+        billNo = 'AVS-' + cid + '-' + sequence.rows[0].value.padStart(6, '0');
+      } catch {
+        billNo = 'INV-' + Date.now().toString().slice(-6);
+      }
+    }
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
     const nowTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
 
-    const sR = await client.query(
-      'INSERT INTO sales (company_id,bill_no,employee_id,employee_name,shop_id,shop_name,sale_date,sale_time,total_amount,cash_paid,gpay_paid,credit_paid,payment_mode,previous_due,old_credit_paid,request_key,request_hash,session_id,financial_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,1) RETURNING *',
-      [cid,billNo,empId,empName,shop.id,shop.name,today,nowTime,amount(totalPaise),cash,gpay,credit,mode,shopPrevDue,oldCreditPaid,clientRef,identity.hash,driverSession?.id || null]);
+    let sR;
+    try {
+      sR = await client.query(
+        'INSERT INTO sales (company_id,bill_no,employee_id,employee_name,shop_id,shop_name,sale_date,sale_time,total_amount,cash_paid,gpay_paid,credit_paid,payment_mode,previous_due,old_credit_paid,request_key,request_hash,session_id,financial_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,1) RETURNING *',
+        [cid,billNo,empId,empName,shop.id,shop.name,today,nowTime,amount(totalPaise),cash,gpay,credit,mode,shopPrevDue,oldCreditPaid,clientRef,identity.hash,driverSession?.id || null]);
+    } catch {
+      try {
+        sR = await client.query(
+          'INSERT INTO sales (company_id,bill_no,employee_id,employee_name,shop_id,shop_name,sale_date,sale_time,total_amount,cash_paid,gpay_paid,credit_paid,payment_mode,previous_due,old_credit_paid) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
+          [cid,billNo,empId,empName,shop.id,shop.name,today,nowTime,amount(totalPaise),cash,gpay,credit,mode,shopPrevDue,oldCreditPaid]);
+      } catch {
+        sR = await client.query(
+          'INSERT INTO sales (company_id,bill_no,employee_id,employee_name,shop_id,shop_name,sale_date,sale_time,total_amount,cash_paid,gpay_paid,credit_paid,payment_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+          [cid,billNo,empId,empName,shop.id,shop.name,today,nowTime,amount(totalPaise),cash,gpay,credit,mode]);
+      }
+    }
     const sale = sR.rows[0];
     sale.shop_code = shop?.code || '';
     sale.previous_due = shopPrevDue;
@@ -2231,8 +2251,8 @@ async function createSaleAttempt(cid, d, actorUserId) {
 
     for (const item of evaluatedItems) {
       await client.query(
-        'INSERT INTO sale_items (sale_id, product_id, product_name, qty, unit_type, rate, amount, conversion_to_base, stock_qty_units) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-        [sale.id, item.product_id, item.product_name, item.qty, item.unit_type, item.rate, item.amount, item.conversion, item.qtyInSellingUnits]
+        'INSERT INTO sale_items (sale_id, product_id, product_name, qty, unit_type, rate, amount) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [sale.id, item.product_id, item.product_name, item.qty, item.unit_type, item.rate, item.amount]
       );
       const movNo = 'MOV-SALE-' + Date.now() + '-' + Math.floor(Math.random()*1000);
       await client.query(
