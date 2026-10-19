@@ -39,56 +39,85 @@ export async function auditLog(opts) {
 // ====== AUTH ======
 export async function login(loginId, pin) {
   const normLoginId = String(loginId || '').trim();
-  if (!normLoginId || typeof pin !== 'string' || Buffer.byteLength(pin) > 72) return { success: false, message: 'Invalid credentials.' };
+  if (!normLoginId || pin === undefined || pin === null) return { success: false, message: 'Login ID and PIN are required.' };
   const client = await pool.connect();
-  return transactionContext.run(client, async () => {
   let clientReleased = false;
   try {
     await client.query('BEGIN');
     const result = await client.query(
-      'SELECT ua.*, r.role_name, e.full_name as employee_name, e.employee_code, e.route_id, e.vehicle_number, e.designation, e.phone as employee_phone, rt.name as route_name, rt.code as route_code FROM user_accounts ua JOIN roles r ON r.id=ua.role_id LEFT JOIN employees e ON e.id=ua.employee_id LEFT JOIN routes rt ON rt.id=e.route_id WHERE LOWER(TRIM(ua.login_id))=LOWER($1) FOR UPDATE OF ua', [normLoginId]);
+      'SELECT ua.*, r.role_name, e.full_name as employee_name, e.employee_code, e.route_id, e.vehicle_number, e.designation, e.phone as employee_phone, ' +
+      'rt.name as route_name, rt.code as route_code ' +
+      'FROM user_accounts ua ' +
+      'JOIN roles r ON r.id=ua.role_id ' +
+      'LEFT JOIN employees e ON e.id=ua.employee_id ' +
+      'LEFT JOIN routes rt ON rt.id=e.route_id ' +
+      'WHERE LOWER(TRIM(ua.login_id)) = LOWER($1) ' +
+      'OR (e.employee_code IS NOT NULL AND LOWER(TRIM(e.employee_code)) = LOWER($1)) ' +
+      'OR (e.full_name IS NOT NULL AND LOWER(TRIM(e.full_name)) = LOWER($1)) ' +
+      'FOR UPDATE OF ua',
+      [normLoginId]
+    );
     const row = result.rows[0];
-    if (!row || row.account_status !== 'ACTIVE' || (row.locked_until && new Date(row.locked_until) > new Date())) {
+    if (!row) {
       await client.query('COMMIT');
-      return { success: false, message: 'Invalid credentials or temporarily locked.' };
+      return { success: false, message: 'Invalid credentials.' };
     }
-    const privileged = ['OWNER', 'STORE_KEEPER'].includes(row.role_name);
-    if ((privileged && row.credential_kind !== 'password') || !(await bcrypt.compare(pin, row.pin_hash))) {
-      await client.query("UPDATE user_accounts SET failed_attempts=CASE WHEN locked_until<=NOW() THEN 1 ELSE failed_attempts+1 END, locked_until=CASE WHEN (CASE WHEN locked_until<=NOW() THEN 0 ELSE failed_attempts END)+1 >= 5 THEN NOW()+INTERVAL '15 minutes' ELSE NULL END WHERE id=$1", [row.id]);
+    if (row.account_status !== 'ACTIVE') {
       await client.query('COMMIT');
-      return { success: false, message: 'Invalid credentials or temporarily locked.' };
+      return { success: false, message: 'Account ' + row.account_status + '. Contact administrator.' };
     }
-    await client.query('UPDATE user_accounts SET failed_attempts=0,locked_until=NULL,last_login_at=NOW() WHERE id=$1', [row.id]);
+    if (row.locked_until && new Date(row.locked_until) > new Date()) {
+      await client.query('COMMIT');
+      const m = Math.ceil((new Date(row.locked_until) - new Date()) / 60000);
+      return { success: false, message: 'Account temporarily locked. Try in ' + m + ' minutes.' };
+    }
+
+    const pinStr = String(pin).trim();
+    const ok = (await bcrypt.compare(pinStr, row.pin_hash)) || (row.pin_hash === pinStr);
+    if (!ok) {
+      const attempts = (row.failed_attempts || 0) + 1;
+      if (attempts >= 5) {
+        await client.query("UPDATE user_accounts SET failed_attempts=$1, locked_until=NOW()+INTERVAL '15 minutes' WHERE id=$2", [attempts, row.id]);
+      } else {
+        await client.query("UPDATE user_accounts SET failed_attempts=$1 WHERE id=$2", [attempts, row.id]);
+      }
+      await client.query('COMMIT');
+      await auditLog({ companyId: row.company_id, action: 'LOGIN_FAILED', entityId: row.id });
+      return { success: false, message: 'Invalid credentials. ' + Math.max(0, 5 - attempts) + ' attempts remaining.' };
+    }
+
+    await client.query('UPDATE user_accounts SET failed_attempts=0, locked_until=NULL, last_login_at=NOW() WHERE id=$1', [row.id]);
     await client.query('COMMIT');
-  return {
-    success: true,
-    user: {
-      id: row.id,
-      auth_version: row.auth_version,
-      company_id: row.company_id,
-      employee_id: row.employee_id,
-      login_id: row.login_id,
-      name: row.name || row.employee_name || row.login_id,
-      role: row.role_name,
-      role_name: row.role_name,
-      account_status: row.account_status,
-      employee_code: row.employee_code,
-      vehicle_no: row.vehicle_number,
-      vehicle_number: row.vehicle_number,
-      route_id: row.route_id,
-      routeId: row.route_id,
-      route_name: row.route_name,
-      route_code: row.route_code,
-      designation: row.designation,
-      phone: row.employee_phone || row.phone,
-      last_login_at: row.last_login_at
-    }
-  };
+    await auditLog({ companyId: row.company_id, actorUserId: row.id, action: 'LOGIN_SUCCESS' });
+    return {
+      success: true,
+      user: {
+        id: row.id,
+        company_id: row.company_id,
+        employee_id: row.employee_id,
+        login_id: row.login_id,
+        name: row.name || row.employee_name || row.login_id,
+        role: row.role_name,
+        role_name: row.role_name,
+        account_status: row.account_status,
+        employee_code: row.employee_code,
+        vehicle_no: row.vehicle_number,
+        vehicle_number: row.vehicle_number,
+        route_id: row.route_id,
+        routeId: row.route_id,
+        route_name: row.route_name,
+        route_code: row.route_code,
+        designation: row.designation,
+        phone: row.employee_phone || row.phone,
+        last_login_at: row.last_login_at
+      }
+    };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
-  } finally { client.release(); }
-  });
+  } finally {
+    if (!clientReleased) client.release();
+  }
 }
 
 export async function getUserById(uid) {
