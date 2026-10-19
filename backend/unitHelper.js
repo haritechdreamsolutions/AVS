@@ -101,3 +101,8 @@ export function checkReconciliationEquation(allocated, sold, damaged, currentRet
     calculated
   };
 }
+
+export function quantityFromWholePieces(pieces, piecesPerUnit) {
+  const ppu = Math.max(1, Number(piecesPerUnit || 1));
+  return normalizeQuantity(Number(pieces || 0) / ppu);
+}
