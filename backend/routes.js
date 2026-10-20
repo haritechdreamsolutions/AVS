@@ -274,7 +274,7 @@ router.post(['/sk/driver-returns/verify', '/sk/driver-returns/accept', '/sk/retu
     if (!driverId) return res.status(400).json({ success: false, message: 'Driver ID is required' });
     const result = await db.verifyAndAcceptDriverReturn(cid, Number(driverId), req.body, req.session.userId);
     res.json(result);
-  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+  } catch (e) { res.status(e.status === 403 ? 403 : 400).json({ success: false, message: e.message }); }
 });
 
 router.get(['/sk/driver-returns/history', '/driver/returns/history'], requireAuth, requireRole('STORE_KEEPER', 'OWNER', 'DRIVER', 'EMPLOYEE'), async (req, res) => {
