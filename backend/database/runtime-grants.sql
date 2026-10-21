@@ -1,5 +1,8 @@
-REVOKE CONNECT ON DATABASE avs_agencies_db FROM PUBLIC;
-GRANT CONNECT ON DATABASE avs_agencies_db TO avs_runtime,avs_backup;
+-- Apply only to the database selected by the migration connection.
+DO $$ BEGIN
+  EXECUTE format('REVOKE CONNECT ON DATABASE %I FROM PUBLIC', current_database());
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO avs_runtime,avs_backup', current_database());
+END $$;
 GRANT USAGE ON SCHEMA public TO avs_runtime,avs_backup;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO avs_runtime;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO avs_backup;

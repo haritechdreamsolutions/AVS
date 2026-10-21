@@ -5238,6 +5238,22 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
     if (employeeId) await client.query('SELECT id FROM employees WHERE id=$1 AND company_id=$2 FOR UPDATE',[employeeId,cid]);
     const empId = Number(employeeId);
     const { session_id, items, notes, shortage_reason } = data;
+    const acceptanceMode = data.acceptance_mode === undefined ? 'manual' : data.acceptance_mode;
+    if (!['manual', 'accept_expected'].includes(acceptanceMode)) throw new Error('Invalid return acceptance mode.');
+    const automatic = acceptanceMode === 'accept_expected';
+    if (automatic) {
+      // Actor identity comes from the authenticated route, never the payload.
+      const owner = await client.query(
+        `SELECT ua.id FROM user_accounts ua JOIN roles r ON r.id = ua.role_id
+         WHERE ua.id = $1 AND ua.company_id = $2 AND ua.account_status = 'ACTIVE'
+           AND r.role_name = 'OWNER' FOR SHARE OF ua`, [actorUserId, cid]
+      );
+      if (!owner.rows.length) throw Object.assign(new Error('Automatic acceptance requires an active OWNER in this company.'), { status: 403 });
+      if (data.confirm_accept_expected !== true) throw new Error('Explicit confirmation is required to accept expected returns.');
+      if (items !== undefined) throw new Error('Automatic acceptance must omit items; use manual mode for physical counts.');
+    } else if (!Array.isArray(items) || items.length === 0) {
+      throw new Error('Manual acceptance requires a nonempty items array.');
+    }
 
     // 1. Validate Driver Exists
     if (!empId) throw new Error('Driver ID is required.');
@@ -5250,8 +5266,8 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
     let sessionRes = null;
     if (session_id) {
       sessionRes = await client.query(
-        'SELECT * FROM driver_sessions WHERE id = $1 AND company_id = $2 FOR UPDATE',
-        [Number(session_id), cid]
+        'SELECT * FROM driver_sessions WHERE id = $1 AND company_id = $2 AND employee_id = $3 FOR UPDATE',
+        [Number(session_id), cid, empId]
       );
     } else {
       sessionRes = await client.query(
@@ -5348,18 +5364,41 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
     let totalShortageUnits = 0;
     let totalShortageCost = 0;
 
-    // Iterate through submitted return items or all driver products
-    const returnItemsList = Array.isArray(items) && items.length > 0 ? items : [];
-    if (returnItemsList.length === 0) {
-      // If items array not provided, build from held stock
-      for (const [pid, qty] of heldStockMap.entries()) {
-        returnItemsList.push({ product_id: pid, actual_return: qty });
-      }
+    // Match the expected-return product set, including fully sold/damaged items.
+    const allProductIds = new Set([...heldStockMap.keys(), ...soldMap.keys(), ...dmgMap.keys(), ...allocMap.keys()]);
+    const activeProductIds = [...allProductIds].filter(pid =>
+      (heldStockMap.get(pid) || 0) > 0 || (allocMap.get(pid) || 0) > 0 ||
+      (soldMap.get(pid)?.sold_units || 0) > 0 || (soldMap.get(pid)?.sold_pieces || 0) > 0 ||
+      (dmgMap.get(pid)?.damaged_qty || 0) > 0 || (dmgMap.get(pid)?.damaged_pieces || 0) > 0
+    );
+    const expectedProductIds = new Set(activeProductIds.length ? activeProductIds : allProductIds);
+    if (expectedProductIds.size === 0) throw new Error('No expected return products found for this driver.');
+    const returnItemsList = automatic ? [...expectedProductIds].map(product_id => ({ product_id })) : items;
+
+    // Validate the entire submission before applying any warehouse credits.
+    const submittedProductIds = new Set();
+    for (const it of returnItemsList) {
+      const pid = Number(it?.product_id);
+      if (!it || typeof it !== 'object' || Array.isArray(it) ||
+          !['number', 'string'].includes(typeof it.product_id) ||
+          !Number.isSafeInteger(pid) || pid <= 0) throw new Error('Valid return product ID is required.');
+      if (submittedProductIds.has(pid)) throw new Error(`Duplicate return product #${pid}.`);
+      if (!expectedProductIds.has(pid)) throw new Error(`Unknown return product #${pid}.`);
+      submittedProductIds.add(pid);
+      if (!automatic && (
+        it.actual_quantity == null ||
+        !['number', 'string'].includes(typeof it.actual_quantity) ||
+        String(it.actual_quantity).trim() === '' ||
+        !Number.isFinite(Number(it.actual_quantity)) || Number(it.actual_quantity) < 0
+      )) throw new Error('Return quantity must be a finite nonnegative number.');
+    }
+    for (const pid of expectedProductIds) {
+      if (!submittedProductIds.has(pid)) throw new Error(`Missing return product #${pid}.`);
     }
 
+    const stockUpdates = [];
     for (const it of returnItemsList) {
       const pid = Number(it.product_id);
-      if (!pid) continue;
 
       // Lock product row
       const pRes = await client.query(
@@ -5388,7 +5427,17 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
         allocVal = allocUnits > 0 ? Math.round(allocUnits * ppu) : Math.round((currentStockUnits * ppu) + soldVal + dmgVal);
         currentVal = Math.max(0, allocVal - soldVal - dmgVal); // Expected Return Pieces
 
-        // Requested return in pieces
+        // Physical counts must resolve to whole pieces before any rounding.
+        if (!automatic) {
+          if (it.unit != null && (typeof it.unit !== 'string' || !['piece', 'pieces', 'tray'].includes(it.unit.toLowerCase()))) {
+            throw new Error('Piece-based returns must use Piece or Tray units.');
+          }
+          const physicalPieces = Number(it.actual_quantity) * (it.unit?.toLowerCase() === 'tray' ? ppu : 1);
+          if (!Number.isFinite(physicalPieces) || !Number.isSafeInteger(Math.round(physicalPieces)) || Math.abs(physicalPieces - Math.round(physicalPieces)) > 0.000001) {
+            throw new Error('Return quantity must correspond to whole physical pieces.');
+          }
+        }
+        // Only explicit automatic mode can use the expected count.
         requestedReturnVal = it.actual_quantity != null
           ? (it.unit?.toLowerCase() === 'tray' ? Math.round(Number(it.actual_quantity) * ppu) : Math.round(Number(it.actual_quantity)))
           : currentVal;
@@ -5403,6 +5452,9 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
         returnStockUnitsToWarehouse = requestedReturnVal / ppu;
       } else {
         // NON-TRAY CATEGORY (Case, Bag, Box): RECONCILIATION IN BUNDLE UNITS
+        if (!automatic && it.unit != null && (typeof it.unit !== 'string' || it.unit.toLowerCase() !== opUnit.operationalUnit.toLowerCase())) {
+          throw new Error('Return unit must match the product operational unit.');
+        }
         soldVal = normalizeQuantity(soldInfo.sold_units);
         dmgVal = normalizeQuantity(damagedInfo.damaged_qty);
         allocVal = allocUnits > 0 ? normalizeQuantity(allocUnits) : normalizeQuantity(currentStockUnits + soldVal + dmgVal);
@@ -5434,6 +5486,8 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
       totalShortageUnits += shortageStockUnits;
       totalShortageCost += shortageCost;
 
+      // Defer writes until every item, conversion and shortage reason is valid.
+      stockUpdates.push(async () => {
       // FINAL STOCK MOVEMENT:
       // Only the driver's CURRENT REMAINING STOCK is returned to warehouse
       // Sales (soldQty) are NOT added back
@@ -5484,6 +5538,7 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
          WHERE employee_id = $1 AND product_id = $2 AND company_id = $3`,
         [empId, pid, cid]
       );
+      });
 
       evaluatedItems.push({
         product_id: pid,
@@ -5506,6 +5561,8 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
         is_balanced: true
       });
     }
+
+    for (const update of stockUpdates) await update();
 
     // 5. Create authoritative Driver Return Record
     const returnNo = 'RET-' + Date.now().toString().slice(-6);
@@ -5564,9 +5621,6 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
       [finalSales, finalExpenses, finalCash, finalGpay, finalCredit, session.id]
     );
 
-    // Commit atomic database transaction
-    await client.query('COMMIT');
-
     await auditLog({
       companyId: cid,
       actorUserId,
@@ -5574,6 +5628,7 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
       entityType: 'driver_returns',
       entityId: retRes.rows[0].id,
       metadata: {
+        acceptance_mode: acceptanceMode,
         driver_id: empId,
         session_id: session.id,
         return_no: returnNo,
@@ -5585,6 +5640,9 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
         net_amount: finalNetAmount
       }
     });
+
+    // Commit the return and its audit together so failures leave no partial result.
+    await client.query('COMMIT');
 
     return {
       success: true,
