@@ -1,8 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Banknote, Smartphone, CreditCard, Split, CheckCircle2, DollarSign, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFetch, API_URL, useApp } from '../../context/AppContext';
+import { reviewDriverPrices } from '../../utils/driverPricing';
+import { sortProductsCustom } from '../../utils/productOrderHelper';
 
-export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
+export const PaymentModal = ({ billData: initialBillData, onConfirmBill, onBack }) => {
+  const [billData, setBillData] = useState(initialBillData);
+  const { setProducts } = useApp();
+  const submitting = useRef(false);
+  const priceCheck = useRef(null);
+  useEffect(() => { setBillData(initialBillData); }, [initialBillData]);
+  useEffect(() => () => priceCheck.current?.abort(), []);
   const [mode, setMode] = useState('CASH');
   const [splitOption, setSplitOption] = useState('CASH_GPAY'); // 'CASH_GPAY', 'CASH_CREDIT', 'GPAY_CREDIT'
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -100,14 +109,26 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
   };
 
   const handleConfirm = async () => {
-    if (isSubmitting) return;
+    if (submitting.current) return;
     if (balance !== 0 && mode !== 'CREDIT') {
       toast.error(`பணம் தவறாக உள்ளது! பாக்கி: ₹${balance.toFixed(2)}`);
       return;
     }
 
     try {
+      submitting.current = true;
       setIsSubmitting(true);
+      priceCheck.current = new AbortController();
+      const response = await apiFetch(`${API_URL}/products`, { cache: 'no-store', signal: priceCheck.current.signal });
+      if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) throw new Error('Unable to verify current prices. Please retry.');
+      const products = await response.json();
+      const reviewed = reviewDriverPrices(billData, products);
+      setProducts(sortProductsCustom(products));
+      if (reviewed.changed) {
+        setBillData({ ...reviewed.bill, idempotency_key: crypto.randomUUID() });
+        toast.warning('Product prices were updated. Review the new bill amount and confirm again.');
+        return;
+      }
       const oldCreditPaid = includeOldCredit ? previousDue : 0;
       await onConfirmBill({
         ...billData,
@@ -126,7 +147,10 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
         credit_paid: mode === 'CREDIT' ? totalBillAmount : (mode === 'SPLIT' ? numCredit : 0),
         balance: balance
       });
+    } catch (error) {
+      if (error.name !== 'AbortError') toast.error(error.message || 'Unable to verify current prices. Please retry.');
     } finally {
+      submitting.current = false;
       setIsSubmitting(false);
     }
   };
@@ -138,6 +162,7 @@ export const PaymentModal = ({ billData, onConfirmBill, onBack }) => {
       <div className="flex items-center justify-between bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
         <button
           onClick={onBack}
+          disabled={isSubmitting}
           className="p-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition font-black text-xs flex items-center gap-1.5 cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />

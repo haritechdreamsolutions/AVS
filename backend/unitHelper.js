@@ -103,6 +103,12 @@ export function checkReconciliationEquation(allocated, sold, damaged, currentRet
 }
 
 export function quantityFromWholePieces(pieces, piecesPerUnit) {
-  const ppu = Math.max(1, Number(piecesPerUnit || 1));
-  return normalizeQuantity(Number(pieces || 0) / ppu);
+  const numeric = value => (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) ? Number(value) : NaN;
+  const count = numeric(pieces);
+  const ppu = numeric(piecesPerUnit);
+  if (!Number.isSafeInteger(count) || count < 0 || !Number.isSafeInteger(ppu) || ppu <= 0) {
+    throw new Error('Stock must correspond to whole operational pieces with a positive whole pieces-per-unit value');
+  }
+  // Keep division precision for the allocation guard and NUMERIC(20,8) storage.
+  return count / ppu;
 }

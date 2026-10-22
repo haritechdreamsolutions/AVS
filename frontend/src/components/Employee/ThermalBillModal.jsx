@@ -16,7 +16,8 @@ export const ThermalBillModal = ({
   const { currentUser, companyInfo, API_URL, apiFetch, shops } = useApp();
 
   // 80mm / 82mm 3-Inch Mode strictly for StoreKeeper login
-  const is80mm = paperSize === '80mm' || isStoreKeeper || currentUser?.role === 'STOREKEEPER' || currentUser?.designation?.toLowerCase().includes('store');
+  const storekeeperPrint = isStoreKeeper || ['STORE_KEEPER', 'STOREKEEPER'].includes(currentUser?.role);
+  const is80mm = paperSize === '80mm' || storekeeperPrint;
   const [bill, setBill] = useState(initialBill || {});
   const [items, setItems] = useState(initialBill?.items || []);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -120,12 +121,7 @@ export const ThermalBillModal = ({
   const rawBillNo = bill.bill_no || bill.sale?.bill_no || 'INV-000000';
   const displayBillNo = rawBillNo.length > 35 ? rawBillNo.substring(0, 35) : rawBillNo;
 
-  // Logged-in username display
-  const loggedInEmpName = (currentUser?.name || currentUser?.username)
-    ? (currentUser.name || currentUser.username)
-    : (bill.employee_name && bill.employee_name !== 'Store Keeper POS'
-        ? bill.employee_name
-        : (is80mm ? 'Store Keeper' : 'Driver'));
+  const loggedInEmpName = bill.employee_name || 'Not recorded';
 
   const handleSystemPrint = () => {
     window.print();
@@ -149,6 +145,7 @@ export const ThermalBillModal = ({
 
       const receiptPayload = {
         ...bill,
+        storekeeper_print: storekeeperPrint,
         bill_no: displayBillNo,
         employee_name: loggedInEmpName,
         company_name: companyName,
@@ -193,6 +190,30 @@ export const ThermalBillModal = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      {is80mm && <style>{`
+        @media print {
+          @page { size: 80mm auto; margin: 0; }
+          body :has(.printable-thermal-80mm) {
+            position: static !important;
+            overflow: visible !important;
+            max-height: none !important;
+            height: auto !important;
+            transform: none !important;
+          }
+        }
+        ${storekeeperPrint ? `
+          .printable-thermal-80mm, .printable-thermal-80mm * {
+            font-size: 14px !important;
+            line-height: 1.4 !important;
+            font-weight: 700 !important;
+          }
+          .printable-thermal-80mm h2 { font-size: 24px !important; }
+          @media print {
+            .printable-thermal-80mm { overflow: visible !important; max-height: none !important; }
+            .printable-thermal-80mm, .printable-thermal-80mm * { color: black !important; }
+          }
+        ` : ''}
+      `}</style>}
       <div className={`bg-white border border-slate-200 rounded-3xl ${is80mm ? 'max-w-lg sm:max-w-xl' : 'max-w-sm sm:max-w-md'} w-full p-3.5 sm:p-5 space-y-3 sm:space-y-4 shadow-2xl my-auto max-h-[96dvh] flex flex-col overflow-hidden`}>
         
         {/* Header (Screen only) */}
@@ -245,7 +266,7 @@ export const ThermalBillModal = ({
           </div>
 
           {/* Bill Meta (Strict 3-Row Layout) */}
-          <div className={`border-b border-dashed border-slate-400 pb-2 space-y-1 ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10px] sm:text-[10.5px]'}`}>
+          <div className={`receipt-meta border-b border-dashed border-slate-400 pb-2 space-y-1 ${is80mm ? 'text-xs sm:text-[13px]' : 'text-[10px] sm:text-[10.5px]'}`}>
             {/* Row 1: Bill ID (Half Width / Truncated) + Date (Right) */}
             <div className="flex justify-between items-center font-extrabold gap-2">
               <span className="truncate max-w-[55%] shrink-0">

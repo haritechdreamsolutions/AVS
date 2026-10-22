@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { ArrowLeft, ArrowRight, ShoppingBag, AlertTriangle, X, Search, Box } from 'lucide-react';
 import { getOperationalUnit } from '../../utils/unitHelper';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
+import { driverUnitPrice } from '../../utils/driverPricing';
 
 export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) => {
   const { products, employeeStock, shops } = useApp();
@@ -37,11 +38,13 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
     const piecesPerUnit = Math.max(1, Number(product.pieces_per_unit || 1));
     const heldUnits = Number(stock?.qty_units || 0);
     const basePieces = Math.round(heldUnits * piecesPerUnit);
+    let configuredRate = 0;
+    try { configuredRate = driverUnitPrice(product, opUnit.operationalUnit); } catch {}
 
     if (opUnit.isPieceBased) {
       // Tray products: Milk, Curd -> strictly Piece-based
       const availableStock = basePieces;
-      const rate = Number(product.piece_selling_price || (Number(product.unit_selling_price || 0) / piecesPerUnit) || 0);
+      const rate = configuredRate;
       return {
         opUnit,
         heldUnits,
@@ -58,7 +61,7 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
       // Non-Tray products: Case, Bag, Box -> configured operational bundle unit
       const availableStock = Math.floor(basePieces / piecesPerUnit);
       const loosePieces = basePieces % piecesPerUnit;
-      const rate = Number(product.unit_selling_price || (Number(product.piece_selling_price || 0) * piecesPerUnit) || 0);
+      const rate = configuredRate;
       return {
         opUnit,
         heldUnits,
@@ -159,6 +162,10 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
   const totalAmount = Number(activeCartItems.reduce((acc, item) => acc + item.amount, 0).toFixed(2));
 
   const handleProceed = () => {
+    if (activeCartItems.some(item => item.rate <= 0)) {
+      showToast('Product selling price or unit is not configured. Contact the owner.');
+      return;
+    }
     if (activeCartItems.length === 0) {
       showToast('⚠️ Please enter quantity for at least 1 in-stock product!');
       return;

@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Impact of Social Media Marketing on Consumer Purchase Decisions</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary-teal: #009688;
+      --primary-dark: #00796b;
+      --bg-color: #E0F2F1;
+      --card-bg: #ffffff;
+      --border-color: #dadce0;
+      --text-main: #202124;
+      --text-sub: #70757a;
+      --required-red: #d93025;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      padding: 24px 12px 60px 12px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .form-container {
+      width: 100%;
+      max-width: 770px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      padding: 24px;
+      border: 1px solid var(--border-color);
+      position: relative;
+    }
+
+    .header-card {
+      border-top: 10px solid var(--primary-teal);
+      border-radius: 8px 8px 8px 8px;
+    }
+
+    .header-title {
+      font-size: 26px;
+      font-weight: 500;
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+
+    .header-desc {
+      font-size: 14px;
+      color: #3c4043;
+      line-height: 1.6;
+      white-space: pre-line;
+      margin-bottom: 16px;
+    }
+
+    .required-note {
+      color: var(--required-red);
+      font-size: 13px;
+      font-weight: 500;
+      border-top: 1px solid #e0e0e0;
+      padding-top: 12px;
+    }
+
+    .section-header {
+      background: var(--primary-teal);
+      color: white;
+      border-radius: 8px;
+      padding: 16px 24px;
+    }
+
+    .section-header h2 {
+      font-size: 20px;
+      font-weight: 500;
+    }
+
+    .section-header p {
+      font-size: 13px;
+      margin-top: 4px;
+      opacity: 0.9;
+    }
+
+    .question-title {
+      font-size: 15px;
+      font-weight: 500;
+      margin-bottom: 16px;
+      line-height: 1.4;
+    }
+
+    .req {
+      color: var(--required-red);
+      margin-left: 4px;
+    }
+
+    .options-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .radio-option input[type="radio"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--primary-teal);
+      cursor: pointer;
+    }
+
+    .other-input {
+      border: none;
+      border-bottom: 1px solid #ccc;
+      outline: none;
+      padding: 4px;
+      font-size: 14px;
+      flex-grow: 1;
+      max-width: 300px;
+    }
+
+    .other-input:focus {
+      border-bottom: 2px solid var(--primary-teal);
+    }
+
+    /* Grid Styling */
+    .grid-wrapper {
+      overflow-x: auto;
+      margin-top: 12px;
+    }
+
+    table.likert-grid {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    table.likert-grid th, table.likert-grid td {
+      padding: 12px 8px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    table.likert-grid th {
+      font-weight: 500;
+      color: #5f6368;
+      background: #fafafa;
+    }
+
+    table.likert-grid td.row-label {
+      text-align: left;
+      font-weight: 400;
+      color: #202124;
+      width: 45%;
+      padding-right: 12px;
+    }
+
+    table.likert-grid input[type="radio"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary-teal);
+      cursor: pointer;
+    }
+
+    .btn-submit {
+      background-color: var(--primary-teal);
+      color: white;
+      border: none;
+      padding: 12px 32px;
+      font-size: 15px;
+      font-weight: 500;
+      border-radius: 4px;
+      cursor: pointer;
+      align-self: flex-start;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .btn-submit:hover {
+      background-color: var(--primary-dark);
+    }
+  </style>
+</head>
+<body>
+
+  <form class="form-container" onsubmit="event.preventDefault(); alert('Form submitted successfully!');">
+    
+    <!-- Title Card -->
+    <div class="card header-card">
+      <h1 class="header-title">Impact of Social Media Marketing on Consumer Purchase Decisions</h1>
+      <div class="header-desc">
+Dear Respondent,
+We are conducting an academic research survey on "Impact of Social Media Marketing on Consumer Purchase Decisions".
+This questionnaire is intended to collect information regarding your social media usage, advertising perceptions, and purchasing behavior.
+
+Your valuable responses will be strictly confidential and used purely for academic research purposes.
+      </div>
+      <div class="required-note">* Indicates required question</div>
+    </div>
+
+    <!-- SECTION A -->
+    <div class="section-header">
+      <h2>Section A – Demographic Profile</h2>
+      <p>Personal and background information</p>
+    </div>
+
+    <div class="card">
+      <div class="question-title">1. What is your gender?<span class="req">*</span></div>
+      <div class="options-group">
+        <label class="radio-option"><input type="radio" name="gender" required> Male</label>
+        <label class="radio-option"><input type="radio" name="gender"> Female</label>
+        <label class="radio-option"><input type="radio" name="gender"> Prefer not to say</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="question-title">2. Which age group do you belong to?<span class="req">*</span></div>
+      <div class="options-group">
+        <label class="radio-option"><input type="radio" name="age" required> Below 20 years</label>
+        <label class="radio-option"><input type="radio" name="age"> 21–30 years</label>
+        <label class="radio-option"><input type="radio" name="age"> 31–40 years</label>
+        <label class="radio-option"><input type="radio" name="age"> 41–50 years</label>
+        <label class="radio-option"><input type="radio" name="age"> Above 50 years</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="question-title">3. What is your highest educational qualification?<span class="req">*</span></div>
+      <div class="options-group">
+        <label class="radio-option"><input type="radio" name="edu" required> Higher Secondary</label>
+        <label class="radio-option"><input type="radio" name="edu"> Undergraduate</label>
+        <label class="radio-option"><input type="radio" name="edu"> Postgraduate</label>
+        <label class="radio-option"><input type="radio" name="edu"> M.Phil./Ph.D.</label>
+        <label class="radio-option"><input type="radio" name="edu"> Other: <input type="text" class="other-input" placeholder="Specify"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="question-title">4. What is your current occupation?<span class="req">*</span></div>
+      <div class="options-group">
+        <label class="radio-option"><input type="radio" name="occ" required> Student</label>
+        <label class="radio-option"><input type="radio" name="occ"> Private Sector Employee</label>
+        <label class="radio-option"><input type="radio" name="occ"> Government Employee</label>
+        <label class="radio-option"><input type="radio" name="occ"> Business/Self-employed</label>
+        <label class="radio-option"><input type="radio" name="occ"> Homemaker</label>
+        <label class="radio-option"><input type="radio" name="occ"> Other: <input type="text" class="other-input" placeholder="Specify"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="question-title">5. What is your monthly income?<span class="req">*</span></div>
+      <div class="options-group">
+        <label class="radio-option"><input type="radio" name="income" required> Below ₹20,000</label>
+        <label class="radio-option"><input type="radio" name="income"> ₹20,001–₹40,000</label>
+        <label class="radio-option"><input type="radio" name="income"> ₹40,001–₹60,000</label>
+        <label class="radio-option"><input type="radio" name="income"> ₹60,001–₹80,000</label>
+        <label class="radio-option"><input type="radio" name="income"> Above ₹80,000</label>
+        <label class="radio-option"><input type="radio" name="income"> Prefer not to say</label>
+      </div>
+    </div>
+
+    <!-- SECTION B -->
+    <div class="section-header">
+      <h2>Section B – Social Media Usage</h2>
+      <p>Your social media behavior and activities</p>
+    </div>
+
+    <div class="card">
+      <div class="question-title">6. Which social media platform do you use most frequently?<span class="req">*</span></div>
+      <div class="options-group">
+        <label class="radio-option"><input type="radio" name="platform" required> Instagram</label>
+        <label class="radio-option"><input type="radio" name="platform"> YouTube</label>
+        <label class="radio-option"><input type="radio" name="platform"> Facebook</label>
+        <label class="radio-option"><input type="radio" name="platform"> WhatsApp</label>
+        <label class="radio-option"><input type="radio" name="platform"> X (Twitter)</label>
+        <label class="radio-option"><input type="radio" name="platform"> Other: <input type="text" class="other-input" placeholder="Specify"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="question-title">7. How much time do you spend on social media on an average day?<span class="req">*</span></div>
+      <div class="options-group">
+        <label class="radio-option"><input type="radio" name="time_spent" required> Less than 1 hour</label>
+        <label class="radio-option"><input type="radio" name="time_spent"> 1–2 hours</label>
+        <label class="radio-option"><input type="radio" name="time_spent"> 2–4 hours</label>
+        <label class="radio-option"><input type="radio" name="time_spent"> 4–6 hours</label>
+        <label class="radio-option"><input type="radio" name="time_spent"> More than 6 hours</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="question-title">8. How often do you come across advertisements for products/services on social media?<span class="req">*</span></div>
+      <div class="options-group">
+        <label class="radio-option"><input type="radio" name="ad_freq" required> Very rarely</label>
+        <label class="radio-option"><input type="radio" name="ad_freq"> Rarely</label>
+        <label class="radio-option"><input type="radio" name="ad_freq"> Sometimes</label>
+        <label class="radio-option"><input type="radio" name="ad_freq"> Often</label>
+        <label class="radio-option"><input type="radio" name="ad_freq"> Very often</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="question-title">9. Have you ever purchased a product after seeing it on social media?<span class="req">*</span></div>
+      <div class="options-group">
+        <label class="radio-option"><input type="radio" name="purchased_ever" required> Yes</label>
+        <label class="radio-option"><input type="radio" name="purchased_ever"> No</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="question-title">10. Which type of product do you most often discover through social media?<span class="req">*</span></div>
+      <div class="options-group">
+        <label class="radio-option"><input type="radio" name="product_type" required> Clothing/Fashion</label>
+        <label class="radio-option"><input type="radio" name="product_type"> Beauty/Cosmetics</label>
+        <label class="radio-option"><input type="radio" name="product_type"> Food</label>
+        <label class="radio-option"><input type="radio" name="product_type"> Electronics</label>
+        <label class="radio-option"><input type="radio" name="product_type"> Travel/Services</label>
+        <label class="radio-option"><input type="radio" name="product_type"> Other: <input type="text" class="other-input" placeholder="Specify"></label>
+      </div>
+    </div>
+
+    <!-- SECTION C -->
+    <div class="section-header">
+      <h2>Section C – Ranking Questions</h2>
+      <p>1 = Most influential / useful / important | 5 = Least</p>
+    </div>
+
+    <div class="card">
+      <div class="question-title">11. Rank the following factors according to how much they influence you when considering a product seen on social media:<span class="req">*</span></div>
+      <div class="grid-wrapper">
+        <table class="likert-grid">
+          <thead>
+            <tr>
+              <th>Factor</th>
+              <th>Rank 1</th>
+              <th>Rank 2</th>
+              <th>Rank 3</th>
+              <th>Rank 4</th>
+              <th>Rank 5</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="row-label">Product reviews and ratings</td><td><input type="radio" name="r11_1" required></td><td><input type="radio" name="r11_1"></td><td><input type="radio" name="r11_1"></td><td><input type="radio" name="r11_1"></td><td><input type="radio" name="r11_1"></td></tr>
+            <tr><td class="row-label">Influencer recommendations</td><td><input type="radio" name="r11_2" required></td><td><input type="radio" name="r11_2"></td><td><input type="radio" name="r11_2"></td><td><input type="radio" name="r11_2"></td><td><input type="radio" name="r11_2"></td></tr>
+            <tr><td class="row-label">Discounts and promotional offers</td><td><input type="radio" name="r11_3" required></td><td><input type="radio" name="r11_3"></td><td><input type="radio" name="r11_3"></td><td><input type="radio" name="r11_3"></td><td><input type="radio" name="r11_3"></td></tr>
+            <tr><td class="row-label">Attractive advertisements/content</td><td><input type="radio" name="r11_4" required></td><td><input type="radio" name="r11_4"></td><td><input type="radio" name="r11_4"></td><td><input type="radio" name="r11_4"></td><td><input type="radio" name="r11_4"></td></tr>
+            <tr><td class="row-label">Product information/details</td><td><input type="radio" name="r11_5" required></td><td><input type="radio" name="r11_5"></td><td><input type="radio" name="r11_5"></td><td><input type="radio" name="r11_5"></td><td><input type="radio" name="r11_5"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="question-title">12. Rank the following social media platforms according to their usefulness for discovering products:<span class="req">*</span></div>
+      <div class="grid-wrapper">
+        <table class="likert-grid">
+          <thead>
+            <tr>
+              <th>Platform</th>
+              <th>Rank 1</th>
+              <th>Rank 2</th>
+              <th>Rank 3</th>
+              <th>Rank 4</th>
+              <th>Rank 5</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="row-label">Instagram</td><td><input type="radio" name="r12_1" required></td><td><input type="radio" name="r12_1"></td><td><input type="radio" name="r12_1"></td><td><input type="radio" name="r12_1"></td><td><input type="radio" name="r12_1"></td></tr>
+            <tr><td class="row-label">YouTube</td><td><input type="radio" name="r12_2" required></td><td><input type="radio" name="r12_2"></td><td><input type="radio" name="r12_2"></td><td><input type="radio" name="r12_2"></td><td><input type="radio" name="r12_2"></td></tr>
+            <tr><td class="row-label">Facebook</td><td><input type="radio" name="r12_3" required></td><td><input type="radio" name="r12_3"></td><td><input type="radio" name="r12_3"></td><td><input type="radio" name="r12_3"></td><td><input type="radio" name="r12_3"></td></tr>
+            <tr><td class="row-label">WhatsApp</td><td><input type="radio" name="r12_4" required></td><td><input type="radio" name="r12_4"></td><td><input type="radio" name="r12_4"></td><td><input type="radio" name="r12_4"></td><td><input type="radio" name="r12_4"></td></tr>
+            <tr><td class="row-label">X</td><td><input type="radio" name="r12_5" required></td><td><input type="radio" name="r12_5"></td><td><input type="radio" name="r12_5"></td><td><input type="radio" name="r12_5"></td><td><input type="radio" name="r12_5"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="question-title">13. Rank the following factors according to their importance when purchasing a product promoted on social media:<span class="req">*</span></div>
+      <div class="grid-wrapper">
+        <table class="likert-grid">
+          <thead>
+            <tr>
+              <th>Factor</th>
+              <th>Rank 1</th>
+              <th>Rank 2</th>
+              <th>Rank 3</th>
+              <th>Rank 4</th>
+              <th>Rank 5</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="row-label">Price</td><td><input type="radio" name="r13_1" required></td><td><input type="radio" name="r13_1"></td><td><input type="radio" name="r13_1"></td><td><input type="radio" name="r13_1"></td><td><input type="radio" name="r13_1"></td></tr>
+            <tr><td class="row-label">Product quality</td><td><input type="radio" name="r13_2" required></td><td><input type="radio" name="r13_2"></td><td><input type="radio" name="r13_2"></td><td><input type="radio" name="r13_2"></td><td><input type="radio" name="r13_2"></td></tr>
+            <tr><td class="row-label">Customer reviews</td><td><input type="radio" name="r13_3" required></td><td><input type="radio" name="r13_3"></td><td><input type="radio" name="r13_3"></td><td><input type="radio" name="r13_3"></td><td><input type="radio" name="r13_3"></td></tr>
+            <tr><td class="row-label">Brand reputation</td><td><input type="radio" name="r13_4" required></td><td><input type="radio" name="r13_4"></td><td><input type="radio" name="r13_4"></td><td><input type="radio" name="r13_4"></td><td><input type="radio" name="r13_4"></td></tr>
+            <tr><td class="row-label">Discounts/offers</td><td><input type="radio" name="r13_5" required></td><td><input type="radio" name="r13_5"></td><td><input type="radio" name="r13_5"></td><td><input type="radio" name="r13_5"></td><td><input type="radio" name="r13_5"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SECTION D -->
+    <div class="section-header">
+      <h2>Section D – Social Media Marketing</h2>
+      <p>1 – Strongly Disagree | 2 – Disagree | 3 – Neutral | 4 – Agree | 5 – Strongly Agree</p>
+    </div>
+
+    <div class="card">
+      <div class="question-title">Please indicate your level of agreement with each statement:<span class="req">*</span></div>
+      <div class="grid-wrapper">
+        <table class="likert-grid">
+          <thead>
+            <tr>
+              <th>Statement</th>
+              <th>1<br><small>SD</small></th>
+              <th>2<br><small>D</small></th>
+              <th>3<br><small>N</small></th>
+              <th>4<br><small>A</small></th>
+              <th>5<br><small>SA</small></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="row-label">14. Social media advertisements make me aware of new products.</td><td><input type="radio" name="s14" required></td><td><input type="radio" name="s14"></td><td><input type="radio" name="s14"></td><td><input type="radio" name="s14"></td><td><input type="radio" name="s14"></td></tr>
+            <tr><td class="row-label">15. Social media provides useful information about products and services.</td><td><input type="radio" name="s15" required></td><td><input type="radio" name="s15"></td><td><input type="radio" name="s15"></td><td><input type="radio" name="s15"></td><td><input type="radio" name="s15"></td></tr>
+            <tr><td class="row-label">16. Attractive social media content makes me interested in a product.</td><td><input type="radio" name="s16" required></td><td><input type="radio" name="s16"></td><td><input type="radio" name="s16"></td><td><input type="radio" name="s16"></td><td><input type="radio" name="s16"></td></tr>
+            <tr><td class="row-label">17. Customer reviews on social media influence my opinion about a product.</td><td><input type="radio" name="s17" required></td><td><input type="radio" name="s17"></td><td><input type="radio" name="s17"></td><td><input type="radio" name="s17"></td><td><input type="radio" name="s17"></td></tr>
+            <tr><td class="row-label">18. Recommendations from social media influencers affect my product evaluation.</td><td><input type="radio" name="s18" required></td><td><input type="radio" name="s18"></td><td><input type="radio" name="s18"></td><td><input type="radio" name="s18"></td><td><input type="radio" name="s18"></td></tr>
+            <tr><td class="row-label">19. Promotional offers on social media encourage me to consider purchasing a product.</td><td><input type="radio" name="s19" required></td><td><input type="radio" name="s19"></td><td><input type="radio" name="s19"></td><td><input type="radio" name="s19"></td><td><input type="radio" name="s19"></td></tr>
+            <tr><td class="row-label">20. I find social media useful for comparing different products or brands.</td><td><input type="radio" name="s20" required></td><td><input type="radio" name="s20"></td><td><input type="radio" name="s20"></td><td><input type="radio" name="s20"></td><td><input type="radio" name="s20"></td></tr>
+            <tr><td class="row-label">21. I trust product information shared by established brands on social media.</td><td><input type="radio" name="s21" required></td><td><input type="radio" name="s21"></td><td><input type="radio" name="s21"></td><td><input type="radio" name="s21"></td><td><input type="radio" name="s21"></td></tr>
+            <tr><td class="row-label">22. Social media helps me discover products that I would not otherwise know about.</td><td><input type="radio" name="s22" required></td><td><input type="radio" name="s22"></td><td><input type="radio" name="s22"></td><td><input type="radio" name="s22"></td><td><input type="radio" name="s22"></td></tr>
+            <tr><td class="row-label">23. I pay attention to comments and feedback from other consumers on social media.</td><td><input type="radio" name="s23" required></td><td><input type="radio" name="s23"></td><td><input type="radio" name="s23"></td><td><input type="radio" name="s23"></td><td><input type="radio" name="s23"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SECTION E -->
+    <div class="section-header">
+      <h2>Section E – Consumer Purchase Decision</h2>
+      <p>1 – Strongly Disagree | 2 – Disagree | 3 – Neutral | 4 – Agree | 5 – Strongly Agree</p>
+    </div>
+
+    <div class="card">
+      <div class="question-title">Please indicate your level of agreement with each statement:<span class="req">*</span></div>
+      <div class="grid-wrapper">
+        <table class="likert-grid">
+          <thead>
+            <tr>
+              <th>Statement</th>
+              <th>1<br><small>SD</small></th>
+              <th>2<br><small>D</small></th>
+              <th>3<br><small>N</small></th>
+              <th>4<br><small>A</small></th>
+              <th>5<br><small>SA</small></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="row-label">24. Social media information influences my purchase decisions.</td><td><input type="radio" name="s24" required></td><td><input type="radio" name="s24"></td><td><input type="radio" name="s24"></td><td><input type="radio" name="s24"></td><td><input type="radio" name="s24"></td></tr>
+            <tr><td class="row-label">25. I search social media before purchasing certain products.</td><td><input type="radio" name="s25" required></td><td><input type="radio" name="s25"></td><td><input type="radio" name="s25"></td><td><input type="radio" name="s25"></td><td><input type="radio" name="s25"></td></tr>
+            <tr><td class="row-label">26. Positive reviews on social media increase my willingness to buy a product.</td><td><input type="radio" name="s26" required></td><td><input type="radio" name="s26"></td><td><input type="radio" name="s26"></td><td><input type="radio" name="s26"></td><td><input type="radio" name="s26"></td></tr>
+            <tr><td class="row-label">27. I am more likely to consider a brand that actively engages with customers on social media.</td><td><input type="radio" name="s27" required></td><td><input type="radio" name="s27"></td><td><input type="radio" name="s27"></td><td><input type="radio" name="s27"></td><td><input type="radio" name="s27"></td></tr>
+            <tr><td class="row-label">28. Social media promotions can encourage me to purchase a product sooner.</td><td><input type="radio" name="s28" required></td><td><input type="radio" name="s28"></td><td><input type="radio" name="s28"></td><td><input type="radio" name="s28"></td><td><input type="radio" name="s28"></td></tr>
+            <tr><td class="row-label">29. I have purchased a product because of a recommendation seen on social media.</td><td><input type="radio" name="s29" required></td><td><input type="radio" name="s29"></td><td><input type="radio" name="s29"></td><td><input type="radio" name="s29"></td><td><input type="radio" name="s29"></td></tr>
+            <tr><td class="row-label">30. Social media helps me feel more confident about some purchase decisions.</td><td><input type="radio" name="s30" required></td><td><input type="radio" name="s30"></td><td><input type="radio" name="s30"></td><td><input type="radio" name="s30"></td><td><input type="radio" name="s30"></td></tr>
+            <tr><td class="row-label">31. I compare products on social media before making some purchase decisions.</td><td><input type="radio" name="s31" required></td><td><input type="radio" name="s31"></td><td><input type="radio" name="s31"></td><td><input type="radio" name="s31"></td><td><input type="radio" name="s31"></td></tr>
+            <tr><td class="row-label">32. I am likely to recommend a product that I discovered through social media.</td><td><input type="radio" name="s32" required></td><td><input type="radio" name="s32"></td><td><input type="radio" name="s32"></td><td><input type="radio" name="s32"></td><td><input type="radio" name="s32"></td></tr>
+            <tr><td class="row-label">33. Overall, social media influences my purchase decisions.</td><td><input type="radio" name="s33" required></td><td><input type="radio" name="s33"></td><td><input type="radio" name="s33"></td><td><input type="radio" name="s33"></td><td><input type="radio" name="s33"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <button type="submit" class="btn-submit">Submit</button>
+
+  </form>
+
+</body>
+</html>

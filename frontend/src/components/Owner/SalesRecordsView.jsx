@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { InvoiceReversalPanel } from '../common/InvoiceReversalPanel';
 import { useApp } from '../../context/AppContext';
 import { 
   ShoppingBag, Search, Filter, Eye, Printer, DollarSign, 
@@ -144,11 +145,15 @@ const getSaleFinancials = (sale) => {
 };
 
 export const SalesRecordsView = () => {
-  const { sales = [], shops = [], employees = [], API_URL, apiFetch, exportReportData, refreshData } = useApp();
+  const { sales: cachedSales = [], shops = [], employees = [], API_URL, apiFetch, exportReportData, refreshData } = useApp();
 
   // ------------------------------------------------------------------
   // ADVANCED FILTER STATE MANAGEMENT
   // ------------------------------------------------------------------
+  const [report, setReport] = useState(null);
+  const [page, setPage] = useState(1);
+  const [reportRevision, setReportRevision] = useState(0);
+  const sales = report?.rows || cachedSales;
   const [searchQuery, setSearchQuery] = useState('');
   const [quickDate, setQuickDate] = useState('ALL'); // ALL, TODAY, YESTERDAY, THIS_WEEK, THIS_MONTH, CUSTOM
   const [fromDate, setFromDate] = useState('');
@@ -166,32 +171,11 @@ export const SalesRecordsView = () => {
   const [printThermalBill, setPrintThermalBill] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Auto-sync polling every 5 seconds so Owner sees new Driver & Storekeeper bills in real time
   useEffect(() => {
-    if (typeof refreshData === 'function') {
-      refreshData();
-    }
-    const interval = setInterval(() => {
-      if (typeof refreshData === 'function') {
-        refreshData();
-      }
-    }, 5000);
+    const interval = setInterval(() => { if (!document.hidden) setReportRevision(value => value + 1); }, 15000);
     return () => clearInterval(interval);
-  }, [refreshData]);
-
-  const handleManualSync = async () => {
-    if (typeof refreshData === 'function') {
-      setIsRefreshing(true);
-      try {
-        await refreshData();
-        toast.success('Live billing records refreshed!');
-      } catch (e) {
-        console.error('Refresh error:', e);
-      } finally {
-        setIsRefreshing(false);
-      }
-    }
-  };
+  }, []);
+  const handleManualSync = async () => { setReportRevision(value => value + 1); };
 
   useEffect(() => {
     if (selectedSaleDetails && (!selectedSaleDetails.items || selectedSaleDetails.items.length === 0)) {
@@ -312,118 +296,30 @@ export const SalesRecordsView = () => {
   // ------------------------------------------------------------------
   // COMBINED MULTI-FIELD FILTER ENGINE (BOOLEAN AND LOGIC)
   // ------------------------------------------------------------------
-  const filteredSales = useMemo(() => {
-    if (dateError) return []; // Block execution if invalid date range
-
-    return (sales || []).filter(sale => {
-      const saleYmd = extractSaleDateYMD(sale);
-      const isStoreCounter = (sale.is_store_direct_sale === true || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'))) && (!sale.employee_name || sale.employee_name.toLowerCase().includes('store'));
-
-      // 1. DATE RANGE FILTER (From Date <= saleYmd <= To Date, inclusive)
-      if (fromDate && saleYmd && saleYmd < fromDate) return false;
-      if (toDate && saleYmd && saleYmd > toDate) return false;
-      if ((fromDate || toDate) && !saleYmd) return false;
-
-      // 2. SELLER FILTER
-      if (sellerFilter !== 'ALL') {
-        if (sellerFilter === 'STORE') {
-          if (!isStoreCounter) return false;
-        } else {
-          const selectedSeller = availableSellers.find(s => s.id === sellerFilter);
-          const selCleanName = selectedSeller ? selectedSeller.name.replace(/^🚚\s*/, '').trim().toLowerCase() : '';
-          const saleEmpName = (sale.employee_name || '').trim().toLowerCase();
-          const idMatches = String(sale.employee_id) === String(sellerFilter);
-          const nameMatches = selCleanName && saleEmpName === selCleanName;
-          if ((!idMatches && !nameMatches) || isStoreCounter) return false;
-        }
-      }
-
-      // 3. PAYMENT METHOD FILTER
-      if (paymentFilter !== 'ALL') {
-        const mode = (sale.payment_mode || 'CASH').toUpperCase();
-        if (mode !== paymentFilter.toUpperCase()) return false;
-      }
-
-      // 4. SALES SOURCE FILTER
-      if (salesSource !== 'ALL') {
-        if (salesSource === 'DIRECT' && !isStoreCounter) return false;
-        if (salesSource === 'ROUTE' && isStoreCounter) return false;
-      }
-
-      // 5. SHOP / CUSTOMER FILTER
-      if (shopFilter !== 'ALL') {
-        if (String(sale.shop_id) !== String(shopFilter) && (!sale.shop_name || !sale.shop_name.toLowerCase().includes(String(shopFilter).toLowerCase()))) {
-          return false;
-        }
-      }
-
-      // 6. AMOUNT RANGE FILTER
-      const amt = Number(sale.total_amount || 0);
-      if (minAmount !== '' && amt < Number(minAmount)) return false;
-      if (maxAmount !== '' && amt > Number(maxAmount)) return false;
-
-      // 7. PAYMENT STATUS FILTER
-      if (paymentStatus !== 'ALL') {
-        const mode = (sale.payment_mode || 'CASH').toUpperCase();
-        let status = 'PAID';
-        if (mode === 'CREDIT' || (sale.credit_paid || 0) > 0 || (sale.balance || 0) > 0) {
-          status = (sale.cash_paid > 0 || sale.gpay_paid > 0) ? 'PARTIAL' : 'CREDIT';
-        }
-        if (mode === 'SPLIT') status = 'PARTIAL';
-
-        if (status !== paymentStatus.toUpperCase()) return false;
-      }
-
-      // 8. BILL NUMBER & MULTI-FIELD SEARCH
-      if (searchQuery.trim()) {
-        const q = searchQuery.trim().toLowerCase();
-        const bNo = (sale.bill_no || '').toLowerCase();
-        const sName = (sale.shop_name || sale.customer_name || '').toLowerCase();
-        const eName = (sale.employee_name || '').toLowerCase();
-        const sId = String(sale.shop_id || '').toLowerCase();
-
-        if (!bNo.includes(q) && !sName.includes(q) && !eName.includes(q) && !sId.includes(q)) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [sales, fromDate, toDate, sellerFilter, paymentFilter, salesSource, shopFilter, minAmount, maxAmount, paymentStatus, searchQuery, dateError]);
-
-  // ------------------------------------------------------------------
-  // DYNAMIC TOP KPI SUMMARY CARDS (BASED ON FILTERED RESULTS)
-  // ------------------------------------------------------------------
-  const metrics = useMemo(() => {
-    const list = filteredSales;
-    let totalRev = 0;
-    let totalRec = 0;
-    let totalBal = 0;
-    let storeRev = 0;
-
-    list.forEach(s => {
-      const { total, received, balance } = getSaleFinancials(s);
-      totalRev += total;
-      totalRec += received;
-      totalBal += balance;
-
-      const isStore = s.is_store_direct_sale || Number(s.employee_id) === 6 || (s.employee_name && s.employee_name.toLowerCase().includes('store'));
-      if (isStore) {
-        storeRev += total;
-      }
-    });
-
-    const driverRev = totalRev - storeRev;
-
-    return {
-      totalBills: list.length,
-      totalRevenue: totalRev,
-      totalReceived: totalRec,
-      totalBalance: totalBal,
-      storeRevenue: storeRev,
-      driverRevenue: driverRev
-    };
-  }, [filteredSales]);
+  useEffect(() => { setPage(1); }, [fromDate,toDate,sellerFilter,paymentFilter,salesSource,shopFilter,minAmount,maxAmount,paymentStatus,searchQuery]);
+  const reportFilters = () => {
+    const params = new URLSearchParams({page:String(page),from:fromDate,to:toDate,payment_mode:paymentFilter,source:sellerFilter==='STORE'?'DIRECT':salesSource,shop_id:shopFilter,min_amount:minAmount,max_amount:maxAmount,payment_status:paymentStatus,search:searchQuery});
+    if (!['ALL','STORE'].includes(sellerFilter)) params.set('employee_id',sellerFilter);
+    return params;
+  };
+  useEffect(() => {
+    if (dateError || amountError) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setIsRefreshing(true);
+      try {
+        const params = reportFilters();
+        const response = await apiFetch(API_URL + '/reports/sales?' + params,{signal:controller.signal});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Unable to load sales report');
+        setReport(data);
+      } catch (error) { if (error.name !== 'AbortError') toast.error(error.message); }
+      finally { if (!controller.signal.aborted) setIsRefreshing(false); }
+    },250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  },[page,fromDate,toDate,sellerFilter,paymentFilter,salesSource,shopFilter,minAmount,maxAmount,paymentStatus,searchQuery,reportRevision,dateError,amountError,API_URL,apiFetch]);
+  const filteredSales = dateError || amountError ? [] : report?.rows || [];
+  const metrics = report?.metrics || {totalBills:0,totalRevenue:0,totalReceived:0,totalBalance:0,storeRevenue:0,driverRevenue:0};
 
   // RESET ALL FILTERS
   const handleClearAllFilters = () => {
@@ -508,6 +404,11 @@ export const SalesRecordsView = () => {
 
   return (
     <div className="space-y-4 sm:space-y-5 pb-6">
+      <div className="flex items-center justify-end gap-3 text-sm">
+        <button type="button" disabled={page===1 || isRefreshing} onClick={()=>setPage(value=>value-1)} className="px-3 py-2 rounded-xl border border-sky-200 disabled:opacity-50">Previous</button>
+        <span>Page {page} · {metrics.totalBills} bills</span>
+        <button type="button" disabled={page*100>=metrics.totalBills || isRefreshing} onClick={()=>setPage(value=>value+1)} className="px-3 py-2 rounded-xl border border-sky-200 disabled:opacity-50">Next</button>
+      </div>
       
       {/* Top Banner */}
       <div className="p-4 sm:p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-sky-950 to-slate-900 text-white border-2 border-sky-900 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
@@ -556,8 +457,13 @@ export const SalesRecordsView = () => {
                   : `${fromDate || 'Start'} to ${toDate || 'End'}`;
                 
                 toast.info('Generating Sales Report PDF...');
+                const params = reportFilters();
+                params.set('export','pdf');
+                const response = await apiFetch(API_URL + '/reports/sales?' + params);
+                const exported = await response.json();
+                if (!response.ok) throw new Error(exported.message || 'Unable to export sales report');
                 await generateSalesRecordsPDFReport({ 
-                  sales: filteredSales,
+                  sales: exported.rows,
                   period: quickDate,
                   dateRangeText: dateLabel,
                   companyInfo: { name: 'AVS AGENCIES', address: 'Villupuram, Tamil Nadu' }
@@ -930,7 +836,7 @@ export const SalesRecordsView = () => {
       {/* FILTER SUMMARY BAR WITH DETAILED FINANCIALS */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-2 text-xs sm:text-sm font-bold text-slate-700">
         <div>
-          Showing <span className="text-sky-800 font-black">{filteredSales.length}</span> of <span className="text-slate-900 font-black">{sales.length}</span> Total Bills
+          Showing <span className="text-sky-800 font-black">{filteredSales.length}</span> of <span className="text-slate-900 font-black">{metrics.totalBills}</span> Total Bills
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-4 font-mono font-black text-xs sm:text-sm">
           <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-xl border border-emerald-200 shadow-2xs">
@@ -1264,6 +1170,7 @@ export const SalesRecordsView = () => {
               </div>
             </div>
 
+            <InvoiceReversalPanel key={selectedSaleDetails.id} sale={selectedSaleDetails} onUpdated={() => { setSelectedSaleDetails(null); setReportRevision(value=>value+1); }} />
             {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-2">
               <button

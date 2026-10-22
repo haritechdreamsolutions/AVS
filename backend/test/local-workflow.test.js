@@ -1,0 +1,81 @@
+import assert from 'node:assert/strict';
+import { readFile, writeFile } from 'node:fs/promises';
+import { chromium } from '@playwright/test';
+import pg from 'pg';
+
+const fixture=JSON.parse(await readFile('.tmp/local-preview.json','utf8'));
+if(fixture.url!=='http://127.0.0.1:5000' || !/^postgresql:\/\/avs_preview_runtime_\d+@127\.0\.0\.1:55439\/avs_hardening_preview[a-z0-9_]*$/.test(fixture.database_url))throw new Error('Explicit isolated preview required');
+const database=new pg.Pool({connectionString:fixture.database_url,max:1});
+const browser=await chromium.launch({headless:true,channel:'msedge'});
+const errors=[],results={};
+let page;
+async function login(loginId) {
+  const context=await browser.newContext({viewport:{width:1440,height:1100}});
+  const current=await context.newPage();
+  current.on('pageerror',error=>errors.push(error.message));
+  current.on('response',response=>{if(response.url().includes('/api/') && response.status()>=500)errors.push(new URL(response.url()).pathname+': '+response.status());});
+  await current.route('**/*',route=>route.request().url().startsWith(fixture.url+'/')?route.continue():route.abort());
+  await current.goto(fixture.url);
+  await current.getByPlaceholder('Enter your Login ID (e.g. owner)').fill(loginId);
+  await current.getByLabel('Password or driver PIN').fill(fixture.password);
+  await current.getByRole('button',{name:'Enter',exact:true}).click();
+  return current;
+}
+try {
+  assert.equal((await database.query('SELECT COUNT(*)::int AS count FROM sales')).rows[0].count,0,'Use a new preview fixture; do not repeat financial operations');
+  page=await login(fixture.keeper);
+  await page.getByRole('button',{name:'Shop Bill',exact:true}).first().click();
+  await page.getByText('Local Test Village',{exact:true}).click();
+  await page.getByText('Local Test Shop',{exact:true}).click();
+  await page.getByPlaceholder('0',{exact:true}).fill('2');
+  await page.getByRole('button',{name:/Proceed to Payment/}).click();
+  await page.getByRole('button',{name:/^CREDIT/}).click();
+  const created=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/sales' && response.request().method()==='POST');
+  await page.getByRole('button',{name:/GENERATE SHOP BILL & PRINT/}).click();
+  const response=await created;
+  const invoice=await response.json();
+  assert.equal(response.status(),200,JSON.stringify(invoice));
+  assert.equal(invoice.success,true);
+  assert.equal(Number(invoice.sale.total_amount),20);
+  results.login='PASS: real keeper and owner password login';
+  results.invoice='PASS: keeper UI creates one saved credit invoice for two pieces / INR 20';
+  const receipt=page.locator('.printable-thermal-80mm, .printable-thermal-receipt');
+  await receipt.getByText('Local Test Milk',{exact:true}).waitFor();
+  assert.ok((await receipt.innerText()).includes(invoice.sale.bill_no));
+  await page.emulateMedia({media:'print'});
+  assert.equal(await receipt.evaluate(element=>getComputedStyle(element).visibility),'visible');
+  await page.pdf({path:'.tmp/local-preview-receipt.pdf',printBackground:true,preferCSSPageSize:true});
+  await page.screenshot({path:'.tmp/local-preview-receipt.png',fullPage:true});
+  await page.emulateMedia({media:'screen'});
+  await page.evaluate(()=>{window.__printCalls=0;window.print=()=>{window.__printCalls++;};});
+  await page.getByRole('button',{name:'System Print (Ctrl+P)',exact:true}).click();
+  assert.equal(await page.evaluate(()=>window.__printCalls),1);
+  results.printing='PASS: saved receipt preview, print stylesheet, PDF rendering and system-print invocation; physical printer NOT TESTED';
+  page=await login(fixture.owner);
+  await page.getByRole('button',{name:'Shops & Dues',exact:true}).click();
+  await page.getByRole('button',{name:'Collect Due',exact:true}).first().click();
+  await page.getByPlaceholder('Enter amount collected...').fill('20');
+  const collected=page.waitForResponse(response=>new URL(response.url()).pathname===`/api/shops/${fixture.shop}/collect-due` && response.request().method()==='POST');
+  await page.getByRole('button',{name:'RECORD PAYMENT & UPDATE DUE',exact:true}).click();
+  const payment=await collected;
+  assert.equal(payment.status(),200);
+  assert.equal((await payment.json()).success,true);
+  results.payments='PASS: owner UI records INR 20 receipt, allocation and zero outstanding balance';
+  await page.getByRole('button',{name:'Sales & Bills',exact:true}).click();
+  await page.getByText('Page 1 · 1 bills',{exact:true}).waitFor();
+  const report=await page.request.get(fixture.url+'/api/reports/sales');
+  const data=await report.json();
+  assert.equal(data.metrics.totalRevenue,20);assert.equal(data.metrics.totalReceived,20);assert.equal(data.metrics.totalBalance,0);
+  results.reports='PASS: displayed sales report and API totals match invoice and receipt ledger';
+  const stock=(await database.query('SELECT warehouse_stock_units FROM products WHERE id=$1',[fixture.product])).rows[0];
+  assert.equal(Number(stock.warehouse_stock_units),9.8);
+  assert.equal(Number((await database.query('SELECT current_due FROM shops WHERE id=$1',[fixture.shop])).rows[0].current_due),0);
+  assert.equal(Number((await database.query('SELECT SUM(amount) AS total FROM receipt_allocations')).rows[0].total),20);
+  results.stock='PASS: warehouse decreases from 10 to 9.8 packs (100 to 98 pieces)';
+  assert.deepEqual(errors,[]);
+  await writeFile('.tmp/local-workflow-results.json',JSON.stringify(results,null,2));
+  console.log(JSON.stringify(results,null,2));
+} catch(error) {
+  if(page){await page.screenshot({path:'.tmp/local-workflow-failure.png',fullPage:true});console.error('Visible controls:',await page.getByRole('button').allTextContents());}
+  throw error;
+} finally {await browser.close();await database.end();}

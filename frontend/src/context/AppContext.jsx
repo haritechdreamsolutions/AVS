@@ -1,12 +1,42 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { sortProductsCustom } from '../utils/productOrderHelper';
 
 // Helper for authenticated requests
+let csrfValue = '';
+let csrfPending;
+const inFlightGets = new Map();
 export const apiFetch = async (url, options = {}) => {
-  return window.fetch(url, {
-    ...options,
-    credentials: 'include',
-  });
+  const method = (options.method || 'GET').toUpperCase();
+  const writing = !['GET','HEAD','OPTIONS'].includes(method);
+  if (writing && !csrfValue) {
+    csrfPending ||= window.fetch(API_URL + '/auth/csrf', { credentials:'include' })
+      .then(async response => {
+        const contentType = response.headers.get('content-type') || '';
+        if (!response.ok) throw new Error(`Unable to secure request (HTTP ${response.status})`);
+        if (!contentType.includes('application/json')) {
+          throw new Error('Unable to secure request: API returned HTML. Use the local app URL and verify the /api proxy.');
+        }
+        const data = await response.json();
+        if (!data.csrfToken) throw new Error('Unable to secure request: CSRF token is missing. Refresh and retry.');
+        csrfValue = data.csrfToken;
+      }).finally(() => { csrfPending = undefined; });
+    await csrfPending;
+  }
+  const headers = new Headers(options.headers);
+  if (writing) headers.set('X-CSRF-Token',csrfValue);
+  if (!writing && method === 'GET' && !options.signal) {
+    if (!inFlightGets.has(url)) inFlightGets.set(url,window.fetch(url,{...options,headers,credentials:'include'}).finally(()=>inFlightGets.delete(url)));
+    return (await inFlightGets.get(url)).clone();
+  }
+  const response = await window.fetch(url,{...options,headers,credentials:'include'});
+  if (/\/auth\/(?:login|logout)$/.test(url)) {
+    csrfValue = '';
+    if (url.endsWith('/logout')) {
+      localStorage.removeItem('avs_suppliers_cache');
+      localStorage.removeItem('avs_freezers_cache');
+    }
+  }
+  return response;
 };
 
 // Dynamic API URL for Local & Cloud Hosting (Netlify / Render / Vercel)
@@ -123,6 +153,7 @@ export const AppProvider = ({ children }) => {
   const [freezerModels, setFreezerModels] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshError, setRefreshError] = useState('');
   const [activeBill, setActiveBill] = useState(null);
 
   const checkSession = async () => {
@@ -154,7 +185,10 @@ export const AppProvider = ({ children }) => {
     checkSession();
   }, []);
 
-  const fetchData = async () => {
+  const refreshGeneration = useRef(0);
+  const fetchData = async (modules = null) => {
+    const generation = ++refreshGeneration.current;
+    const needs = name => !Array.isArray(modules) || modules.includes(name);
     if (!currentUser) {
       setLoading(false);
       return;
@@ -163,26 +197,29 @@ export const AppProvider = ({ children }) => {
     try {
       setLoading(true);
       const stockEmpId = currentUser?.employee_id || currentUser?.id;
+      const backOffice = ['OWNER','STORE_KEEPER'].includes(currentUser?.role);
       const isOwner = (currentUser?.role || '').toUpperCase() === 'OWNER' || (activeRole || '').toUpperCase() === 'OWNER';
       const [shopsRes, villagesRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes, empRes, driversRes, freezerModelsRes, freezersRes, suppliersRes] = await Promise.all([
-        apiFetch(`${API_URL}/shops`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/villages`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/products`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/categories`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(stockEmpId ? `${API_URL}/employee-stock/${stockEmpId}` : `${API_URL}/employee-stock`).then(r => r.ok ? r.json() : []).catch(() => []),
+        needs('shops') ? apiFetch(`${API_URL}/shops`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(shops),
+        needs('villages') ? apiFetch(`${API_URL}/villages`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(villages),
+        needs('products') ? apiFetch(`${API_URL}/products`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(products),
+        needs('categories') ? apiFetch(`${API_URL}/categories`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(categories),
+        apiFetch(stockEmpId ? `${API_URL}/employee-stock/${stockEmpId}` : `${API_URL}/employee-stock`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }),
         apiFetch(`${API_URL}/dashboard/summary`).then(r => r.ok ? r.json() : null).catch(() => null),
-        apiFetch(`${API_URL}/sales`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/expenses`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/inventory/movements`).then(r => r.ok ? r.json() : []).catch(() => []),
-        isOwner ? apiFetch(`${API_URL}/users`).then(r => r.ok ? r.json() : []).catch(() => []) : Promise.resolve([]),
-        apiFetch(`${API_URL}/routes`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/employees`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/drivers`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/freezer-models`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/freezers`).then(r => r.ok ? r.json() : []).catch(() => []),
-        apiFetch(`${API_URL}/suppliers`).then(r => r.ok ? r.json() : []).catch(() => [])
+        needs('sales') ? apiFetch(`${API_URL}/sales`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(sales),
+        needs('expenses') ? apiFetch(`${API_URL}/expenses`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(expenses),
+        needs('inventory/movements') ? apiFetch(`${API_URL}/inventory/movements`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(stockMovements),
+        isOwner ? apiFetch(`${API_URL}/users`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve([]),
+        needs('routes') ? apiFetch(`${API_URL}/routes`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(routes),
+        needs('employees') ? apiFetch(`${API_URL}/employees`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(employees),
+        needs('drivers') ? apiFetch(`${API_URL}/drivers`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(drivers),
+        backOffice && needs('freezer-models') ? apiFetch(`${API_URL}/freezer-models`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(freezerModels),
+        backOffice && needs('freezers') ? apiFetch(`${API_URL}/freezers`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(freezers),
+        backOffice && needs('suppliers') ? apiFetch(`${API_URL}/suppliers`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(suppliers)
       ]);
 
+      if (generation !== refreshGeneration.current) return;
+      setRefreshError('');
       setShops(Array.isArray(shopsRes) ? shopsRes : []);
       setVillages(Array.isArray(villagesRes) ? villagesRes : []);
       setProducts(Array.isArray(prodRes) ? sortProductsCustom(prodRes) : []);
@@ -213,6 +250,7 @@ export const AppProvider = ({ children }) => {
               if (Array.isArray(parsed)) return parsed;
             }
           } catch (e) {}
+      if (generation === refreshGeneration.current) setRefreshError('Unable to refresh application data. Your previous data is still displayed.');
           return [];
         });
       }
@@ -1053,7 +1091,7 @@ export const AppProvider = ({ children }) => {
       });
       const data = await res.json().catch(() => ({}));
 
-      const refreshed = await apiFetch(`${API_URL}/suppliers`).then(r => r.ok ? r.json() : []).catch(() => []);
+      const refreshed = await apiFetch(`${API_URL}/suppliers`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); });
       if (Array.isArray(refreshed)) {
         setSuppliers(refreshed);
         try { localStorage.setItem('avs_suppliers_cache', JSON.stringify(refreshed)); } catch (e) {}
@@ -1507,12 +1545,12 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const collectShopDue = async (shopId, { amount, mode }) => {
+  const collectShopDue = async (shopId, { amount, mode, idempotency_key }) => {
     try {
       const res = await apiFetch(`${API_URL}/shops/${shopId}/collect-due`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, mode })
+        body: JSON.stringify({ amount, payment_mode: mode, idempotency_key: idempotency_key || crypto.randomUUID() })
       });
       const data = await res.json();
       if (data.success) {
@@ -1528,14 +1566,7 @@ export const AppProvider = ({ children }) => {
         return { success: false, message: data.message };
       }
     } catch (err) {
-      setShops(prev => prev.map(s => {
-        if (String(s.id) === String(shopId)) {
-          const nextDue = Math.max(0, (Number(s.current_due) || 0) - Number(amount));
-          return { ...s, current_due: nextDue };
-        }
-        return s;
-      }));
-      return { success: true };
+      return { success:false, message:'Collection was not confirmed. Retry with the same receipt reference.' };
     }
   };
 
@@ -2040,6 +2071,7 @@ export const AppProvider = ({ children }) => {
       API_URL,
       refreshData: fetchData
     }}>
+      {refreshError && <div role="alert" className="bg-amber-50 text-amber-900 border border-amber-300 p-3 text-sm">{refreshError} <button type="button" onClick={()=>fetchData()} className="font-bold underline">Retry</button></div>}
       {children}
     </AppContext.Provider>
   );
