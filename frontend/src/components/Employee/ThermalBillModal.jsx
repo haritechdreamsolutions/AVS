@@ -16,7 +16,8 @@ export const ThermalBillModal = ({
   const { currentUser, companyInfo, API_URL, apiFetch, shops } = useApp();
 
   // 80mm / 82mm 3-Inch Mode strictly for StoreKeeper login
-  const is80mm = paperSize === '80mm' || isStoreKeeper || currentUser?.role === 'STOREKEEPER' || currentUser?.designation?.toLowerCase().includes('store');
+  const storekeeperPrint = isStoreKeeper || ['STORE_KEEPER', 'STOREKEEPER'].includes(currentUser?.role);
+  const is80mm = paperSize === '80mm' || storekeeperPrint;
   const [bill, setBill] = useState(initialBill || {});
   const [items, setItems] = useState(initialBill?.items || []);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -144,6 +145,7 @@ export const ThermalBillModal = ({
 
       const receiptPayload = {
         ...bill,
+        storekeeper_print: storekeeperPrint,
         bill_no: displayBillNo,
         employee_name: loggedInEmpName,
         company_name: companyName,
@@ -188,6 +190,30 @@ export const ThermalBillModal = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      {is80mm && <style>{`
+        @media print {
+          @page { size: 80mm auto; margin: 0; }
+          body :has(.printable-thermal-80mm) {
+            position: static !important;
+            overflow: visible !important;
+            max-height: none !important;
+            height: auto !important;
+            transform: none !important;
+          }
+        }
+        ${storekeeperPrint ? `
+          .printable-thermal-80mm, .printable-thermal-80mm * {
+            font-size: 14px !important;
+            line-height: 1.4 !important;
+            font-weight: 700 !important;
+          }
+          .printable-thermal-80mm h2 { font-size: 24px !important; }
+          @media print {
+            .printable-thermal-80mm { overflow: visible !important; max-height: none !important; }
+            .printable-thermal-80mm, .printable-thermal-80mm * { color: black !important; }
+          }
+        ` : ''}
+      `}</style>}
       <div className={`bg-white border border-slate-200 rounded-3xl ${is80mm ? 'max-w-lg sm:max-w-xl' : 'max-w-sm sm:max-w-md'} w-full p-3.5 sm:p-5 space-y-3 sm:space-y-4 shadow-2xl my-auto max-h-[96dvh] flex flex-col overflow-hidden`}>
         
         {/* Header (Screen only) */}

@@ -1,5 +1,25 @@
 # Production checkpoint - 2026-10-19
 
+## Same-day driver trips - 2026-10-21
+
+- Return submission clears the selected driver and forms. The next stock allocation starts a new session on the driver's currently assigned route; it never reopens a finalized session. New-trip stock, sales, expenses, damages and visit counts are session-scoped. Receipt collections are bounded by serialized trip opening/closing timestamps; daily settlement totals remain cumulative.
+- Closed-trip expense/damage edits and stale-session submissions are rejected even while a newer trip is open. Finalized daily settlements still block another trip. Leftover legacy vehicle stock blocks allocation for reconciliation rather than being reset or merged. No historical financial records were changed and no new schema migration is required.
+- PASS: isolated two-route/same-day database and real Edge return/expense-form workflow, five concurrent allocation retries, payment/stock totals, duplicate return rejection, immutable first-trip snapshots and daily-settlement lock; existing return atomicity suite (58 tests) and billing regression suite passed. Frontend build and backend syntax checks passed. No deployment performed.
+
+## Automatic employee codes - 2026-10-21
+
+- Step 1 reserves and displays its actual EMP-prefixed code. Create and edit code fields are disabled. The pending reservation is retained across cancel/reopen, navigation and reload in the same browser tab, scoped to the signed-in owner. Only successful employee creation advances to a new reservation; retries retain the same code.
+- Follow-up verification: five focused employee-code tests PASS, including Edge cancel/reopen and page reload retaining the same code, successful saves advancing it, and disabled edit codes. Frontend build and diff check passed; existing localhost:5000 health returned HTTP 200.
+- The owner-only reservation API reuses the existing operation_requests table and employee-ID sequence. Reservations and employee-save retries are idempotent and company-scoped; client code tampering is rejected. Employee updates reject code changes. Existing records are not renumbered, no schema migration is required, and cancelled forms can leave intentional code gaps.
+- Employee creation serializes per company, skips occupied IDs/codes/reservations, and saves profile/route assignment transactionally. Explicit manual-code creation remains compatible for existing API callers, but cannot claim a reserved code.
+- PASS: five focused employee-code tests and four user-update tests, including ten-way concurrency/reservation/save retries, company isolation, unchanged codes on edits, and actual Edge creation of two employee/user accounts with displayed-before-save codes matching saved codes. Frontend build, syntax/diff checks and local API health passed. No production/customer records, passwords or migrations were changed.
+
+## Users Master update correction - 2026-10-21
+
+- Preserve null/blank employee links as NULL when editing an unlinked owner; reject zero, negative and nonnumeric employee IDs. Profile-only edits retain the current session. Linked employee/route updates use the selected validated employee.
+- Users Master uses the shared API URL and distinguishes expired sessions/owner-access failures from load failures, offering Sign in again. Role/password/status-change session revocation remains enforced.
+- PASS: four focused synthetic tests, including actual Edge owner profile editing, successful users reload, invalid-ID rejection, other-account revocation and self-role-change sign-in handling. Frontend build, backend syntax/diff checks and running local API health passed. No existing account/password/financial data was reset or migrated; no deployment or push occurred.
+
 Branch: feat/production-critical-fixes-2026-10-18 (date requested by the owner). Changes are uncommitted and have not been pushed. This checkpoint supersedes earlier claims of complete production hardening.
 
 ## Deployment decision

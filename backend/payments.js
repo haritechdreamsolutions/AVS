@@ -50,7 +50,7 @@ export async function collectDue(cid, shopId, data, actor) {
     const invoices = await client.query("SELECT s.*, COALESCE((SELECT SUM(a.amount) FROM receipt_allocations a WHERE a.sale_id=s.id),0) AS allocated, COALESCE((SELECT SUM(r.amount) FROM payment_reversals r WHERE r.sale_id=s.id),0) AS refunded FROM sales s WHERE s.company_id=$1 AND s.shop_id=$2 AND s.status='ACTIVE' ORDER BY s.sale_date,s.id FOR UPDATE OF s",[cid,shopId]);
     const balance = paise(shop.opening_due_remaining) + invoices.rows.reduce((sum,sale)=>sum+paise(sale.credit_paid)-paise(sale.allocated)+paise(sale.refunded),0);
     if (balance !== paise(shop.current_due)) throw new Error('Shop ledger does not reconcile; collection requires review');
-    const receipt = (await client.query('INSERT INTO receipts(company_id,shop_id,employee_id,created_by,request_key,request_hash,amount,payment_mode,reference) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[cid,shopId,actor.employee_id || null,actor.id,identity.key,identity.hash,amount(received),mode,data.reference || null])).rows[0];
+    const receipt = (await client.query('INSERT INTO receipts(company_id,shop_id,employee_id,created_by,request_key,request_hash,amount,payment_mode,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp()) RETURNING *',[cid,shopId,actor.employee_id || null,actor.id,identity.key,identity.hash,amount(received),mode,data.reference || null])).rows[0];
     let remaining = received;
     const opening = Math.min(remaining,paise(shop.opening_due_remaining));
     if (opening) {
@@ -142,11 +142,27 @@ export async function settle(cid,data,actor) {
     return {success:true,settlement:result.rows[0]};
   });
 }
-export async function cashFlow(client,cid,employeeId,{start=null,end=null}={}) {
+export async function cashFlow(client,cid,employeeId,{start=null,end=null,sessionId=null}={}) {
   const params=[cid,employeeId || null,start,end];
-  const salesDate="($3::date IS NULL OR s.sale_date>=$3) AND ($4::date IS NULL OR s.sale_date<=$4)";
-  const eventDate="($3::date IS NULL OR (created_at AT TIME ZONE 'Asia/Kolkata')::date>=$3) AND ($4::date IS NULL OR (created_at AT TIME ZONE 'Asia/Kolkata')::date<=$4)";
-  const result=await client.query("WITH events AS (SELECT s.cash_paid AS cash,s.gpay_paid AS gpay FROM sales s WHERE s.company_id=$1 AND ($2::int IS NULL OR s.employee_id=$2) AND "+salesDate+" UNION ALL SELECT CASE WHEN payment_mode='CASH' THEN amount ELSE 0 END,CASE WHEN payment_mode='GPAY' THEN amount ELSE 0 END FROM receipts WHERE company_id=$1 AND ($2::int IS NULL OR employee_id=$2) AND "+eventDate+" UNION ALL SELECT CASE WHEN r.payment_mode='CASH' THEN -r.amount ELSE 0 END,CASE WHEN r.payment_mode='GPAY' THEN -r.amount ELSE 0 END FROM payment_reversals r JOIN sales s ON s.id=r.sale_id WHERE r.company_id=$1 AND ($2::int IS NULL OR s.employee_id=$2) AND ($3::date IS NULL OR (r.created_at AT TIME ZONE 'Asia/Kolkata')::date>=$3) AND ($4::date IS NULL OR (r.created_at AT TIME ZONE 'Asia/Kolkata')::date<=$4)) SELECT COALESCE(SUM(cash),0)::text AS cash,COALESCE(SUM(gpay),0)::text AS gpay FROM events",params);
+  const scoped = sessionId !== null;
+  if (scoped) params.push(sessionId);
+  const tripSales = scoped ? ' AND s.session_id=$5' : '';
+  const tripEvent = scoped ? " AND EXISTS (SELECT 1 FROM driver_sessions ds WHERE ds.id=$5 AND ds.company_id=$1 AND ds.employee_id=$2 AND receipts.created_at>=ds.opened_at AND (ds.status NOT IN ('CLOSED','COMPLETED','RECONCILED','RETURN_VERIFIED') OR receipts.created_at<=ds.closed_at))" : '';
+  const salesDate="($3::date IS NULL OR s.sale_date>=$3) AND ($4::date IS NULL OR s.sale_date<=$4)" + tripSales;
+  const eventDate="($3::date IS NULL OR (created_at AT TIME ZONE 'Asia/Kolkata')::date>=$3) AND ($4::date IS NULL OR (created_at AT TIME ZONE 'Asia/Kolkata')::date<=$4)" + tripEvent;
+  const result=await client.query(`WITH events AS (
+    SELECT s.cash_paid AS cash,s.gpay_paid AS gpay FROM sales s
+    WHERE s.company_id=$1 AND ($2::int IS NULL OR s.employee_id=$2) AND ${salesDate}
+    UNION ALL
+    SELECT CASE WHEN payment_mode='CASH' THEN amount ELSE 0 END,CASE WHEN payment_mode='GPAY' THEN amount ELSE 0 END
+    FROM receipts WHERE company_id=$1 AND ($2::int IS NULL OR employee_id=$2) AND ${eventDate}
+    UNION ALL
+    SELECT CASE WHEN r.payment_mode='CASH' THEN -r.amount ELSE 0 END,CASE WHEN r.payment_mode='GPAY' THEN -r.amount ELSE 0 END
+    FROM payment_reversals r JOIN sales s ON s.id=r.sale_id
+    WHERE r.company_id=$1 AND ($2::int IS NULL OR s.employee_id=$2)
+      AND ($3::date IS NULL OR (r.created_at AT TIME ZONE 'Asia/Kolkata')::date>=$3)
+      AND ($4::date IS NULL OR (r.created_at AT TIME ZONE 'Asia/Kolkata')::date<=$4)${tripSales}
+  ) SELECT COALESCE(SUM(cash),0)::text AS cash,COALESCE(SUM(gpay),0)::text AS gpay FROM events`,params);
   return result.rows[0];
 }
 
