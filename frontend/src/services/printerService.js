@@ -668,6 +668,7 @@ export const generateEscPos80mmBuffer = (bill) => {
  * Generates an ESC/POS 80mm/82mm High-Resolution Raster Bit-Image Buffer (576 dots width).
  */
 export const generateEscPos80mmRasterBuffer = (bill) => {
+  const itemFontSize = bill.storekeeper_print ? 20 : 16;
   const width = 576; // Standard 80mm/82mm width in dots (72 bytes)
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -783,10 +784,10 @@ export const generateEscPos80mmRasterBuffer = (bill) => {
     const amtVal = Number(item.amount || (qtyNum * Number(item.rate || 0))).toFixed(2);
 
     ctx.textAlign = 'left';
-    ctx.font = `bold 16px ${fontTamilStack}`;
-    ctx.fillText(pName.substring(0, 24), 12, y);
+    ctx.font = `bold ${itemFontSize}px ${fontTamilStack}`;
+    ctx.fillText(pName.substring(0, 24), 12, y, 245);
 
-    ctx.font = `bold 16px ${fontMonoStack}`;
+    ctx.font = `bold ${itemFontSize}px ${fontMonoStack}`;
     ctx.fillText(String(qtyNum), 275, y);
 
     ctx.textAlign = 'right';

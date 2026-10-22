@@ -6,20 +6,14 @@ import {
   Search, Filter, Plus, ArrowLeft, ArrowRight, User, Trash2
 } from 'lucide-react';
 
-const nextEmployeeCode = employees => {
-  const existing = new Set(employees.map(employee => String(employee.employee_code || '').trim().toUpperCase()));
-  let number = 1;
-  while (existing.has(`EMP${String(number).padStart(3, '0')}`)) number += 1;
-  return `EMP${String(number).padStart(3, '0')}`;
-};
-
 export const UsersMaster = () => {
-  const { apiFetch, currentUser } = useApp();
+  const { apiFetch, currentUser, API_URL } = useApp();
   const [users, setUsers] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
   const [notification, setNotification] = useState(null);
 
   // Modals state
@@ -32,7 +26,6 @@ export const UsersMaster = () => {
   const [addMode, setAddMode] = useState('EXISTING');
   const [newEmpForm, setNewEmpForm] = useState({
     full_name: '',
-    employee_code: '',
     phone: '',
     email: '',
     designation: 'Delivery Executive',
@@ -46,12 +39,27 @@ export const UsersMaster = () => {
   const [pinData, setPinData] = useState({ pin: '', confirm: '' });
   const [formError, setFormError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [employeeCode, setEmployeeCode] = useState({ key:'', value:'' });
+  const [codeLoading, setCodeLoading] = useState(false);
+  const [codeError, setCodeError] = useState(false);
+  const [codeRetry, setCodeRetry] = useState(0);
+  const employeeCodeStorageKey = `avs:pending-employee-code:${currentUser?.company_id || ''}:${currentUser?.id}`;
+
+  const pendingEmployeeCode = (renew = false) => {
+    let key = renew ? '' : employeeCode.key;
+    try {
+      if (!key && !renew) key = sessionStorage.getItem(employeeCodeStorageKey);
+      key ||= crypto.randomUUID();
+      sessionStorage.setItem(employeeCodeStorageKey, key);
+    } catch {
+      key ||= crypto.randomUUID();
+    }
+    return { key, value: key === employeeCode.key ? employeeCode.value : '' };
+  };
 
   // Filters
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
-
-  const API_URL = import.meta.env.VITE_API_URL || '/api';
 
   const showToast = (message, type = 'success') => {
     setNotification({ message, type });
@@ -61,8 +69,13 @@ export const UsersMaster = () => {
   const loadData = async () => {
     setLoading(true);
     setError(null);
+    setNeedsSignIn(false);
     try {
       const uRes = await apiFetch(API_URL + '/users');
+      if (uRes.status === 401 || uRes.status === 403) {
+        const message = uRes.status === 401 ? 'Your session has expired or your account permissions changed. Please sign in again.' : 'Owner access is required. Please sign in with an owner account.';
+        throw Object.assign(new Error(message), { needsSignIn: true });
+      }
       if (!uRes.ok) throw new Error(`Users API returned status ${uRes.status}`);
       const uData = await uRes.json();
       setUsers(Array.isArray(uData) ? uData : (uData.users || []));
@@ -80,7 +93,13 @@ export const UsersMaster = () => {
       }
     } catch(err) {
       console.error("UsersMaster loadData error:", err);
-      setError("Unable to load users. Please try again.");
+      setNeedsSignIn(Boolean(err.needsSignIn));
+      if (err.needsSignIn) {
+        setUsers([]);
+        setEmployees([]);
+        setRoutes([]);
+      }
+      setError(err.needsSignIn ? err.message : 'Unable to load users. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -90,11 +109,33 @@ export const UsersMaster = () => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (!showAddModal || addMode !== 'NEW_EMP' || !employeeCode.key) return;
+    const controller = new AbortController();
+    setCodeLoading(true);
+    setCodeError(false);
+    apiFetch(API_URL + '/employees/reserve-code', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({idempotency_key:employeeCode.key}), signal:controller.signal
+    }).then(async response => {
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Unable to generate employee code');
+      if (!controller.signal.aborted) setEmployeeCode(previous => ({...previous,value:data.employee_code}));
+    }).catch(error => {
+      if (error.name !== 'AbortError') {
+        setCodeError(true);
+        setFormError('Unable to generate employee code. Please retry.');
+      }
+    }).finally(() => { if (!controller.signal.aborted) setCodeLoading(false); });
+    return () => controller.abort();
+  }, [showAddModal, addMode, employeeCode.key, codeRetry, API_URL, apiFetch]);
+
   // Filter unlinked active employees
   const unlinkedEmployees = employees.filter(e => (!e.login_id || e.account_status === 'INACTIVE') && e.is_active !== false);
 
   const openAddModal = () => {
     setFormError(null);
+    setEmployeeCode(pendingEmployeeCode());
     setAddMode(unlinkedEmployees.length > 0 ? 'EXISTING' : 'NEW_EMP');
     setFormData({
       role: 'DRIVER',
@@ -103,7 +144,6 @@ export const UsersMaster = () => {
     });
     setNewEmpForm({
       full_name: '',
-      employee_code: nextEmployeeCode(employees),
       phone: '',
       email: '',
       designation: 'Delivery Executive',
@@ -133,6 +173,8 @@ export const UsersMaster = () => {
   const handleCreateEmployeeInline = async (e) => {
     e.preventDefault();
     setFormError(null);
+    if (isSubmitting) return;
+    if (!employeeCode.value || codeLoading) return setFormError('Please wait for the automatic employee code.');
     if (!newEmpForm.full_name.trim()) {
       return setFormError('Employee Full Name is required.');
     }
@@ -142,7 +184,7 @@ export const UsersMaster = () => {
       const res = await apiFetch(API_URL + '/employees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newEmpForm)
+        body: JSON.stringify({...newEmpForm,employee_code_reservation:employeeCode.key})
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -169,6 +211,8 @@ export const UsersMaster = () => {
       }));
 
       setAddMode('EXISTING');
+      setEmployeeCode(pendingEmployeeCode(true));
+      setNewEmpForm(previous => ({...previous,full_name:'',phone:'',email:'',vehicle_number:'',route_id:''}));
       showToast(`Employee ${createdEmp.full_name} created. Now setup login credentials.`);
     } catch (err) {
       console.error("Inline employee creation failed:", err);
@@ -422,10 +466,10 @@ export const UsersMaster = () => {
             <span className="font-bold text-xs">{error}</span>
           </div>
           <button
-            onClick={loadData}
+            onClick={needsSignIn ? () => window.location.reload() : loadData}
             className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition"
           >
-            Retry
+            {needsSignIn ? 'Sign in again' : 'Retry'}
           </button>
         </div>
       )}
@@ -627,16 +671,18 @@ export const UsersMaster = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
-                        Employee Code <span className="text-rose-500">*</span>
+                        Employee Code (Automatic)
                       </label>
                       <input
-                        required
+                        readOnly
+                        disabled
+                        aria-label="Employee Code"
                         type="text"
-                        placeholder="e.g. EMP002"
+                        placeholder={codeLoading ? 'Generating employee code...' : 'Automatic employee code'}
                         className="w-full border border-slate-300 p-2.5 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        value={newEmpForm.employee_code}
-                        onChange={e => setNewEmpForm({...newEmpForm, employee_code: e.target.value.toUpperCase()})}
+                        value={employeeCode.value}
                       />
+                      {codeError && <button type="button" onClick={() => { setFormError(null); setCodeRetry(value => value + 1); }} className="mt-1 text-xs text-blue-700 font-bold">Retry code generation</button>}
                     </div>
                     <div>
                       <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">
@@ -711,7 +757,7 @@ export const UsersMaster = () => {
                     </button>
                     <button
                       type="submit"
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || codeLoading || !employeeCode.value}
                       className="flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-md shadow-blue-500/20 transition disabled:opacity-50"
                     >
                       Save Employee & Proceed <ArrowRight className="w-3.5 h-3.5" />
@@ -918,6 +964,10 @@ export const UsersMaster = () => {
             )}
 
             <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Employee Code</label>
+                <input type="text" aria-label="Employee Code" disabled readOnly value={selectedUser?.employee_code || ''} className="w-full border border-slate-300 p-2.5 rounded-xl font-mono font-bold bg-slate-100" />
+              </div>
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Display Name</label>
                 <input

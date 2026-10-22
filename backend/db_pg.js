@@ -238,7 +238,9 @@ export async function updateUser(cid, uid, d, actorUserId) {
 
   const displayName = d.name !== undefined ? (d.name ? String(d.name).trim() : null) : existingUser.name;
   const status = d.status || d.account_status || existingUser.account_status;
-  const targetEmployeeId = d.employee_id !== undefined ? Number(d.employee_id) : existingUser.employee_id;
+  const targetEmployeeId = d.employee_id === undefined ? existingUser.employee_id
+    : d.employee_id === null || d.employee_id === '' ? null : Number(d.employee_id);
+  if (targetEmployeeId !== null && (!Number.isSafeInteger(targetEmployeeId) || targetEmployeeId <= 0)) throw new Error('Employee ID must be a positive whole number');
   if (targetEmployeeId && !(await queryOne('SELECT id FROM employees WHERE id=$1 AND company_id=$2',[targetEmployeeId,cid]))) throw new Error('Employee must belong to this company');
 
   const row = await queryOne(
@@ -246,7 +248,7 @@ export async function updateUser(cid, uid, d, actorUserId) {
     [loginId, roleId, displayName, status, targetEmployeeId, uid, cid]
   );
 
-  const activeEmpId = targetEmployeeId || existingUser.employee_id;
+  const activeEmpId = targetEmployeeId;
   let updatedRouteId = undefined;
   if (activeEmpId) {
     if (displayName) {
@@ -267,19 +269,19 @@ export async function updateUser(cid, uid, d, actorUserId) {
       updatedRouteId = (rawRoute === null || rawRoute === '' || rawRoute === 0 || rawRoute === '0') ? null : parseInt(rawRoute, 10);
       if (isNaN(updatedRouteId)) updatedRouteId = null;
 
-      await query('UPDATE employees SET route_id=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3', [updatedRouteId, existingUser.employee_id, cid]);
+      await query('UPDATE employees SET route_id=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3', [updatedRouteId, activeEmpId, cid]);
 
       if (updatedRouteId) {
         const today = businessDate();
-        const empRec = await queryOne('SELECT vehicle_number FROM employees WHERE id=$1', [existingUser.employee_id]);
+        const empRec = await queryOne('SELECT vehicle_number FROM employees WHERE id=$1 AND company_id=$2', [activeEmpId, cid]);
         await query(
           'INSERT INTO route_assignments (route_id, employee_id, vehicle_number, assigned_date, status, dispatch_time) ' +
           'VALUES ($1, $2, $3, $4, $5, $6) ' +
           'ON CONFLICT (route_id, assigned_date) DO UPDATE SET employee_id=EXCLUDED.employee_id, vehicle_number=EXCLUDED.vehicle_number, status=EXCLUDED.status, updated_at=NOW()',
-          [updatedRouteId, existingUser.employee_id, empRec?.vehicle_number || null, today, 'ASSIGNED', new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})]
+          [updatedRouteId, activeEmpId, empRec?.vehicle_number || null, today, 'ASSIGNED', new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})]
         );
       } else {
-        await query('DELETE FROM route_assignments WHERE employee_id=$1', [existingUser.employee_id]);
+        await query('DELETE FROM route_assignments WHERE employee_id=$1', [activeEmpId]);
       }
     }
   }
@@ -481,32 +483,102 @@ export async function getUnlinkedEmployees(cid) {
     [cid]
   );
 }
+async function allocateEmployeeIdentity(client, cid, suppliedCode = '') {
+  while (true) {
+    const id = Number((await client.query("SELECT nextval(pg_get_serial_sequence('employees','id')) AS id")).rows[0].id);
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Employee ID sequence is not configured');
+    const code = suppliedCode || 'EMP' + String(id).padStart(3, '0');
+    const duplicate = (await client.query("SELECT EXISTS(SELECT 1 FROM employees WHERE id=$3) AS id_taken, (EXISTS(SELECT 1 FROM employees WHERE company_id=$1 AND LOWER(TRIM(employee_code))=LOWER($2)) OR EXISTS(SELECT 1 FROM operation_requests WHERE company_id=$1 AND operation='employee-code' AND result->>'employee_code'=$2)) AS code_taken", [cid,code,id])).rows[0];
+    if (duplicate.id_taken) continue;
+    if (!duplicate.code_taken) return { id, code };
+    if (suppliedCode) throw new Error('Employee code already exists or is reserved.');
+  }
+}
+
+export async function reserveEmployeeCode(cid, data) {
+  const identity = requestIdentity(data);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['employee-code:' + cid]);
+    const existing = await client.query("SELECT request_hash,result FROM operation_requests WHERE company_id=$1 AND operation='employee-code' AND request_key=$2", [cid,identity.key]);
+    if (existing.rows.length) {
+      if (existing.rows[0].request_hash !== identity.hash) throw new Error('Employee code request already used');
+      await client.query('COMMIT');
+      return existing.rows[0].result;
+    }
+    const allocated = await allocateEmployeeIdentity(client,cid);
+    const result = { success:true, employee_id:allocated.id, employee_code:allocated.code };
+    await client.query("INSERT INTO operation_requests(company_id,operation,request_key,request_hash,result) VALUES($1,'employee-code',$2,$3,$4)",[cid,identity.key,identity.hash,JSON.stringify(result)]);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
+
 export async function addEmployee(cid,d) {
-  if(!d.full_name) throw new Error('full_name is required.');
-  const code = String(d.employee_code || ('EMP' + Date.now().toString().slice(-4))).trim().toUpperCase();
-  if (await queryOne('SELECT id FROM employees WHERE company_id=$1 AND LOWER(employee_code)=LOWER($2)', [cid, code])) throw new Error('Employee code already exists. Choose a different employee code.');
+  const fullName = String(d.full_name || '').trim();
+  if (!fullName) throw new Error('full_name is required.');
+  const suppliedCode = String(d.employee_code || '').trim().toUpperCase();
   const desig = d.designation || d.role || 'Delivery Executive';
   let routeId = null;
   if (d.route_id !== undefined && d.route_id !== null && d.route_id !== '' && d.route_id !== 0 && d.route_id !== '0') {
     routeId = parseInt(d.route_id, 10);
     if (isNaN(routeId)) routeId = null;
   }
-  const row = await queryOne(
-    'INSERT INTO employees (company_id,employee_code,full_name,designation,phone,vehicle_number,route_id,is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE) RETURNING *',
-    [cid,code,d.full_name,desig,d.phone||null,d.vehicle_number||null,routeId]
-  );
-  if (routeId) {
-    const today = businessDate();
-    await queryOne(
-      'INSERT INTO route_assignments (route_id, employee_id, vehicle_number, assigned_date, status, dispatch_time) ' +
-      'VALUES ($1, $2, $3, $4, $5, $6) ' +
-      'ON CONFLICT (route_id, assigned_date) DO UPDATE SET employee_id=EXCLUDED.employee_id, vehicle_number=EXCLUDED.vehicle_number, status=EXCLUDED.status, updated_at=NOW() RETURNING *',
-      [routeId, row.id, d.vehicle_number || null, today, 'ASSIGNED', new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})]
-    );
-  }
-  return {success:true,employee:row};
+  return retryTransaction(async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['employee-code:' + cid]);
+      const identity = d.employee_code_reservation ? requestIdentity({...d,idempotency_key:d.employee_code_reservation}) : null;
+      if (identity) {
+        const saved = await client.query("SELECT request_hash,result FROM operation_requests WHERE company_id=$1 AND operation='employee-create' AND request_key=$2",[cid,identity.key]);
+        if (saved.rows.length) {
+          if (saved.rows[0].request_hash !== identity.hash) throw new Error('Employee creation request already used with different details');
+          await client.query('COMMIT');
+          return saved.rows[0].result;
+        }
+      }
+      if (routeId && !(await client.query('SELECT id FROM routes WHERE id=$1 AND company_id=$2', [routeId,cid])).rows.length) throw new Error('Route must belong to this company');
+      let id, code;
+      if (identity) {
+        const reservation = await client.query("SELECT result FROM operation_requests WHERE company_id=$1 AND operation='employee-code' AND request_key=$2",[cid,identity.key]);
+        if (!reservation.rows.length) throw new Error('Employee code reservation is invalid. Reopen the new employee form.');
+        id = reservation.rows[0].result.employee_id;
+        code = reservation.rows[0].result.employee_code;
+        if (suppliedCode && suppliedCode !== code) throw new Error('Employee code is automatic and cannot be changed');
+      } else {
+        ({id,code} = await allocateEmployeeIdentity(client,cid,suppliedCode));
+      }
+      const row = (await client.query(
+        'INSERT INTO employees (id,company_id,employee_code,full_name,designation,phone,vehicle_number,route_id,is_active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE) RETURNING *',
+        [id,cid,code,fullName,desig,d.phone||null,d.vehicle_number||null,routeId]
+      )).rows[0];
+      if (routeId) {
+        await client.query(
+          'INSERT INTO route_assignments (route_id, employee_id, vehicle_number, assigned_date, status, dispatch_time) ' +
+          'VALUES ($1, $2, $3, $4, $5, $6) ' +
+          'ON CONFLICT (route_id, assigned_date) DO UPDATE SET employee_id=EXCLUDED.employee_id, vehicle_number=EXCLUDED.vehicle_number, status=EXCLUDED.status, updated_at=NOW()',
+          [routeId,row.id,d.vehicle_number||null,businessDate(),'ASSIGNED',new Date().toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit'})]
+        );
+      }
+      const result = {success:true,employee:row};
+      if (identity) await client.query("INSERT INTO operation_requests(company_id,operation,request_key,request_hash,result) VALUES($1,'employee-create',$2,$3,$4)",[cid,identity.key,identity.hash,JSON.stringify(result)]);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
+  });
 }
 export async function updateEmployee(cid,empId,d) {
+  if (d.employee_code !== undefined) {
+    const existing = await queryOne('SELECT employee_code FROM employees WHERE id=$1 AND company_id=$2',[empId,cid]);
+    if (!existing) throw new Error('Employee not found.');
+    if (String(d.employee_code || '') !== String(existing.employee_code || '')) throw new Error('Employee code cannot be changed');
+  }
   const desig = d.designation || d.role || null;
   let routeId = undefined;
   if (d.route_id !== undefined) {
@@ -1294,7 +1366,10 @@ async function issueStockToEmployeeAttempt(cid, data, actorUserId) {
     const emp = empRes.rows[0];
 
     // Get or activate driver session
-    const session = await getOrCreateActiveDriverSession(cid, employee_id, client);
+    const session = await getOrCreateActiveDriverSession(cid, employee_id, client, true);
+    if (['CLOSED', 'COMPLETED', 'RETURN_VERIFIED', 'RECONCILED', 'RETURN_PENDING', 'END_DAY_SUBMITTED'].includes(session.status)) {
+      throw new Error('Finish the current driver return before allocating another trip.');
+    }
 
     const results = [];
     for (const item of [...items].sort((first,second)=>Number(first.product_id)-Number(second.product_id))) {
@@ -1627,6 +1702,7 @@ async function processDamageAttempt(cid, data, actorUserId) {
       empName = empRes.rows[0].full_name;
 
       const session = await getOrCreateActiveDriverSession(cid, employee_id, client);
+      if (data.session_id && Number(data.session_id) !== Number(session.id)) throw new Error('Driver trip changed. Refresh the return page.');
       if (session && (session.status === 'CLOSED' || session.status === 'COMPLETED' || session.status === 'RETURN_VERIFIED' || session.status === 'RECONCILED')) {
         throw new Error('Forbidden: Working session for this driver has been submitted and locked. Damage reporting is not allowed on completed returns.');
       }
@@ -1777,18 +1853,7 @@ export async function deleteDamage(cid, damageId, actorUserId) {
     const dmg = dRes.rows[0];
 
     // Check if working session is locked
-    if (dmg.employee_id) {
-      const session = await client.query(
-        'SELECT * FROM driver_sessions WHERE company_id = $1 AND employee_id = $2 ORDER BY id DESC LIMIT 1',
-        [cid, dmg.employee_id]
-      );
-      if (session.rows.length > 0) {
-        const sStatus = (session.rows[0].status || '').toUpperCase();
-        if (['CLOSED', 'COMPLETED', 'RETURN_VERIFIED', 'RECONCILED'].includes(sStatus)) {
-          throw new Error('Forbidden: Working session for this driver has been submitted and locked. Damage modifications are not allowed.');
-        }
-      }
-    }
+    await requireMutableDriverRecord(cid, dmg);
 
     const qtyUnits = Number(dmg.qty_units || 0);
 
@@ -1843,18 +1908,7 @@ export async function updateDamage(cid, damageId, data, actorUserId) {
     const existing = dRes.rows[0];
 
     // Check if working session is locked
-    if (existing.employee_id) {
-      const session = await client.query(
-        'SELECT * FROM driver_sessions WHERE company_id = $1 AND employee_id = $2 ORDER BY id DESC LIMIT 1',
-        [cid, existing.employee_id]
-      );
-      if (session.rows.length > 0) {
-        const sStatus = (session.rows[0].status || '').toUpperCase();
-        if (['CLOSED', 'COMPLETED', 'RETURN_VERIFIED', 'RECONCILED'].includes(sStatus)) {
-          throw new Error('Forbidden: Working session for this driver has been submitted and locked. Damage modifications are not allowed.');
-        }
-      }
-    }
+    await requireMutableDriverRecord(cid, existing);
 
     const newRawQty = data.quantity !== undefined ? Number(data.quantity) : (data.qty_units !== undefined ? Number(data.qty_units) : Number(existing.base_quantity || existing.qty_units));
     if (isNaN(newRawQty) || newRawQty <= 0) throw new Error('Valid damage quantity (> 0) required.');
@@ -2032,7 +2086,7 @@ async function createSaleAttempt(cid, d, actorUserId) {
       }
     }
 
-    let empId = employee_id || null;
+    let empId = isStoreDirectSale ? null : employee_id || null;
     let empName = d.employee_name || (isStoreDirectSale ? 'Store Keeper' : 'Driver');
     let driverSession = null;
 
@@ -2075,7 +2129,7 @@ async function createSaleAttempt(cid, d, actorUserId) {
         emp = eR.rows[0];
         empName = emp.full_name;
       }
-    } else if (d.employee_name && !d.employee_name.toLowerCase().includes('store')) {
+    } else if (!isStoreDirectSale && d.employee_name && !d.employee_name.toLowerCase().includes('store')) {
       const eR = await client.query('SELECT * FROM employees WHERE LOWER(TRIM(full_name)) = LOWER(TRIM($1)) AND company_id=$2', [d.employee_name, cid]);
       if (eR.rows.length > 0) {
         emp = eR.rows[0];
@@ -3195,7 +3249,37 @@ export async function getExpenses(cid, filters) {
   sql += ' ORDER BY ex.created_at DESC';
   return await queryAll(sql, params);
 }
+async function expenseTransaction(work) {
+  return retryTransaction(async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await transactionContext.run(client, work);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
+  });
+}
+
+async function requireMutableDriverRecord(cid, record) {
+  if (!record.employee_id) return;
+  await query('SELECT id FROM employees WHERE id=$1 AND company_id=$2 FOR UPDATE', [record.employee_id, cid]);
+  const sessions = await queryAll(
+    `SELECT status FROM driver_sessions WHERE company_id=$1 AND employee_id=$2
+     AND (($3::int IS NOT NULL AND id=$3) OR ($3::int IS NULL AND session_date=$4::date))`,
+    [cid, record.employee_id, record.session_id || null, businessDate(new Date(record.expense_date || record.created_at))]
+  );
+  if ((record.session_id && !sessions.length) || sessions.some(session => ['CLOSED','COMPLETED','RETURN_VERIFIED','RECONCILED'].includes(session.status))) {
+    throw new Error('Forbidden: This record belongs to a finalized driver trip and cannot be changed.');
+  }
+  const settled = await queryOne('SELECT id FROM settlements WHERE company_id=$1 AND employee_id=$2 AND settlement_date=$3::date',
+    [cid, record.employee_id, businessDate(new Date(record.expense_date || record.created_at))]);
+  if (settled) throw new Error('Forbidden: Daily settlement is finalized; this record cannot be changed.');
+}
+
 export async function addExpense(cid, d, actorUserId) {
+  return expenseTransaction(async () => {
   if (!d.category || d.amount === undefined || d.amount === null) throw new Error('category and amount required.');
   const amt = Number(d.amount);
   if (isNaN(amt) || amt <= 0) throw new Error('Valid expense amount (> 0) required.');
@@ -3203,33 +3287,28 @@ export async function addExpense(cid, d, actorUserId) {
   const empId = d.employee_id || null;
   let session = null;
   if (empId) {
-    session = await getOrCreateActiveDriverSession(cid, empId);
+    session = await getOrCreateActiveDriverSession(cid, empId, transactionContext.getStore());
+    if (d.session_id && Number(d.session_id) !== Number(session.id)) throw new Error('Driver trip changed. Refresh the return page.');
     if (session && (session.status === 'CLOSED' || session.status === 'COMPLETED' || session.status === 'RETURN_VERIFIED' || session.status === 'RECONCILED')) {
       throw new Error('Forbidden: Working session for this driver has been submitted and locked. Expense modifications are not allowed.');
     }
   }
 
   const row = await queryOne(
-    'INSERT INTO expenses (company_id, employee_id, session_id, title, category, amount, notes, expense_date) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_DATE) RETURNING *',
-    [cid, empId, session ? session.id : null, d.title || d.category, d.category || 'General', amt, d.notes || d.description || null]
+    'INSERT INTO expenses (company_id, employee_id, session_id, title, category, amount, notes, expense_date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date) RETURNING *',
+    [cid, empId, session ? session.id : null, d.title || d.category, d.category || 'General', amt, d.notes || d.description || null, businessDate()]
   );
   return { success: true, expense: row };
+  });
 }
 
 export async function updateExpense(cid, expenseId, d, actorUserId) {
+  return expenseTransaction(async () => {
   if (!expenseId) throw new Error('Expense ID is required.');
   const existing = await queryOne('SELECT * FROM expenses WHERE id=$1 AND company_id=$2', [Number(expenseId), cid]);
   if (!existing) throw new Error('Expense record not found.');
 
-  if (existing.employee_id) {
-    const session = await queryOne(
-      `SELECT * FROM driver_sessions WHERE company_id = $1 AND employee_id = $2 ORDER BY id DESC LIMIT 1`,
-      [cid, existing.employee_id]
-    );
-    if (session && (session.status === 'CLOSED' || session.status === 'COMPLETED' || session.status === 'RETURN_VERIFIED' || session.status === 'RECONCILED')) {
-      throw new Error('Forbidden: Working session for this driver has been submitted and locked. Expense modifications are not allowed.');
-    }
-  }
+  await requireMutableDriverRecord(cid, existing);
 
   const amt = d.amount !== undefined ? Number(d.amount) : Number(existing.amount);
   if (isNaN(amt) || amt <= 0) throw new Error('Valid expense amount (> 0) required.');
@@ -3242,25 +3321,20 @@ export async function updateExpense(cid, expenseId, d, actorUserId) {
     [title, cat, amt, notes, Number(expenseId), cid]
   );
   return { success: true, expense: updated };
+  });
 }
 
 export async function deleteExpense(cid, expenseId, actorUserId) {
+  return expenseTransaction(async () => {
   if (!expenseId) throw new Error('Expense ID is required.');
   const existing = await queryOne('SELECT * FROM expenses WHERE id=$1 AND company_id=$2', [Number(expenseId), cid]);
   if (!existing) throw new Error('Expense record not found.');
 
-  if (existing.employee_id) {
-    const session = await queryOne(
-      `SELECT * FROM driver_sessions WHERE company_id = $1 AND employee_id = $2 ORDER BY id DESC LIMIT 1`,
-      [cid, existing.employee_id]
-    );
-    if (session && (session.status === 'CLOSED' || session.status === 'COMPLETED' || session.status === 'RETURN_VERIFIED' || session.status === 'RECONCILED')) {
-      throw new Error('Forbidden: Working session for this driver has been submitted and locked. Expense modifications are not allowed.');
-    }
-  }
+  await requireMutableDriverRecord(cid, existing);
 
   await queryOne('DELETE FROM expenses WHERE id=$1 AND company_id=$2 RETURNING id', [Number(expenseId), cid]);
   return { success: true, message: 'Expense deleted successfully.' };
+  });
 }
 
 async function submitDriverEndDayAttempt(cid, employeeId, data, actorUserId) {
@@ -3284,8 +3358,6 @@ async function submitDriverEndDayAttempt(cid, employeeId, data, actorUserId) {
       throw new Error("Today's working day has already been submitted.");
     }
 
-    const todayStr = session.session_date ? String(session.session_date).slice(0,10) : businessDate();
-
     // Authoritative calculations from real database records
     const sRes = await client.query(
       `SELECT COALESCE(SUM(total_amount), 0) as total_sales,
@@ -3297,12 +3369,12 @@ async function submitDriverEndDayAttempt(cid, employeeId, data, actorUserId) {
               COUNT(*) as bills_count
        FROM sales
        WHERE company_id = $1 AND employee_id = $2 AND (status IS NULL OR status = 'ACTIVE' OR status != 'CANCELLED')
-         AND (sale_date = $3::date OR created_at::date = $3::date)`,
-      [cid, employeeId, todayStr]
+         AND session_id = $3`,
+      [cid, employeeId, session.id]
     );
     const sRow = sRes.rows[0] || {};
     const totalSales = Number(sRow.total_sales || 0);
-    const flow = await cashFlow(client,cid,employeeId,{start:todayStr,end:todayStr});
+    const flow = await cashFlow(client,cid,employeeId,{sessionId:session.id});
     const cashCollected = Number(flow.cash);
     const gpayCollected = Number(flow.gpay);
     const creditSales = Number(sRow.credit_sales || 0);
@@ -3313,8 +3385,8 @@ async function submitDriverEndDayAttempt(cid, employeeId, data, actorUserId) {
     const eRes = await client.query(
       `SELECT COALESCE(SUM(amount), 0) as total_expenses, COUNT(*) as expense_count
        FROM expenses
-       WHERE company_id = $1 AND employee_id = $2 AND (session_id = $3 OR expense_date = $4::date OR created_at::date = $4::date)`,
-      [cid, employeeId, session.id, todayStr]
+       WHERE company_id = $1 AND employee_id = $2 AND session_id = $3`,
+      [cid, employeeId, session.id]
     );
     const totalExpenses = Number(eRes.rows[0]?.total_expenses || 0);
     const netAfterExpenses = parseFloat((totalSales - totalExpenses).toFixed(2));
@@ -4471,12 +4543,12 @@ export async function getAuditTrail(cid, filters = {}) {
 
 // ====== DRIVER SESSIONS & AUDITABLE STOCK LEDGER ======
 
-export async function getOrCreateActiveDriverSession(cid, employeeId, client = null) {
+export async function getOrCreateActiveDriverSession(cid, employeeId, client = null, startNewTrip = false) {
   if (!client) {
     const connection = await pool.connect();
     try {
       await connection.query('BEGIN');
-      const result = await getOrCreateActiveDriverSession(cid, employeeId, connection);
+      const result = await getOrCreateActiveDriverSession(cid, employeeId, connection, startNewTrip);
       await connection.query('COMMIT');
       return result;
     } catch (error) { await connection.query('ROLLBACK'); throw error; }
@@ -4484,18 +4556,19 @@ export async function getOrCreateActiveDriverSession(cid, employeeId, client = n
   }
   const runner = client;
   await runner.query('SELECT id FROM employees WHERE id=$1 AND company_id=$2 FOR UPDATE', [employeeId,cid]);
-  const settled = await runner.query('SELECT id FROM settlements WHERE company_id=$1 AND employee_id=$2 AND settlement_date=CURRENT_DATE',[cid,employeeId]);
+  const today = businessDate();
+  const settled = await runner.query('SELECT id FROM settlements WHERE company_id=$1 AND employee_id=$2 AND settlement_date=$3::date',[cid,employeeId,today]);
   if(settled.rows.length)throw new Error('Daily settlement is finalized');
   const existingToday = await runner.query(
     `SELECT ds.*, r.name as route_name, r.code as route_code
      FROM driver_sessions ds
      LEFT JOIN employees e ON e.id = ds.employee_id
      LEFT JOIN routes r ON r.id = COALESCE(ds.route_id, e.route_id)
-     WHERE ds.company_id = $1 AND ds.employee_id = $2 AND ds.session_date = CURRENT_DATE
+     WHERE ds.company_id = $1 AND ds.employee_id = $2 AND ds.session_date = $3::date
      ORDER BY ds.id DESC LIMIT 1`,
-    [cid, employeeId]
+    [cid, employeeId, today]
   );
-  if (existingToday.rows.length > 0) {
+  if (existingToday.rows.length > 0 && (!startNewTrip || !['CLOSED','COMPLETED','RECONCILED','RETURN_VERIFIED'].includes(existingToday.rows[0].status))) {
     return existingToday.rows[0];
   }
 
@@ -4504,7 +4577,7 @@ export async function getOrCreateActiveDriverSession(cid, employeeId, client = n
      FROM driver_sessions ds
      LEFT JOIN employees e ON e.id = ds.employee_id
      LEFT JOIN routes r ON r.id = COALESCE(ds.route_id, e.route_id)
-     WHERE ds.company_id = $1 AND ds.employee_id = $2 AND ds.status IN ('OPEN', 'ACTIVE', 'RETURN_PENDING', 'RECONCILED', 'SHORTAGE_PENDING')
+     WHERE ds.company_id = $1 AND ds.employee_id = $2 AND ds.status IN ('OPEN', 'ACTIVE', 'END_DAY_SUBMITTED', 'RETURN_PENDING', 'SHORTAGE_PENDING')
      ORDER BY ds.id DESC LIMIT 1`,
     [cid, employeeId]
   );
@@ -4512,13 +4585,18 @@ export async function getOrCreateActiveDriverSession(cid, employeeId, client = n
     return existingOpen.rows[0];
   }
 
+  if (startNewTrip) {
+    const remaining = await runner.query('SELECT id FROM employee_stock WHERE company_id=$1 AND employee_id=$2 AND qty_units>0 LIMIT 1', [cid, employeeId]);
+    if (remaining.rows.length) throw new Error('Previous driver stock requires reconciliation before a new trip.');
+  }
+
   const empRes = await runner.query('SELECT route_id FROM employees WHERE id=$1 AND company_id=$2', [employeeId, cid]);
   const empRouteId = empRes.rows.length > 0 ? empRes.rows[0].route_id : null;
 
   const created = await runner.query(
     `INSERT INTO driver_sessions (company_id, employee_id, route_id, session_date, status, opened_at)
-     VALUES ($1, $2, $3, CURRENT_DATE, 'OPEN', NOW()) RETURNING *`,
-    [cid, employeeId, empRouteId]
+     VALUES ($1, $2, $3, $4::date, 'OPEN', clock_timestamp()) RETURNING *`,
+    [cid, employeeId, empRouteId, today]
   );
 
   const newSession = await runner.query(
@@ -4785,7 +4863,7 @@ export async function getEligibleDriversForReturn(cid) {
       r.code as route_code,
       ds.id as session_id,
       ds.session_date,
-      COALESCE(ds.status, 'OPEN') as session_status,
+      COALESCE(ds.status, 'AWAITING_ALLOCATION') as session_status,
       ds.opened_at,
       ds.updated_at,
       COALESCE(ds.total_sales, 0) as total_sales,
@@ -4797,12 +4875,14 @@ export async function getEligibleDriversForReturn(cid) {
     LEFT JOIN routes r ON r.id = e.route_id
     LEFT JOIN LATERAL (
       SELECT * FROM driver_sessions ds2
-      WHERE (ds2.company_id = ua.company_id OR ds2.company_id = $1)
-        AND (ds2.employee_id = e.id OR ds2.employee_id = ua.id)
+      WHERE ds2.company_id = ua.company_id
+        AND ds2.employee_id = e.id
+        AND ds2.status NOT IN ('CLOSED','COMPLETED','RETURN_VERIFIED','RECONCILED')
       ORDER BY ds2.id DESC LIMIT 1
     ) ds ON true
     WHERE (ua.company_id = $1)
       AND ua.account_status = 'ACTIVE'
+      AND e.is_active = TRUE
     ORDER BY COALESCE(e.full_name, ua.name, ua.login_id) ASC
   `;
   return await queryAll(sql, [cid]);
@@ -4845,6 +4925,10 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
     );
   }
 
+  if (sessionId && !session) throw new Error('Driver session not found.');
+  if (!sessionId && session && ['CLOSED','COMPLETED','RETURN_VERIFIED','RECONCILED'].includes(session.status)) session = null;
+  const tripId = session?.id || 0;
+
   // 3. Authoritative Sales Summary directly from existing sales / bills records
   const salesRes = await queryOne(
     `SELECT
@@ -4855,12 +4939,12 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
       COALESCE(SUM(credit_paid), 0) as credit_sales
      FROM sales
      WHERE company_id = $1 AND employee_id = $2
-       AND (sale_date = $3::date OR created_at::date = $3::date)
+       AND session_id = $3
        AND (status IS NULL OR status = 'ACTIVE' OR status != 'CANCELLED')`,
-    [cid, empId, todayStr]
+    [cid, empId, tripId]
   );
 
-  const expectedFlow = await cashFlow({query},cid,empId,{start:todayStr,end:todayStr});
+  const expectedFlow = await cashFlow({query},cid,empId,{sessionId:tripId});
   const salesSummary = {
     total_sales: Number(Number(salesRes?.total_sales || 0).toFixed(2)),
     total_bills: Number(salesRes?.total_bills || 0),
@@ -4873,9 +4957,9 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
   const expenseRows = await queryAll(
     `SELECT * FROM expenses
      WHERE company_id = $1 AND employee_id = $2
-       AND (expense_date = $3::date OR created_at::date = $3::date)
+       AND session_id = $3
      ORDER BY id ASC`,
-    [cid, empId, todayStr]
+    [cid, empId, tripId]
   );
   const totalExpenses = Number(
     expenseRows.reduce((sum, e) => sum + Number(e.amount || 0), 0).toFixed(2)
@@ -4905,8 +4989,8 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
      FROM employee_stock es
      JOIN products p ON p.id = es.product_id
      LEFT JOIN categories c ON c.id = p.category_id
-     WHERE es.company_id = $1 AND es.employee_id = $2`,
-    [cid, empId]
+     WHERE es.company_id = $1 AND es.employee_id = $2 AND es.qty_units > 0 AND $3::boolean`,
+    [cid, empId, !!session && !['CLOSED','COMPLETED','RETURN_VERIFIED','RECONCILED'].includes(session.status)]
   );
 
   // b. Sold items today
@@ -4936,9 +5020,9 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
      JOIN products p ON p.id = si.product_id
      WHERE s.company_id = $1 AND s.employee_id = $2
        AND (s.status IS NULL OR s.status = 'ACTIVE' OR s.status != 'CANCELLED')
-       AND (s.sale_date = $3::date OR s.created_at::date = $3::date)
+       AND s.session_id = $3
      GROUP BY si.product_id, p.name, p.display_name, p.pieces_per_unit, p.selling_unit, p.base_unit`,
-    [cid, empId, todayStr]
+    [cid, empId, tripId]
   );
   const soldMap = new Map();
   soldRows.forEach(r => soldMap.set(r.product_id, {
@@ -4953,9 +5037,9 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
             COALESCE(SUM(CASE WHEN base_quantity IS NOT NULL AND base_quantity > 0 THEN base_quantity ELSE qty_units END), 0) as damaged_pieces
      FROM damages
      WHERE company_id = $1 AND employee_id = $2
-       AND (CASE WHEN $3 > 0 THEN session_id = $3 ELSE created_at::date = $4::date END)
+       AND session_id = $3
      GROUP BY product_id`,
-    [cid, empId, session?.id || 0, todayStr]
+    [cid, empId, tripId]
   );
   const dmgMap = new Map();
   dmgRows.forEach(r => dmgMap.set(r.product_id, {
@@ -4968,9 +5052,9 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
      FROM damages d
      LEFT JOIN products p ON p.id = d.product_id
      WHERE d.company_id = $1 AND d.employee_id = $2
-       AND (CASE WHEN $3 > 0 THEN d.session_id = $3 ELSE d.created_at::date = $4::date END)
+       AND d.session_id = $3
      ORDER BY d.created_at DESC`,
-    [cid, empId, session?.id || 0, todayStr]
+    [cid, empId, tripId]
   );
 
   // d. Allocations today / session
@@ -4978,9 +5062,9 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
     `SELECT product_id, COALESCE(SUM(qty_units), 0) as allocated_qty
      FROM stock_transactions
      WHERE company_id = $1 AND employee_id = $2 AND transaction_type = 'ALLOCATION'
-       AND (CASE WHEN $3 > 0 THEN session_id = $3 ELSE created_at::date = $4::date END)
+       AND session_id = $3
      GROUP BY product_id`,
-    [cid, empId, session?.id || 0, todayStr]
+    [cid, empId, tripId]
   );
   const allocMap = new Map();
   allocRows.forEach(r => allocMap.set(r.product_id, Number(r.allocated_qty || 0)));
@@ -5169,25 +5253,18 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
   };
 
   // 3.6 Authoritative Shop Visit Statistics
-  let assignedShops = [];
-  try {
-    assignedShops = await getEmployeeAssignedShops(cid, empId, todayStr);
-  } catch (e) {
-    assignedShops = [];
-  }
-  if (assignedShops.length === 0 && driverRes.route_id) {
-    assignedShops = await queryAll(
-      `SELECT s.* FROM shops s WHERE s.company_id = $1 AND s.route_id = $2 AND s.is_active = TRUE`,
-      [cid, driverRes.route_id]
-    );
-  }
+  const assignedShops = session ? await queryAll(
+    `SELECT s.id FROM shops s LEFT JOIN villages v ON v.id=s.village_id
+     WHERE s.company_id=$1 AND COALESCE(v.route_id,s.route_id)=$2 AND s.is_active=TRUE`,
+    [cid, session.route_id || driverRes.route_id]
+  ) : [];
 
   const visitedShopsRes = await queryOne(
     `SELECT COUNT(DISTINCT shop_id) as count FROM sales
      WHERE company_id = $1 AND employee_id = $2
-       AND (sale_date = $3::date OR created_at::date = $3::date)
+       AND session_id = $3
        AND (status IS NULL OR status = 'ACTIVE' OR status != 'CANCELLED')`,
-    [cid, empId, todayStr]
+    [cid, empId, tripId]
   );
 
   const totalShopsCount = assignedShops.length;
@@ -5210,12 +5287,12 @@ export async function getDriverExpectedReturn(cid, employeeId, sessionId = null)
       phone: driverRes.phone,
       vehicle_number: driverRes.vehicle_number,
       route_name: session?.route_name || driverRes.route_name || 'Assigned Route',
-      route_id: driverRes.route_id
+      route_id: session?.route_id || driverRes.route_id
     },
     session: {
       id: session?.id,
       date: session?.session_date || todayStr,
-      status: session?.status || 'OPEN',
+      status: session?.status || 'AWAITING_ALLOCATION',
       opened_at: session?.opened_at
     },
     sales_summary: salesSummary,
@@ -5319,9 +5396,9 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
        JOIN products p ON p.id = si.product_id
        WHERE s.company_id = $1 AND s.employee_id = $2
          AND (s.status IS NULL OR s.status = 'ACTIVE' OR s.status != 'CANCELLED')
-         AND (s.sale_date = $3::date OR s.created_at::date = $3::date)
+         AND s.session_id = $3
        GROUP BY si.product_id, p.pieces_per_unit, p.base_unit`,
-      [cid, empId, todayStr]
+      [cid, empId, session.id]
     );
     const soldMap = new Map();
     soldRes.rows.forEach(r => soldMap.set(r.product_id, {
@@ -5592,20 +5669,20 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
               COALESCE(SUM(credit_paid), 0) as credit_sales
        FROM sales
        WHERE company_id = $1 AND employee_id = $2
-         AND (sale_date = $3::date OR created_at::date = $3::date)
+         AND session_id = $3
          AND (status IS NULL OR status = 'ACTIVE' OR status != 'CANCELLED')`,
-      [cid, empId, todayStr]
+      [cid, empId, session.id]
     );
     const expRes = await client.query(
       `SELECT COALESCE(SUM(amount), 0) as total_expenses, COUNT(*) as exp_count
        FROM expenses
        WHERE company_id = $1 AND employee_id = $2
-         AND (session_id = $3 OR expense_date = $4::date OR created_at::date = $4::date)`,
-      [cid, empId, session.id, todayStr]
+         AND session_id = $3`,
+      [cid, empId, session.id]
     );
     const finalSales = Number(salesRes.rows[0]?.total_sales || 0);
     const finalExpenses = Number(expRes.rows[0]?.total_expenses || 0);
-    const finalFlow = await cashFlow(client,cid,employeeId,{start:todayStr,end:todayStr});
+    const finalFlow = await cashFlow(client,cid,employeeId,{sessionId:session.id});
     const finalCash = Number(finalFlow.cash);
     const finalGpay = Number(finalFlow.gpay);
     const finalCredit = Number(salesRes.rows[0]?.credit_sales || 0);
@@ -5613,7 +5690,7 @@ async function verifyAndAcceptDriverReturnAttempt(cid, employeeId, data, actorUs
 
     await client.query(
       `UPDATE driver_sessions
-       SET status = 'CLOSED', closed_at = NOW(),
+       SET status = 'CLOSED', closed_at = clock_timestamp(),
            total_sales = $1, total_expenses = $2,
            cash_collected = $3, gpay_collected = $4, credit_sales = $5,
            updated_at = NOW()

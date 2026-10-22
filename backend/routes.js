@@ -551,6 +551,11 @@ router.get('/employees', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+router.post('/employees/reserve-code', requireAuth, requireRole('OWNER'), async (req, res) => {
+  try { res.json(await db.reserveEmployeeCode(getCid(req),req.body)); }
+  catch (error) { res.status(400).json({success:false,message:error.message}); }
+});
+
 router.post('/employees', requireAuth, requireRole('OWNER'), async (req, res) => {
   try {
     const result = await db.addEmployee(getCid(req), req.body);
@@ -848,7 +853,7 @@ router.post('/shops/:id/collect-due', requireAuth, async (req, res) => {
 });
 
 // ====== SALES & BILLING ======
-router.get('/reports/sales', requireAuth, requireRole('OWNER'), async (req, res) => {
+router.get('/reports/sales', requireAuth, requireRole('OWNER', 'STORE_KEEPER'), async (req, res) => {
   try {
     const report = await salesReport(getCid(req), req.query);
     res.json(report);

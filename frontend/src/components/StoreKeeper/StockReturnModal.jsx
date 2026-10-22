@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getOperationalUnit, normalizeQuantity, checkReconciliationEquation } from '../../utils/unitHelper';
 import { ProductImage } from '../common/ProductImage';
@@ -37,6 +37,7 @@ export const StockReturnModal = ({ onClose }) => {
   
   // Step 1: No driver selected automatically
   const [selectedDriverId, setSelectedDriverId] = useState('');
+  const driverLoad = useRef(0);
   
   // Step 3: Driver detailed data
   const [driverData, setDriverData] = useState(null);
@@ -128,6 +129,7 @@ export const StockReturnModal = ({ onClose }) => {
 
   // Fetch live driver return data from database
   const loadSelectedDriverData = async (driverId = selectedDriverId) => {
+    const requestId = ++driverLoad.current;
     if (!driverId) {
       setDriverData(null);
       setErrorMsg(null);
@@ -138,6 +140,7 @@ export const StockReturnModal = ({ onClose }) => {
       setLoadingData(true);
       setErrorMsg(null);
       const data = await fetchDriverExpectedReturn(driverId);
+      if (requestId !== driverLoad.current) return;
       if (data && data.success !== false) {
         setDriverData(data);
       } else {
@@ -145,16 +148,18 @@ export const StockReturnModal = ({ onClose }) => {
         toast.error(data?.message || 'Error loading driver data');
       }
     } catch (err) {
+      if (requestId !== driverLoad.current) return;
       console.error('Error loading driver data:', err);
       setErrorMsg(err.message || 'Error communicating with database');
       toast.error('Error fetching driver details');
     } finally {
-      setLoadingData(false);
+      if (requestId === driverLoad.current) setLoadingData(false);
     }
   };
 
   // Step 2 & 3: When driver is selected, immediately fetch live data from database
   useEffect(() => {
+    setDriverData(null);
     loadSelectedDriverData(selectedDriverId);
   }, [selectedDriverId]);
 
@@ -167,7 +172,7 @@ export const StockReturnModal = ({ onClose }) => {
   const sessionStatus = driverData?.session?.status || 'OPEN';
 
   // Lock status (Phase 7 Final Rule)
-  const isSessionLocked = ['CLOSED', 'COMPLETED', 'RETURN_VERIFIED', 'RECONCILED'].includes(sessionStatus.toUpperCase());
+  const isSessionLocked = ['CLOSED', 'COMPLETED', 'RETURN_VERIFIED', 'RECONCILED', 'AWAITING_ALLOCATION'].includes(sessionStatus.toUpperCase());
 
   // Financial Calculations
   const totalSales = Number(salesSummary.total_sales || 0);
@@ -180,7 +185,7 @@ export const StockReturnModal = ({ onClose }) => {
 
   // Shop Visit & Route Allocation Statistics (Strictly Route-Specific)
   const shopStats = useMemo(() => {
-    if (driverData?.shops_summary && Number(driverData.shops_summary.total_shops) > 0) {
+    if (driverData?.shops_summary) {
       return driverData.shops_summary;
     }
 
@@ -403,6 +408,21 @@ export const StockReturnModal = ({ onClose }) => {
     setShortageFormError('');
   }, [selectedDriverId, driverData?.session?.id]);
 
+  useEffect(() => {
+    setShowExpenseModal(false);
+    setEditingExpense(null);
+    setMultiExpenseAmounts({ Fuel:'', Food:'', Air:'', Other:'' });
+    setExpenseForm({ category:'Fuel', amount:'', notes:'' });
+    setOtherNotes('');
+    setExpenseFormError('');
+    setShowDamageModal(false);
+    setShowEditDamageModal(false);
+    setEditingDamage(null);
+    setDamageQuantities({});
+    setDamageNotes('');
+    setShowStockViewModal(false);
+  }, [selectedDriverId, driverData?.session?.id]);
+
   const handleManualReturnChange = (productId, rawVal, isPieceBased = false) => {
     setTouchedProductIds(prev => {
       const next = new Set(prev);
@@ -558,6 +578,7 @@ export const StockReturnModal = ({ onClose }) => {
       if (!isNaN(val) && val > 0) {
         itemsToAdd.push({
           employee_id: driverInfo.id || selectedDriverId,
+          session_id: driverData?.session?.id,
           category: c.key,
           title: c.title,
           amount: val,
@@ -733,6 +754,7 @@ export const StockReturnModal = ({ onClose }) => {
       setSavingDamage(true);
       const res = await addDamage({
         employee_id: driverInfo.id || selectedDriverId,
+        session_id: driverData?.session?.id,
         items: itemsToSubmit,
         reason: damageReason,
         notes: damageNotes
@@ -844,6 +866,7 @@ export const StockReturnModal = ({ onClose }) => {
 
   // Handle Final Return Submission & Live Inventory Update (Phase 6 & 7)
   const handleFinalSubmitReturn = async () => {
+    if (submittingReturn) return;
     if (isSessionLocked) {
       toast.error('This return is already submitted and locked.');
       return;
@@ -912,6 +935,9 @@ export const StockReturnModal = ({ onClose }) => {
           net_amount: netAmount,
           items: manualReturnReview.items
         });
+        driverLoad.current++;
+        setSelectedDriverId('');
+        setDriverData(null);
         // Reload driver list
         await loadDriversList();
       } else {
@@ -1067,10 +1093,12 @@ export const StockReturnModal = ({ onClose }) => {
                   </div>
                   <div>
                     <h4 className="font-black text-xs sm:text-sm text-white flex items-center gap-1.5">
-                      FINALIZED & LOCKED RETURN (முடிவடைந்த கணக்கு)
+                      {sessionStatus === 'AWAITING_ALLOCATION' ? 'AWAITING NEXT TRIP' : 'FINALIZED & LOCKED RETURN (முடிவடைந்த கணக்கு)'}
                     </h4>
                     <p className="text-[11px] text-slate-400 font-medium">
-                      This driver's return is completed. Stock returns, sales, expenses, and damages are permanently locked against changes.
+                      {sessionStatus === 'AWAITING_ALLOCATION'
+                        ? 'No active trip. Allocate new stock to start the next trip. Previous returns remain saved in history.'
+                        : "This driver's return is completed. Stock returns, sales, expenses, and damages are permanently locked against changes."}
                     </p>
                   </div>
                 </div>
@@ -1495,7 +1523,7 @@ export const StockReturnModal = ({ onClose }) => {
 
               {expensesList.length === 0 ? (
                 <div className="py-4 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl space-y-1">
-                  <p className="text-xs font-bold text-slate-600">No expenses recorded for this driver today</p>
+                  <p className="text-xs font-bold text-slate-600">No expenses recorded for this trip</p>
                 </div>
               ) : (
                 <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
@@ -2454,33 +2482,54 @@ export const StockReturnModal = ({ onClose }) => {
       {showStockViewModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
           <style dangerouslySetInnerHTML={{ __html: `
+            #thermal-58mm-stock-sheet, #thermal-58mm-stock-sheet * {
+              font-size: 14px !important;
+              line-height: 1.4 !important;
+              font-weight: 700 !important;
+            }
+            #thermal-58mm-stock-sheet h3 { font-size: 22px !important; }
+            #thermal-58mm-stock-sheet .truncate {
+              white-space: normal !important;
+              overflow-wrap: anywhere;
+            }
             @media print {
               @page {
-                size: 58mm auto;
+                size: 80mm auto;
                 margin: 0;
               }
               body * {
                 visibility: hidden !important;
               }
+              body :has(#thermal-58mm-stock-sheet) {
+                position: static !important;
+                overflow: visible !important;
+                max-height: none !important;
+                height: auto !important;
+                transform: none !important;
+              }
               #thermal-58mm-stock-sheet, #thermal-58mm-stock-sheet * {
                 visibility: visible !important;
               }
               #thermal-58mm-stock-sheet {
-                position: fixed !important;
+                position: absolute !important;
                 left: 0 !important;
                 top: 0 !important;
-                width: 58mm !important;
-                max-width: 58mm !important;
+                width: 80mm !important;
+                max-width: 80mm !important;
+                box-sizing: border-box !important;
                 margin: 0 !important;
                 padding: 2mm 3mm !important;
                 background: white !important;
                 color: black !important;
                 font-family: monospace, monospace !important;
-                font-size: 10px !important;
-                line-height: 1.25 !important;
+                font-size: 14px !important;
+                line-height: 1.4 !important;
+                overflow: visible !important;
+                max-height: none !important;
                 border: none !important;
                 box-shadow: none !important;
               }
+              #thermal-58mm-stock-sheet * { color: black !important; }
             }
           `}} />
           
