@@ -170,6 +170,13 @@ export const UsersMaster = () => {
     setShowEditModal(true);
   };
 
+  // The list retains saved route details even when /routes omits an inactive route.
+  // Keep that existing assignment selectable so an unrelated profile edit can submit.
+  const savedEditRouteId = selectedUser?.route_id ?? selectedUser?.routeId;
+  const editRouteOptions = savedEditRouteId && !routes.some(route => String(route.id) === String(savedEditRouteId))
+    ? [...routes, { id: savedEditRouteId, name: selectedUser.route_name || 'Saved route', code: selectedUser.route_code || '', savedOnly: true }]
+    : routes;
+
   const handleCreateEmployeeInline = async (e) => {
     e.preventDefault();
     setFormError(null);
@@ -337,7 +344,7 @@ export const UsersMaster = () => {
     if (u.id === currentUser?.id) {
       return showToast('Cannot delete your own account', 'error');
     }
-    if (!window.confirm(`Are you sure you want to permanently delete user "${u.login_id}" (${u.name || u.employee_name})?`)) return;
+    if (!window.confirm(`Delete user "${u.login_id}" (${u.name || u.employee_name})? Accounts with sales history are retained and deactivated instead of permanently deleted.`)) return;
 
     try {
       const res = await apiFetch(API_URL + '/users/' + u.id, {
@@ -1029,9 +1036,9 @@ export const UsersMaster = () => {
                     onChange={e => setFormData({...formData, route_id: e.target.value})}
                   >
                     <option value="">-- Select Route --</option>
-                    {routes.map(r => (
+                    {editRouteOptions.map(r => (
                       <option key={r.id} value={r.id}>
-                        {r.name} ({r.code})
+                        {r.name} ({r.code}){r.savedOnly ? ' - current assignment' : ''}
                       </option>
                     ))}
                   </select>
