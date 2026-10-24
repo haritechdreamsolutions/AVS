@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import { chromium } from '@playwright/test';
+import bcrypt from 'bcrypt';
+import { randomUUID } from 'node:crypto';
+if (!process.env.AVS_TEST_DATABASE_URL || !/^postgresql:\/\/avs_test_admin@127\.0\.0\.1:55439\/avs_hardening_[a-z0-9_]+$/.test(process.env.AVS_TEST_DATABASE_URL)) throw new Error('Explicit isolated test database required');
+process.env.DATABASE_URL=process.env.AVS_TEST_DATABASE_URL;
+process.env.NODE_ENV='test';process.env.AVS_NO_LISTEN='1';
+process.env.FRONTEND_URL='http://127.0.0.1:55637';
+process.env.SESSION_SECRET='synthetic-browser-session-secret-at-least-32-bytes';
+const {pool}=await import('../database/pg_pool.js');
+const {migrate}=await import('../database/migrate.js');await migrate();
+const company=(await pool.query("INSERT INTO companies(name) VALUES('Synthetic browser company') RETURNING id")).rows[0].id;
+const login='browser-'+randomUUID(),password='Synthetic-browser-password!';
+await pool.query("INSERT INTO user_accounts(company_id,role_id,login_id,name,pin_hash,credential_kind) VALUES($1,(SELECT id FROM roles WHERE role_name='OWNER'),$2,'Synthetic owner',$3,'password')",[company,login,await bcrypt.hash(password,12)]);
+const {app}=await import('../index.js');
+const server=app.listen(55637,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
+let browser;
+try {
+  browser=await chromium.launch({headless:true,...(process.env.AVS_TEST_BROWSER==='chromium'?{}:{channel:'msedge'})});
+  const page=await browser.newPage({viewport:{width:1280,height:900}});
+  const errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  page.on('response',response=>{if(response.url().includes('/api/') && response.status()>=500)errors.push(new URL(response.url()).pathname+': '+response.status());});
+  await page.route('**/*',route=>route.request().url().startsWith('http://127.0.0.1:55637/')?route.continue():route.abort());
+  await page.goto('http://127.0.0.1:55637');
+  await page.getByPlaceholder('Enter your Login ID (e.g. owner)').fill(login);
+  await page.getByLabel('Password or driver PIN').fill(password);
+  await page.getByRole('button',{name:'Enter',exact:true}).click();
+  await page.getByRole('button',{name:/Logout|Sign Out/i}).first().waitFor({state:'visible',timeout:15000});
+  await page.getByRole('button',{name:'Sales & Bills',exact:true}).click();
+  await page.getByText('Page 1 · 0 bills',{exact:true}).waitFor({timeout:10000});
+  assert.deepEqual(errors,[]);
+  const report=await page.request.get('http://127.0.0.1:55637/api/reports/sales');
+  assert.equal(report.status(),200);
+  assert.equal((await report.json()).metrics.totalBills,0);
+  const css=await page.locator('body').evaluate(element=>getComputedStyle(element).backgroundImage);
+  assert.ok(css.includes('gradient'));
+  console.log('PASS: browser password login, owner rendering, same-origin session/report, local CSS and no uncaught runtime errors');
+} finally {
+  if(browser)await browser.close();
+  await new Promise(resolve=>server.close(resolve));
+  await pool.end();
+}

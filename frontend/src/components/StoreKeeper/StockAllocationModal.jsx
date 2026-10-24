@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useApp, apiFetch, API_URL } from '../../context/AppContext';
 import { ArrowUpRight, X, Save, User, Truck, ShieldAlert, CheckCircle2, Minus, Plus, Package, Layers } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,6 +9,7 @@ import { getOperationalUnit } from '../../utils/unitHelper';
 
 export const StockAllocationModal = ({ onClose }) => {
   const { products = [], employees = [], drivers: contextDrivers = [], allocateStock, fetchWarehouseStock } = useApp();
+  const allocationRequest = useRef({payload:'',key:crypto.randomUUID()});
   const [employeeId, setEmployeeId] = useState('');
   const [allocations, setAllocations] = useState({}); // { [prodId]: { trays: number|'', pieces: number|'', qty: number|'' } }
   const [saving, setSaving] = useState(false);
@@ -209,7 +210,7 @@ export const StockAllocationModal = ({ onClose }) => {
         const numPieces = Number(alloc?.pieces || 0);
         const totalPcs = (numTrays * ppu) + numPieces;
         if (totalPcs > 0) {
-          const qtyInSellingUnits = parseFloat((totalPcs / ppu).toFixed(4));
+          const qtyInSellingUnits = totalPcs / ppu;
           items.push({
             product_id: pid,
             quantity: qtyInSellingUnits,
@@ -256,7 +257,9 @@ export const StockAllocationModal = ({ onClose }) => {
 
     const targetEmpId = selectedDriver?.id || selectedDriver?.employee_id || employeeId;
     // Backend idempotency token to prevent double-click allocations
-    const clientRef = 'ALLOC-' + targetEmpId + '-' + Date.now();
+    const fingerprint = JSON.stringify({employee_id:targetEmpId,items});
+    if (allocationRequest.current.payload !== fingerprint) allocationRequest.current = {payload:fingerprint,key:crypto.randomUUID()};
+    const clientRef = allocationRequest.current.key;
 
     setSaving(true);
     try {

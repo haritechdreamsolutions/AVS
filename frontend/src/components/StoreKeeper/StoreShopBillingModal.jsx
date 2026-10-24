@@ -156,11 +156,15 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
     const piecesPerUnit = Math.max(1, Number(product.pieces_per_unit || 1));
     const whUnits = Number(product.warehouse_stock_units || 0);
     const stockFormatted = formatWarehouseStock(product);
+    const billingUnit = opUnit.isPieceBased ? 'Piece' : opUnit.operationalUnit;
+    const isBaseUnit = billingUnit.toLowerCase() === (product.base_unit || 'Piece').toLowerCase();
+    const rate = Number(isBaseUnit && Number(product.direct_sale_rate) > 0
+      ? product.direct_sale_rate
+      : isBaseUnit ? product.piece_selling_price : product.unit_selling_price);
 
     if (opUnit.isPieceBased) {
       // Tray products: Milk, Curd -> Piece-based rates & available
       const availableStock = stockFormatted.totalPieces;
-      const rate = Number(product.piece_selling_price || (Number(product.unit_selling_price || 0) / piecesPerUnit) || 0);
       return {
         opUnit,
         whUnits,
@@ -177,7 +181,6 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
     } else {
       // Non-tray products: Case, Bag, Box
       const availableStock = stockFormatted.units;
-      const rate = Number(product.unit_selling_price || (Number(product.piece_selling_price || 0) * piecesPerUnit) || 0);
       return {
         opUnit,
         whUnits,

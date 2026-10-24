@@ -682,13 +682,13 @@ export const generateSalesRecordsPDFReport = async ({
     }
 
     const shopName = b.shop_name || b.customer_name || 'Walk-in Customer';
-    const isStore = b.is_store_direct_sale || Number(b.employee_id) === 6 || (b.employee_name && b.employee_name.toLowerCase().includes('store'));
+    const isStore = b.is_store_direct_sale || b.employee_id == null;
     const soldBy = isStore ? 'Store Keeper' : 'Driver';
     const paymentMode = (b.payment_mode || 'CASH').toUpperCase();
     const totalAmt = Number(b.total_amount || b.grand_total || 0);
     
     let received = Number(b.received_amount !== undefined ? b.received_amount : (Number(b.cash_paid || 0) + Number(b.gpay_paid || 0)));
-    if (received === 0 && paymentMode !== 'CREDIT' && paymentMode !== 'DUE') {
+    if (received === 0 && b.received_amount == null && b.cash_paid == null && b.gpay_paid == null && paymentMode !== 'CREDIT' && paymentMode !== 'DUE') {
       received = totalAmt;
     }
     const balance = Math.max(0, Number(b.balance_amount !== undefined ? b.balance_amount : (b.balance !== undefined ? b.balance : (totalAmt - received))));

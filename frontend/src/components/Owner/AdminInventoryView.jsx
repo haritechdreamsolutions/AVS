@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ProductImage } from '../common/ProductImage';
 import { 
@@ -8,6 +8,7 @@ import {
   TrendingUp, Clock, FileText, CheckCircle, AlertCircle, Bell, Download, Wrench, RefreshCw
 } from 'lucide-react';
 import { generateInventoryPDFReport } from '../../utils/pdfReportGenerator';
+import { prepareOwnerReturn, buildOwnerReturnPayload } from '../../utils/ownerReturnVerification';
 
 const PRODUCT_IMAGES = {
   1: { image: '/images/amirthaa_milk_200ml.png', sizeBadge: '200 ml', category: 'Dairy', bgTone: 'from-blue-500/10 to-blue-50 border-blue-200', textTone: 'text-blue-700' },
@@ -79,6 +80,11 @@ export const AdminInventoryView = ({ hideActionButtons }) => {
   const [productHistoryLogs, setProductHistoryLogs] = useState([]);
   const [reconciliationList, setReconciliationList] = useState([]);
   const [pendingReturnsList, setPendingReturnsList] = useState([]);
+  const [returnDrafts, setReturnDrafts] = useState({});
+  const [loadingReturns, setLoadingReturns] = useState(false);
+  const [submittingReturnKey, setSubmittingReturnKey] = useState(null);
+  const returnSubmission = useRef(false);
+  const completedReturns = useRef(new Set());
   const [returnHistoryList, setReturnHistoryList] = useState([]);
   const [actionError, setActionError] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
@@ -140,58 +146,28 @@ export const AdminInventoryView = ({ hideActionButtons }) => {
 
   const loadPendingReturnsData = async () => {
     if (!fetchPendingReturns) return;
+    setLoadingReturns(true);
     try {
       const res = await fetchPendingReturns();
       let list = Array.isArray(res) ? res : [];
       
       const enriched = await Promise.all(list.map(async (driver) => {
-        if (Array.isArray(driver.items) && driver.items.length > 0) {
-          return {
-            ...driver,
-            id: driver.id || driver.session_id || driver.driver_id,
-            return_no: driver.return_no || (driver.session_id ? `RET-${driver.session_id}` : `RET-${driver.driver_id || driver.id}`),
-            date: driver.date || driver.session_date || new Date().toISOString().split('T')[0],
-            time: driver.time || (driver.updated_at ? new Date(driver.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending')
-          };
+        try {
+          const driverId = driver.driver_id || driver.employee_id;
+          const exp = await fetchDriverExpectedReturn(driverId, driver.session_id);
+          const record = prepareOwnerReturn(driver, exp);
+          return record && !completedReturns.current.has(record.verification_key) ? record : null;
+        } catch (error) {
+          return { ...driver, verification_key: `${driver.driver_id || driver.employee_id}:${driver.session_id || 'missing'}`, items: [], verificationError: error.message };
         }
-
-        let items = [];
-        const driverId = driver.driver_id || driver.employee_id || driver.id;
-        if (fetchDriverExpectedReturn && driverId) {
-          try {
-            const exp = await fetchDriverExpectedReturn(driverId, driver.session_id);
-            if (exp && Array.isArray(exp.products)) {
-              items = exp.products.map(p => ({
-                product_id: p.product_id,
-                product_name: p.product_name,
-                category_name: p.category_name || 'General',
-                unit_name: p.unit_name || 'Box',
-                pieces_per_unit: p.pieces_per_unit || 1,
-                driver_good_pcs: Number(p.expected_return_good_pcs ?? p.good_return_pieces ?? 0),
-                driver_damaged_pcs: Number(p.expected_return_damage_pcs ?? p.damage_return_pieces ?? 0),
-                verified_good_pcs: Number(p.verified_good_pieces ?? p.expected_return_good_pcs ?? p.good_return_pieces ?? 0),
-                verified_damaged_pcs: Number(p.verified_damage_pieces ?? p.expected_return_damage_pcs ?? p.damage_return_pieces ?? 0)
-              }));
-            }
-          } catch (e) {
-            console.error("Error fetching expected return for driver:", e);
-          }
-        }
-
-        return {
-          ...driver,
-          id: driver.id || driver.session_id || driver.driver_id,
-          return_no: driver.return_no || (driver.session_id ? `RET-${driver.session_id}` : `RET-${driver.driver_id || driver.id}`),
-          date: driver.date || driver.session_date || new Date().toISOString().split('T')[0],
-          time: driver.time || (driver.updated_at ? new Date(driver.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending'),
-          items
-        };
       }));
 
-      setPendingReturnsList(enriched);
+      setPendingReturnsList(enriched.filter(Boolean));
     } catch (err) {
       console.error("Error loading pending returns data:", err);
-      setPendingReturnsList([]);
+      setActionError('Unable to load return verification data. Refresh and retry.');
+    } finally {
+      setLoadingReturns(false);
     }
   };
 
@@ -472,33 +448,44 @@ export const AdminInventoryView = ({ hideActionButtons }) => {
     }
   };
 
+  const updateReturnDraft = (key, field, value, productId) => {
+    setReturnDrafts(previous => {
+      const draft = previous[key] || {};
+      if (field === 'shortageReason') return { ...previous, [key]: { ...draft, shortageReason: value } };
+      return { ...previous, [key]: {
+        ...draft, [field]: { ...draft[field], [productId]: value },
+        ...(field === 'units' ? { counts: { ...draft.counts, [productId]: '' } } : {})
+      } };
+    });
+  };
+
   // Storekeeper Return Verification (Step 2: Physical Verification & Approval)
   const handleVerifyReturn = async (returnObjOrId) => {
+    const manual = typeof returnObjOrId === 'object' && returnObjOrId !== null;
+    const key = manual ? returnObjOrId.verification_key : null;
+    if (manual && (returnSubmission.current || completedReturns.current.has(key))) return;
     setActionError('');
     setActionSuccess('');
 
     try {
       let res;
-      if (typeof returnObjOrId === 'object' && returnObjOrId !== null) {
-        const driverId = returnObjOrId.driver_id || returnObjOrId.employee_id || returnObjOrId.id;
-        const returnPayload = {
-          driver_id: Number(driverId),
-          session_id: returnObjOrId.session_id ? Number(returnObjOrId.session_id) : undefined,
-          verified_by: currentUser?.name || 'Store Keeper',
-          products: (returnObjOrId.items || []).map(i => ({
-            product_id: Number(i.product_id),
-            good_pieces: Number(i.verified_good_pcs ?? i.driver_good_pcs ?? 0),
-            damage_pieces: Number(i.verified_damaged_pcs ?? i.driver_damaged_pcs ?? 0),
-            damage_reason: 'DRIVER_RETURN_DAMAGE',
-            notes: 'Verified via Inventory Panel'
-          }))
-        };
+      if (manual) {
+        if (returnObjOrId.verificationError) throw new Error(returnObjOrId.verificationError);
+        const draft = returnDrafts[key] || {};
+        const returnPayload = buildOwnerReturnPayload(returnObjOrId, draft.counts, draft.units, draft.shortageReason);
+        returnSubmission.current = true;
+        setSubmittingReturnKey(key);
         res = await verifyDriverReturn(returnPayload);
       } else {
         res = await verifyDriverReturn(returnObjOrId, { verified_by: currentUser?.name || 'Store Keeper' });
       }
 
       if (res && res.success) {
+        if (manual) {
+          completedReturns.current.add(key);
+          setPendingReturnsList(previous => previous.filter(record => record.verification_key !== key));
+          setReturnDrafts(previous => { const next = { ...previous }; delete next[key]; return next; });
+        }
         setActionSuccess('Driver return physically verified and approved! Warehouse stock updated.');
         await loadPendingReturnsData();
         if (fetchReconciliation) {
@@ -509,6 +496,11 @@ export const AdminInventoryView = ({ hideActionButtons }) => {
       }
     } catch (err) {
       setActionError(err.message || 'Error verifying return');
+    } finally {
+      if (manual) {
+        returnSubmission.current = false;
+        setSubmittingReturnKey(null);
+      }
     }
   };
 
@@ -1035,12 +1027,12 @@ export const AdminInventoryView = ({ hideActionButtons }) => {
               </h3>
               <p className="text-xs text-slate-500 font-semibold mt-0.5">Physical goods verification before updating warehouse stock & damage ledgers.</p>
             </div>
-            <button onClick={loadPendingReturnsData} className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200">
+            <button onClick={loadPendingReturnsData} disabled={loadingReturns || submittingReturnKey !== null} className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 disabled:opacity-50">
               🔄 Refresh List
             </button>
           </div>
 
-          {pendingReturnsList.length === 0 ? (
+          {loadingReturns ? <p role="status" className="text-sm text-slate-600">Loading expected return quantities...</p> : pendingReturnsList.length === 0 ? (
             <div className="p-8 text-center bg-amber-50/50 rounded-2xl border border-amber-200/50">
               <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
               <h4 className="font-black text-sm text-slate-800">All Driver Returns Verified!</h4>
@@ -1049,54 +1041,75 @@ export const AdminInventoryView = ({ hideActionButtons }) => {
           ) : (
             <div className="space-y-4">
               {pendingReturnsList.map(ret => (
-                <div key={ret.id} className="p-4 rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-50/50 to-orange-50/30 space-y-3">
+                <div key={ret.verification_key} className="p-4 rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-50/50 to-orange-50/30 space-y-3">
                   <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
                     <div>
                       <span className="font-black text-slate-900 text-sm">{ret.driver_name || ret.employee_name}</span>
-                      <span className="ml-2 font-mono text-xs text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full font-bold">#{ret.return_no}</span>
-                      <span className="ml-2 text-xs text-slate-500">{ret.date} • {ret.time}</span>
+                      <span className="ml-2 font-mono text-xs text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full font-bold">{ret.return_no || `Session ${ret.session_id || 'unavailable'}`}</span>
+                      <span className="ml-2 text-xs text-slate-500">{ret.date || ret.session_date}</span>
                     </div>
                     <span className="px-3 py-1 bg-amber-500 text-white rounded-full text-[10px] font-black uppercase tracking-wider">
                       Pending Physical Verification
                     </span>
                   </div>
 
+                  {ret.verificationError && <p role="alert" className="text-sm text-rose-700">{ret.verificationError}</p>}
+                  <p className="text-xs text-slate-600">Enter the good stock physically received for every product, including 0 when none was returned. Damages already recorded are excluded from expected good returns. Counts above expected are accepted as excess returns.</p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs bg-white rounded-xl border border-slate-200">
                       <thead>
                         <tr className="bg-slate-100 font-extrabold text-slate-700 border-b border-slate-200">
                           <th className="p-2.5">Product & Category</th>
-                          <th className="p-2.5 text-center">Driver Declared Good</th>
-                          <th className="p-2.5 text-center">Driver Declared Damaged</th>
-                          <th className="p-2.5 text-center">Physical Good Verified</th>
-                          <th className="p-2.5 text-center">Physical Damage Verified</th>
+                          <th className="p-2.5 text-center">Expected Good Return</th>
+                          <th className="p-2.5 text-center">Physical Good Return</th>
+                          <th className="p-2.5 text-center">Entry Unit</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-bold">
                         {(ret.items || []).length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="p-3 text-center text-slate-400 font-medium">
+                            <td colSpan={4} className="p-3 text-center text-slate-400 font-medium">
                               No product line items found for this return session
                             </td>
                           </tr>
                         ) : (
-                          (ret.items || []).map((item, idx) => (
-                            <tr key={idx}>
+                          (ret.items || []).map(item => (
+                            <tr key={item.product_id}>
                               <td className="p-2.5">
                                 <span className="font-black text-slate-900 block">{item.product_name}</span>
                                 <span className="text-[9px] text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">{item.category_name}</span>
                               </td>
                               <td className="p-2.5 text-center font-mono text-emerald-700">
-                                {Math.round(item.driver_good_pcs / (item.pieces_per_unit || 1))} {item.unit_name || 'Box'}s ({item.driver_good_pcs} Pcs)
-                              </td>
-                              <td className="p-2.5 text-center font-mono text-rose-700">
-                                {Math.round(item.driver_damaged_pcs / (item.pieces_per_unit || 1))} {item.unit_name || 'Box'}s ({item.driver_damaged_pcs} Pcs)
+                                {item.expected_quantity} {item.unit}
                               </td>
                               <td className="p-2.5 text-center font-mono font-black text-emerald-800">
-                                {item.verified_good_pcs} Pcs
+                                <input
+                                  type="number" min="0" required
+                                  step={item.is_piece_based && (returnDrafts[ret.verification_key]?.units?.[item.product_id] || item.unit) === 'Piece' ? '1' : 'any'}
+                                  aria-label={`Physical return for ${item.product_name} (${returnDrafts[ret.verification_key]?.units?.[item.product_id] || item.unit})`}
+                                  placeholder="Enter count"
+                                  value={returnDrafts[ret.verification_key]?.counts?.[item.product_id] ?? ''}
+                                  onChange={event => updateReturnDraft(ret.verification_key, 'counts', event.target.value, item.product_id)}
+                                  disabled={submittingReturnKey !== null}
+                                  className="w-32 border border-slate-300 rounded-lg p-2 text-slate-900 disabled:opacity-50"
+                                />
                               </td>
-                              <td className="p-2.5 text-center font-mono font-black text-rose-800">
-                                {item.verified_damaged_pcs} Pcs
+                              <td className="p-2.5 text-center font-mono">
+                                {item.allow_trays ? (
+                                  <label className="flex flex-col items-center gap-1">
+                                    <select
+                                      aria-label={`Return unit for ${item.product_name}`}
+                                      value={returnDrafts[ret.verification_key]?.units?.[item.product_id] || item.unit}
+                                      onChange={event => updateReturnDraft(ret.verification_key, 'units', event.target.value, item.product_id)}
+                                      disabled={submittingReturnKey !== null}
+                                      className="border border-slate-300 rounded-lg p-2"
+                                    >
+                                      <option value="Piece">Piece</option>
+                                      <option value="Tray">Tray</option>
+                                    </select>
+                                    <span className="text-[10px] text-slate-500">1 Tray = {item.pieces_per_unit} Pieces</span>
+                                  </label>
+                                ) : item.unit}
                               </td>
                             </tr>
                           ))
@@ -1105,12 +1118,23 @@ export const AdminInventoryView = ({ hideActionButtons }) => {
                     </table>
                   </div>
 
+                  <label className="block text-xs font-bold text-slate-700">
+                    Shortage reason (required if any physical count is below expected)
+                    <textarea
+                      aria-label={`Shortage reason for ${ret.driver_name || ret.employee_name}`}
+                      value={returnDrafts[ret.verification_key]?.shortageReason ?? ''}
+                      onChange={event => updateReturnDraft(ret.verification_key, 'shortageReason', event.target.value)}
+                      disabled={submittingReturnKey !== null || !!ret.verificationError}
+                      className="mt-1 w-full border border-slate-300 rounded-lg p-2 font-normal"
+                    />
+                  </label>
                   <div className="flex items-center justify-end gap-3 pt-1">
                     <button
                       onClick={() => handleVerifyReturn(ret)}
-                      className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-black text-xs hover:bg-emerald-700 shadow-md flex items-center gap-1.5"
+                      disabled={submittingReturnKey !== null || !!ret.verificationError || !ret.items?.length}
+                      className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-black text-xs hover:bg-emerald-700 shadow-md flex items-center gap-1.5 disabled:opacity-50"
                     >
-                      <CheckCircle className="w-4 h-4" /> Approve & Update Warehouse Stock
+                      <CheckCircle className="w-4 h-4" /> {submittingReturnKey === ret.verification_key ? 'Submitting...' : 'Approve & Update Warehouse Stock'}
                     </button>
                   </div>
                 </div>
