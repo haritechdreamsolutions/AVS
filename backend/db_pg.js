@@ -5,6 +5,7 @@ const transactionContext = new AsyncLocalStorage();
 import { collectDue, settle, cashFlow } from './payments.js';
 import { businessDate, paise, amount, requestIdentity, credential, retryTransaction } from './financial.js';
 import { pool } from './database/pg_pool.js';
+import { validateProductImage } from './product-image.js';
 import { getOperationalUnit, normalizeQuantity, checkReconciliationEquation, RECONCILIATION_EPSILON, quantityFromWholePieces } from './unitHelper.js';
 export { getOperationalUnit, normalizeQuantity, checkReconciliationEquation, RECONCILIATION_EPSILON, quantityFromWholePieces };
 
@@ -837,6 +838,7 @@ export async function getProducts(cid, filters) {
 
 export async function addProduct(cid, d) {
   if (!d.name || !d.name.trim()) throw new Error('Product name is required.');
+  const imageToStore = validateProductImage(d.image_url !== undefined ? d.image_url : (d.image || null));
   const displayName = d.display_name && d.display_name.trim() ? d.display_name.trim() : d.name.trim();
   const packSize = d.pack_size ? d.pack_size.trim() : '';
   const baseUnit = d.base_unit && d.base_unit.trim() ? d.base_unit.trim() : 'Piece';
@@ -899,7 +901,6 @@ export async function addProduct(cid, d) {
   }
 
   const categoryNameToStore = targetCategoryName || (d.category && String(d.category).trim()) || 'General';
-  const imageToStore = d.image_url !== undefined ? d.image_url : (d.image || null);
   const directSaleRate = d.direct_sale_rate !== undefined && d.direct_sale_rate !== null && d.direct_sale_rate !== '' ? Number(d.direct_sale_rate) : pieceSellingPrice;
 
   const client = await pool.connect();
@@ -994,6 +995,9 @@ export async function addProduct(cid, d) {
 export async function updateProduct(cid, prodId, d) {
   const pOld = await queryOne('SELECT * FROM products WHERE id=$1 AND company_id=$2', [prodId, cid]);
   if (!pOld) throw new Error('Product not found.');
+
+  const submittedImage = d.image_url || d.image || null;
+  const imageToStore = submittedImage === pOld.image_url ? submittedImage : validateProductImage(submittedImage);
 
   const conversionFactor = d.pieces_per_unit !== undefined ? Number(d.pieces_per_unit) : Number(pOld.pieces_per_unit);
   if (conversionFactor <= 0) throw new Error('Conversion factor must be greater than 0.');
@@ -1092,7 +1096,7 @@ export async function updateProduct(cid, prodId, d) {
         buyRate, buyRateUom,
         unitSellingPrice, sellingRateUom, pieceSellingPrice, directSaleRate,
         d.min_stock_level !== undefined ? Number(d.min_stock_level) : null,
-        d.icon || null, d.image_url || d.image || null,
+        d.icon || null, imageToStore,
         prodId, cid
       ]
     );
@@ -1207,9 +1211,31 @@ export async function toggleProductStatus(cid, prodId, is_active) {
 }
 
 export async function deleteProduct(cid, prodId) {
-  const product = await queryOne('UPDATE products SET is_active=FALSE,updated_at=NOW() WHERE id=$1 AND company_id=$2 RETURNING *',[prodId,cid]);
-  if (!product) throw new Error('Product not found');
-  return {success:true,message:'Product deactivated; financial and stock history preserved.',product};
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: [product] } = await client.query(
+      'SELECT * FROM products WHERE id=$1 AND company_id=$2 FOR UPDATE', [prodId, cid]
+    );
+    if (!product) throw new Error('Product not found');
+
+    // Retain ledger amounts and a readable product reference after removing the master.
+    await client.query(
+      "UPDATE stock_transactions SET product_id=NULL, notes=CONCAT_WS(' | ', NULLIF(notes,''), $3::text) WHERE product_id=$1 AND company_id=$2",
+      [prodId, cid, `Deleted product #${product.id}: ${product.display_name || product.name}`]
+    );
+    await client.query('DELETE FROM employee_stock WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
+    await client.query('DELETE FROM supplier_product_rates WHERE product_id=$1 AND company_id=$2', [prodId, cid]);
+    // UOMs and price history cascade; bill/damage/inventory rows retain their snapshots.
+    await client.query('DELETE FROM products WHERE id=$1 AND company_id=$2', [prodId, cid]);
+    await client.query('COMMIT');
+    return { success: true, message: 'Product permanently deleted.', product };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function getProductUoms(cid, prodId) {

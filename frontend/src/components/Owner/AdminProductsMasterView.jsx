@@ -27,6 +27,7 @@ export const AdminProductsMasterView = () => {
   // Selected product for Details / Edit Modal
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
 
   // Delete Product Confirmation Modal State
@@ -340,20 +341,23 @@ export const AdminProductsMasterView = () => {
     try {
       const normalizedDataUrl = await normalizeProductImage(file, 512);
       if (isEditModal && selectedProduct) {
-        setSelectedProduct(prev => ({ ...prev, image: normalizedDataUrl }));
+        setSelectedProduct(prev => ({ ...prev, image: normalizedDataUrl, image_url: normalizedDataUrl }));
       } else {
         setFormData(prev => ({ ...prev, image: normalizedDataUrl }));
       }
-      toast.success("✨ Product image normalized to master 512×512 1:1 canvas!");
+      toast.success(`Image compressed (${(normalizedDataUrl.length / 1024).toFixed(1)} KB stored), ready to save.`);
     } catch (err) {
       toast.error(`Image Error: ${err.message}`);
     } finally {
       setIsProcessingImage(false);
+      e.target.value = '';
     }
   };
 
   const handleCreateProduct = async (e) => {
     e.preventDefault();
+    if (isProcessingImage) return toast.error('Please wait for image compression to finish.');
+    if (isSavingProduct) return;
     if (!validateForm()) {
       toast.error("Please correct the form errors before saving.");
       return;
@@ -382,7 +386,11 @@ export const AdminProductsMasterView = () => {
         category: categoryName
       };
 
-      const res = await addProduct(payload);
+      setIsSavingProduct(true);
+      let res;
+      try { res = await addProduct(payload); }
+      catch (error) { res = { success: false, message: error.message }; }
+      finally { setIsSavingProduct(false); }
       if (res.success) {
         toast.success(`🎉 Product '${res.product.display_name}' created successfully under '${res.product.category || categoryName}'!`);
         setActiveTab('list');
@@ -465,7 +473,22 @@ export const AdminProductsMasterView = () => {
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
-    if (!selectedProduct) return;
+    if (isProcessingImage) return toast.error('Please wait for image compression to finish.');
+    if (!selectedProduct || isSavingProduct) return;
+    if (!selectedProduct.name?.trim() || !selectedProduct.display_name?.trim() || !selectedProduct.pack_size?.trim()) {
+      return toast.error('Product name, display name and pack size are required.');
+    }
+    for (const field of ['purchase_price', 'unit_selling_price', 'piece_selling_price', 'min_stock_level']) {
+      if (selectedProduct[field] !== undefined && (!Number.isFinite(Number(selectedProduct[field])) || Number(selectedProduct[field]) < 0)) {
+        return toast.error('Prices and minimum stock must be valid nonnegative numbers.');
+      }
+    }
+    if (!Number.isFinite(Number(selectedProduct.pieces_per_unit)) || Number(selectedProduct.pieces_per_unit) <= 0) {
+      return toast.error('Conversion factor must be greater than zero.');
+    }
+    if (selectedProduct.direct_sale_rate !== '' && selectedProduct.direct_sale_rate != null && (!Number.isFinite(Number(selectedProduct.direct_sale_rate)) || Number(selectedProduct.direct_sale_rate) < 0)) {
+      return toast.error('Direct sale rate must be a valid nonnegative number.');
+    }
 
     if (updateProduct) {
       const selectedCat = categories.find(c => String(c.id) === String(selectedProduct.category_id)) || activeCategories.find(c => String(c.id) === String(selectedProduct.category_id));
@@ -478,7 +501,11 @@ export const AdminProductsMasterView = () => {
         category: categoryName
       };
 
-      const res = await updateProduct(selectedProduct.id, payload);
+      setIsSavingProduct(true);
+      let res;
+      try { res = await updateProduct(selectedProduct.id, payload); }
+      catch (error) { res = { success: false, message: error.message }; }
+      finally { setIsSavingProduct(false); }
       if (res.success) {
         toast.success(`Product '${res.product.display_name}' updated successfully!`);
         setSelectedProduct(null);
@@ -977,16 +1004,17 @@ export const AdminProductsMasterView = () => {
                   Product Master Photo (Auto-Normalizes to 512×512 WebP)
                 </span>
                 <p className="text-[11px] text-slate-500">
-                  Upload JPG, PNG, or WebP (max 2 MB). The system automatically resizes and centers the product on a <strong>512×512 1:1 canvas</strong> with zero distortion!
+                  Upload JPG, PNG, or WebP (up to 50 MB / 40 megapixels). Automatically compressed to <strong>under 100 KB stored</strong>, with up to 512×512 detail and no stretching or cropping.
                 </p>
 
                 <div className="flex items-center gap-2 pt-1">
                   <label className={`px-3 py-1.5 rounded-xl text-white font-extrabold text-xs flex items-center gap-1.5 cursor-pointer shadow-2xs transition ${isProcessingImage ? 'bg-slate-400 pointer-events-none' : 'bg-blue-600 hover:bg-blue-500'}`}>
                     <Upload className="w-3.5 h-3.5" />
-                    {isProcessingImage ? 'Processing 512×512 Image...' : 'Choose Image File'}
+                    {isProcessingImage ? 'Compressing image...' : 'Choose Image File'}
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/webp"
+                      disabled={isProcessingImage || isSavingProduct}
                       onChange={(e) => handleImageFileUpload(e, false)}
                       className="hidden"
                     />
@@ -1293,9 +1321,10 @@ export const AdminProductsMasterView = () => {
 
           <button
             type="submit"
+            disabled={isProcessingImage || isSavingProduct}
             className="w-full py-3.5 rounded-2xl bg-slate-900 hover:bg-emerald-600 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg transition-all duration-300"
           >
-            <Save className="w-4 h-4" /> SAVE & REGISTER PRODUCT
+            <Save className="w-4 h-4" /> {isSavingProduct ? 'Saving...' : 'SAVE & REGISTER PRODUCT'}
           </button>
         </form>
       )}
@@ -1316,7 +1345,7 @@ export const AdminProductsMasterView = () => {
 
       {/* INLINE QUICK ADD CATEGORY MODAL */}
       {isQuickAddCategoryOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" aria-label="Add category" className="fixed inset-0 z-[60] bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl relative">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h4 className="font-black text-sm text-slate-900 flex items-center gap-2">
@@ -1509,6 +1538,10 @@ export const AdminProductsMasterView = () => {
             ) : (
               // EDIT PRODUCT SPECS FORM
               <form onSubmit={handleSaveEdit} className="space-y-3 text-xs">
+                <label className="block font-extrabold text-slate-700">Product Name
+                  <input aria-label="Product Name" required value={selectedProduct.name || ''} onChange={e => setSelectedProduct({ ...selectedProduct, name: e.target.value })} className="mt-1 w-full p-2 border border-slate-300 rounded-xl font-bold" />
+                </label>
+
                 <div>
                   <label className="font-extrabold text-slate-700 block mb-1">Display Name</label>
                   <input
@@ -1571,10 +1604,11 @@ export const AdminProductsMasterView = () => {
                     <div className="flex-1 space-y-1 text-center sm:text-left">
                       <label className={`px-3 py-1.5 rounded-xl text-white font-extrabold text-xs flex items-center gap-1.5 cursor-pointer shadow-2xs transition w-max mx-auto sm:mx-0 ${isProcessingImage ? 'bg-slate-400 pointer-events-none' : 'bg-blue-600 hover:bg-blue-500'}`}>
                         <Upload className="w-3.5 h-3.5" />
-                        {isProcessingImage ? 'Processing 512×512 Image...' : 'Choose New Image'}
+                        {isProcessingImage ? 'Compressing image...' : 'Choose New Image'}
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
+                          disabled={isProcessingImage || isSavingProduct}
                           onChange={(e) => handleImageFileUpload(e, true)}
                           className="hidden"
                         />
@@ -1650,16 +1684,28 @@ export const AdminProductsMasterView = () => {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <label className="font-extrabold text-slate-700">Barcode
+                    <input aria-label="Barcode" value={selectedProduct.barcode || ''} onChange={e => setSelectedProduct({ ...selectedProduct, barcode: e.target.value })} className="mt-1 w-full p-2 border border-slate-300 rounded-xl" />
+                  </label>
+                  <label className="font-extrabold text-slate-700">Minimum Stock Level
+                    <input aria-label="Minimum Stock Level" type="number" min="0" step="any" value={selectedProduct.min_stock_level ?? 0} onChange={e => setSelectedProduct({ ...selectedProduct, min_stock_level: e.target.value })} className="mt-1 w-full p-2 border border-slate-300 rounded-xl" />
+                  </label>
+                  <label className="font-extrabold text-slate-700">Piece Selling Price
+                    <input aria-label="Piece Selling Price" type="number" min="0" step="0.01" value={selectedProduct.piece_selling_price ?? ''} onChange={e => setSelectedProduct({ ...selectedProduct, piece_selling_price: e.target.value })} className="mt-1 w-full p-2 border border-slate-300 rounded-xl" />
+                  </label>
+                </div>
                 <div className="flex items-center justify-between gap-2 pt-2">
                   <button
                     type="submit"
+                    disabled={isProcessingImage || isSavingProduct}
                     className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center justify-center gap-1 transition"
                   >
-                    <Save className="w-3.5 h-3.5" /> Save Changes
+                    <Save className="w-3.5 h-3.5" /> {isSavingProduct ? 'Saving...' : 'Save Changes'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setIsEditing(false)}
+                    onClick={() => { setSelectedProduct(products.find(p => Number(p.id) === Number(selectedProduct.id)) || null); setIsEditing(false); }}
                     className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition"
                   >
                     Cancel
@@ -1674,7 +1720,7 @@ export const AdminProductsMasterView = () => {
 
       {/* DELETE PRODUCT CONFIRMATION MODAL */}
       {deleteConfirmModal.isOpen && deleteConfirmModal.product && (
-        <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" aria-label="Confirm permanent product deletion" className="fixed inset-0 z-[60] bg-slate-900/75 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             
             <div className="flex items-start gap-3.5">
@@ -1701,7 +1747,7 @@ export const AdminProductsMasterView = () => {
                 <div><strong>Rates:</strong> Buy ₹{deleteConfirmModal.product.purchase_price} | Sell ₹{deleteConfirmModal.product.unit_selling_price}</div>
               </div>
               <p className="text-rose-600 font-bold text-[11px]">
-                ⚠️ This product will be permanently removed from active catalogs and product lists.
+                ⚠️ This permanently deletes the product from the database, including its stock balances and supplier rates. Existing bill and transaction amounts are retained. This cannot be undone.
               </p>
             </div>
 

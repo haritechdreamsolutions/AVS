@@ -1,5 +1,11 @@
 # Production checkpoint - 2026-10-19
 
+## Product image compression - 2026-10-23
+
+- New/replacement owner uploads accept JPG/PNG/WebP up to 50 MB and 40 megapixels (finite browser-memory safety limits). Asynchronous encoding retains up to 512x512 detail, aspect ratio and WebP transparency; quality/dimensions adapt only as needed. Output is at most 72 KiB encoded image / 100 KiB including the stored Base64 URL, with JPEG fallback when WebP encoding is unavailable. A 2-5 KiB target is not forced at the expense of clarity.
+- PostgreSQL products.image_url remains the storage location. Backend size/format checks reject oversized new inline images; existing unchanged images are preserved, not recompressed or migrated. Save waits for processing; replacement uploads synchronize image/image_url so the new picture actually persists.
+- PASS: isolated real Edge owner create/edit/reload workflow, PNG/JPEG/WebP, transparency/aspect checks, JPEG fallback, invalid/oversized rejection, preserved prices/stock and unchanged legacy-image updates. Measured 3,608,670-byte source -> 69,242-byte WebP -> 92,347-byte stored Data URL. Frontend build and syntax/diff checks passed; no real product data changed, new dependencies, migrations or deployment.
+
 ## Same-day driver trips - 2026-10-21
 
 - Return submission clears the selected driver and forms. The next stock allocation starts a new session on the driver's currently assigned route; it never reopens a finalized session. New-trip stock, sales, expenses, damages and visit counts are session-scoped. Receipt collections are bounded by serialized trip opening/closing timestamps; daily settlement totals remain cumulative.
