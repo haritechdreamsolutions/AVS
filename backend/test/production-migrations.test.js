@@ -22,7 +22,7 @@ try {
   assert.equal((await isolated.query("SELECT to_regclass('companies') AS company")).rows[0].company,null);
   await migrate(isolated);
   const before=(await isolated.query('SELECT name,checksum FROM schema_migrations ORDER BY name')).rows;
-  assert.deepEqual(before.map(row=>row.name), ['000_production_baseline.sql','004_production_hardening.sql','005_payment_reversals.sql','006_schema_compatibility.sql','007_operation_requests.sql','008_foundation_integrity.sql']);
+  assert.deepEqual(before.map(row=>row.name), ['000_production_baseline.sql','004_production_hardening.sql','005_payment_reversals.sql','006_schema_compatibility.sql','007_operation_requests.sql','008_foundation_integrity.sql','009_product_deletion.sql','010_protected_administrator.sql']);
   const constraints=(await isolated.query("SELECT conname,convalidated FROM pg_constraint WHERE connamespace='public'::regnamespace")).rows;
   for (const name of ['fk_ua_role','fk_emp_company','fk_pph_product','fk_uom_company','fk_uom_product','uq_cat_code','uq_cat_name','uq_prod_sku','uq_route_code','uq_shop_code','foundation_uom_values','foundation_product_prices']) {
     assert.ok(constraints.some(row=>row.conname===name && row.convalidated), 'Missing validated constraint: '+name);

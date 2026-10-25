@@ -1693,7 +1693,7 @@ export const AdminProductsMasterView = () => {
 
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-xs text-slate-600 space-y-1.5">
               <p>
-                Are you sure you want to permanently delete this product?
+                Are you sure you want to remove this product from product lists?
               </p>
               <div className="font-mono text-[11px] text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200">
                 <div><strong>Product:</strong> {deleteConfirmModal.product.display_name}</div>
@@ -1701,7 +1701,7 @@ export const AdminProductsMasterView = () => {
                 <div><strong>Rates:</strong> Buy ₹{deleteConfirmModal.product.purchase_price} | Sell ₹{deleteConfirmModal.product.unit_selling_price}</div>
               </div>
               <p className="text-rose-600 font-bold text-[11px]">
-                ⚠️ This product will be permanently removed from active catalogs and product lists.
+                ⚠️ This product will be removed from catalogs and product lists. Existing bookings, bills and stock history will be preserved.
               </p>
             </div>
 

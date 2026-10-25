@@ -33,7 +33,7 @@ const TabLoadingFallback = () => (
 );
 
 export const OwnerSidebarLayout = ({ onLogout }) => {
-  const { summary, products = [], shops = [], companyInfo } = useApp();
+  const { summary, products = [], shops = [], companyInfo, currentUser } = useApp();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -140,7 +140,7 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
         <div className="p-3 border-t border-[#152e4d] bg-[#071324] flex-shrink-0 space-y-2">
           <div className="flex items-center justify-between px-1">
             <div className="truncate">
-              <p className="text-xs font-black text-white truncate">OWNER PORTAL</p>
+              <p className="text-xs font-black text-white truncate">{currentUser?.is_system_administrator ? 'ADMINISTRATOR' : 'OWNER PORTAL'}</p>
               <p className="text-[10px] text-sky-400/80 font-medium">Admin Control Panel</p>
             </div>
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />

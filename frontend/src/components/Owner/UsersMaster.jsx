@@ -385,7 +385,7 @@ export const UsersMaster = () => {
     const matchSearch = (u.name || '').toLowerCase().includes(search.toLowerCase()) ||
                         (u.login_id && u.login_id.toLowerCase().includes(search.toLowerCase())) ||
                         (u.employee_code && u.employee_code.toLowerCase().includes(search.toLowerCase()));
-    const matchRole = roleFilter ? u.role === roleFilter : true;
+    const matchRole = roleFilter ? (u.is_system_administrator ? roleFilter === 'ADMINISTRATOR' : u.role === roleFilter) : true;
     return matchSearch && matchRole;
   });
 
@@ -450,6 +450,7 @@ export const UsersMaster = () => {
             onChange={e => setRoleFilter(e.target.value)}
           >
             <option value="">All Roles ({users.length})</option>
+            <option value="ADMINISTRATOR">Administrator</option>
             <option value="OWNER">Owner</option>
             <option value="STORE_KEEPER">Store Keeper</option>
             <option value="DRIVER">Driver</option>
@@ -538,7 +539,7 @@ export const UsersMaster = () => {
                     </td>
                     <td className="p-4">
                       <span className={`px-2.5 py-1 rounded-full font-black text-[10px] uppercase border ${roleBadge}`}>
-                        {u.role}
+                        {u.is_system_administrator ? 'Administrator' : u.role}
                       </span>
                     </td>
                     <td className="p-4">
@@ -552,6 +553,9 @@ export const UsersMaster = () => {
                       </span>
                     </td>
                     <td className="p-4 text-right">
+                      {u.is_system_administrator ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500"><Lock className="w-3.5 h-3.5" /> Protected</span>
+                      ) : (
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => openEditModal(u)}
@@ -573,6 +577,7 @@ export const UsersMaster = () => {
                           <Trash2 className="w-3.5 h-3.5 text-rose-600" /> Delete
                         </button>
                       </div>
+                      )}
                     </td>
                   </tr>
                 );

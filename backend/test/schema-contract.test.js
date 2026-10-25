@@ -24,8 +24,8 @@ function columns(sql) {
   return tables;
 }
 
-test('reviewed production order includes 008, excludes legacy replay', () => {
-  assert.deepEqual(names, ['000_production_baseline.sql', '004_production_hardening.sql', '005_payment_reversals.sql', '006_schema_compatibility.sql', '007_operation_requests.sql', '008_foundation_integrity.sql']);
+test('reviewed production order includes product deletion, excludes legacy replay', () => {
+  assert.deepEqual(names, ['000_production_baseline.sql', '004_production_hardening.sql', '005_payment_reversals.sql', '006_schema_compatibility.sql', '007_operation_requests.sql', '008_foundation_integrity.sql', '009_product_deletion.sql', '010_protected_administrator.sql']);
 });
 
 test('effective chain covers every legacy table/column and backend literal INSERT column', async () => {
@@ -55,14 +55,16 @@ test('legacy named constraints exist or have explicit hardening equivalents', ()
     assert.match(effective, new RegExp('\\b' + (equivalents[m[1]] || m[1]) + '\\b'), m[1]);
   }
   for (const rule of ['foundation_account_status', 'foundation_assignment_status', 'foundation_product_prices', 'foundation_expense_amount', 'foundation_movement_type', 'foundation_uom_values', 'production_stock_nonnegative']) assert.ok(effective.includes(rule), rule);
-  assert.match(sqls.at(-1), /fk_uom_company/);
-  assert.match(sqls.at(-1), /fk_uom_product/);
-  assert.doesNotMatch(sqls.at(-1), /\b(?:DELETE FROM|UPDATE\s+\w+\s+SET|DROP|TRUNCATE)\b/i);
+  const integrity = sqls[names.indexOf('008_foundation_integrity.sql')];
+  assert.match(integrity, /fk_uom_company/);
+  assert.match(integrity, /fk_uom_product/);
+  assert.doesNotMatch(integrity, /\b(?:DELETE FROM|UPDATE\s+\w+\s+SET|DROP|TRUNCATE)\b/i);
+  assert.doesNotMatch(sqls.at(-1), /^\s*(?:DELETE FROM|UPDATE\s+\w+\s+SET|DROP|TRUNCATE)\b/im);
   for (const m of legacy[0].matchAll(/CREATE INDEX IF NOT EXISTS (\w+)/g)) {
     if (m[1] === 'idx_sales_date') assert.match(effective, /production_sales_date ON sales\(company_id,sale_date,id\)/);
     else assert.match(effective, new RegExp('CREATE INDEX IF NOT EXISTS ' + m[1] + '\\b'));
   }
-  assert.match(sqls.at(-1), /effective_from TIMESTAMPTZ NOT NULL DEFAULT NOW\(\)/);
+  assert.match(integrity, /effective_from TIMESTAMPTZ NOT NULL DEFAULT NOW\(\)/);
   // New constraints must not replace runtime defaults, precision or invoice sequencing.
   assert.doesNotMatch(sqls.at(-1), /ALTER COLUMN|ALTER SEQUENCE|setval\(/i);
 });

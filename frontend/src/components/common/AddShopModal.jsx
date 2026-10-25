@@ -18,20 +18,30 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
 
   // Speech Recognition (Voice-to-Text) State - 100% Free Native Web Speech API
   const [speechLang, setSpeechLang] = useState('ta-IN'); // 'ta-IN' (தமிழ்) or 'en-IN' (English)
-  const [isListening, setIsListening] = useState(false);
+  const [listeningField, setListeningField] = useState(null);
+  const isListening = listeningField === 'name';
+  const isOwnerListening = listeningField === 'ownerName';
   const recognitionRef = useRef(null);
+  const recognitionFieldRef = useRef(null);
 
-  const startVoiceInput = () => {
+  const startVoiceInput = (field = 'name') => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       toast.error("Speech Recognition is not supported in this browser. Please use Google Chrome.");
       return;
     }
 
-    if (isListening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-      return;
+    if (recognitionRef.current) {
+      const previous = recognitionRef.current;
+      const sameField = recognitionFieldRef.current === field;
+      if (sameField) {
+        previous.stop();
+        return;
+      }
+      recognitionRef.current = null;
+      recognitionFieldRef.current = null;
+      previous.abort();
+      setListeningField(null);
     }
 
     try {
@@ -42,23 +52,29 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
       recognition.maxAlternatives = 1;
 
       recognition.onstart = () => {
-        setIsListening(true);
-        toast.info(speechLang === 'ta-IN' ? "🎙️ கடை பெயரை தமிழில் பேசவும்... (Listening)" : "🎙️ Speak shop name in English... (Listening)");
+        if (recognitionRef.current !== recognition) return;
+        setListeningField(field);
+        toast.info(field === 'ownerName'
+          ? (speechLang === 'ta-IN' ? "🎙️ உரிமையாளர் பெயரை தமிழில் பேசவும்... (Listening)" : "🎙️ Speak owner name in English... (Listening)")
+          : (speechLang === 'ta-IN' ? "🎙️ கடை பெயரை தமிழில் பேசவும்... (Listening)" : "🎙️ Speak shop name in English... (Listening)"));
       };
 
       recognition.onresult = (event) => {
+        if (recognitionRef.current !== recognition) return;
         let transcript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           transcript += event.results[i][0].transcript;
         }
         if (transcript) {
-          setName(transcript.trim());
+          if (field === 'ownerName') setOwnerName(transcript.trim());
+          else setName(transcript.trim());
         }
       };
 
       recognition.onerror = (event) => {
+        if (recognitionRef.current !== recognition) return;
         console.warn("Speech recognition error:", event.error);
-        setIsListening(false);
+        setListeningField(null);
         if (event.error === 'not-allowed') {
           toast.error("Microphone access denied. Please allow mic in browser settings.");
         } else if (event.error !== 'no-speech') {
@@ -67,14 +83,21 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
       };
 
       recognition.onend = () => {
-        setIsListening(false);
+        if (recognitionRef.current !== recognition) return;
+        recognitionRef.current = null;
+        recognitionFieldRef.current = null;
+        setListeningField(null);
       };
 
       recognitionRef.current = recognition;
+      recognitionFieldRef.current = field;
+      setListeningField(field);
       recognition.start();
     } catch (err) {
       console.error("Speech recognition startup error:", err);
-      setIsListening(false);
+      recognitionRef.current = null;
+      recognitionFieldRef.current = null;
+      setListeningField(null);
       toast.error("Failed to start voice input.");
     }
   };
@@ -82,7 +105,10 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (e) {}
+        const recognition = recognitionRef.current;
+        recognitionRef.current = null;
+        recognitionFieldRef.current = null;
+        try { recognition.abort(); } catch (e) {}
       }
     };
   }, []);
@@ -303,7 +329,9 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
                 {/* Mic Button on Right Side */}
                 <button
                   type="button"
-                  onClick={startVoiceInput}
+                  onClick={() => startVoiceInput('name')}
+                  aria-label={isListening ? 'Stop shop name voice input' : 'Start shop name voice input'}
+                  aria-pressed={isListening}
                   title={isListening ? "Stop Listening" : (speechLang === 'ta-IN' ? "குரல் உள்ளீடு (Mic) - தமிழ்" : "Voice Input (Mic) - English")}
                   className={`absolute right-2 p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer ${
                     isListening
@@ -332,13 +360,36 @@ export const AddShopModal = ({ onClose, villageId = null, villageName = null }) 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs sm:text-sm font-black text-slate-700 uppercase">Owner Name</label>
+                <div className="relative flex items-center">
                 <input
                   type="text"
                   placeholder="e.g. Lakshmanan"
                   value={ownerName}
                   onChange={(e) => setOwnerName(e.target.value)}
-                  className="w-full bg-white border-2 border-sky-200 hover:border-sky-300 focus:border-sky-600 rounded-2xl px-4 py-3 text-sm sm:text-base font-black text-slate-900 focus:outline-none shadow-2xs"
+                  className={`w-full bg-white border-2 rounded-2xl pl-4 pr-12 py-3 text-sm sm:text-base font-black text-slate-900 focus:outline-none transition shadow-2xs ${
+                    isOwnerListening ? 'border-rose-400 ring-2 ring-rose-200 bg-rose-50/30' : 'border-sky-200 hover:border-sky-300 focus:border-sky-600'
+                  }`}
                 />
+                <button
+                  type="button"
+                  onClick={() => startVoiceInput('ownerName')}
+                  aria-label={isOwnerListening ? 'Stop owner name voice input' : 'Start owner name voice input'}
+                  aria-pressed={isOwnerListening}
+                  title={isOwnerListening ? 'Stop Listening' : (speechLang === 'ta-IN' ? 'உரிமையாளர் பெயர் - குரல் உள்ளீடு (தமிழ்)' : 'Owner Name - Voice Input (English)')}
+                  className={`absolute right-2 p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer ${
+                    isOwnerListening
+                      ? 'bg-rose-600 text-white animate-pulse shadow-md shadow-rose-500/40 ring-2 ring-rose-300'
+                      : 'bg-sky-100 hover:bg-sky-200 text-sky-700 border border-sky-300 hover:scale-105 active:scale-95'
+                  }`}
+                >
+                  <Mic className={`w-4 h-4 sm:w-5 sm:h-5 ${isOwnerListening ? 'animate-bounce' : ''}`} />
+                </button>
+                </div>
+                {isOwnerListening && (
+                  <div role="status" className="text-xs font-bold text-rose-600 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200 animate-pulse">
+                    {speechLang === 'ta-IN' ? 'கேட்கிறது... உரிமையாளர் பெயரை தமிழில் பேசவும்...' : 'Listening... Speak owner name in English...'}
+                  </div>
+                )}
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs sm:text-sm font-black text-slate-700 uppercase">Phone Number</label>

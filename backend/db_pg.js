@@ -54,7 +54,7 @@ export async function login(loginId, pin) {
       'WHERE LOWER(TRIM(ua.login_id)) = LOWER($1) ' +
       'OR (e.employee_code IS NOT NULL AND LOWER(TRIM(e.employee_code)) = LOWER($1)) ' +
       'OR (e.full_name IS NOT NULL AND LOWER(TRIM(e.full_name)) = LOWER($1)) ' +
-      'FOR UPDATE OF ua',
+      'ORDER BY CASE WHEN LOWER(TRIM(ua.login_id))=LOWER($1) THEN 0 ELSE 1 END, ua.id LIMIT 1 FOR UPDATE OF ua',
       [normLoginId]
     );
     const row = result.rows[0];
@@ -84,6 +84,8 @@ export async function login(loginId, pin) {
       user: {
         id: row.id,
         auth_version: row.auth_version,
+        is_system_administrator: row.is_system_administrator === true,
+        display_role: row.is_system_administrator ? 'Administrator' : row.role_name,
         company_id: row.company_id,
         employee_id: row.employee_id,
         login_id: row.login_id,
@@ -126,6 +128,8 @@ export async function getUserById(uid) {
   return {
     id: row.id,
     auth_version: row.auth_version,
+    is_system_administrator: row.is_system_administrator === true,
+    display_role: row.is_system_administrator ? 'Administrator' : row.role_name,
     company_id: row.company_id,
     employee_id: row.employee_id,
     login_id: row.login_id,
@@ -149,7 +153,7 @@ export async function getUserById(uid) {
 // ====== USERS ======
 export async function getUsers(cid) {
   return await queryAll(
-    'SELECT ua.id, ua.company_id, ua.employee_id, ua.login_id, ua.name, ua.phone, ua.account_status, ua.last_login_at, ua.created_at, ' +
+    'SELECT ua.id, ua.company_id, ua.employee_id, ua.login_id, ua.name, ua.phone, ua.account_status, ua.last_login_at, ua.created_at, ua.is_system_administrator, ' +
     'r.role_name, r.role_name as role, ua.account_status as status, ' +
     'e.employee_code, e.full_name as employee_name, e.designation as employee_designation, e.phone as employee_phone, e.vehicle_number, ' +
     'e.route_id, e.route_id as "routeId", rt.name as route_name, rt.code as route_code ' +
@@ -168,6 +172,7 @@ export async function addUser(cid, d, actorUserId) {
   const privileged = ['OWNER', 'STORE_KEEPER'].includes(roleInput);
   if((!d.employee_id && !privileged)||!d.login_id||!d.pin||!roleInput) throw new Error('Employee, login ID, role, and password/PIN are required.');
   const loginId = String(d.login_id).trim().toLowerCase();
+  if (loginId === 'administrator') throw new Error('Administrator login is reserved.');
   const pinStr = credential(d.pin, roleInput);
   const emp = d.employee_id ? await queryOne('SELECT * FROM employees WHERE id=$1 AND company_id=$2', [d.employee_id, cid]) : null;
   if (d.employee_id && !emp) throw new Error('Selected employee does not exist or belongs to another company.');
@@ -215,6 +220,8 @@ export async function addUser(cid, d, actorUserId) {
 export async function updateUser(cid, uid, d, actorUserId) {
   const existingUser = await queryOne('SELECT ua.*, r.role_name FROM user_accounts ua JOIN roles r ON r.id = ua.role_id WHERE ua.id=$1 AND ua.company_id=$2', [uid, cid]);
   if (!existingUser) throw new Error('User not found.');
+  if (existingUser.is_system_administrator) throw new Error('Administrator account cannot be edited.');
+  if (String(d.login_id || '').trim().toLowerCase() === 'administrator') throw new Error('Administrator login is reserved.');
 
   let roleId = existingUser.role_id;
   let roleName = existingUser.role_name;
@@ -301,6 +308,7 @@ export async function updateUser(cid, uid, d, actorUserId) {
 export async function deleteUser(cid, uid, actorUserId) {
   const user = await queryOne('SELECT ua.*, r.role_name FROM user_accounts ua JOIN roles r ON r.id = ua.role_id WHERE ua.id=$1 AND ua.company_id=$2', [uid, cid]);
   if (!user) throw new Error('User not found.');
+  if (user.is_system_administrator) throw new Error('Administrator account cannot be deleted.');
 
   if (user.role_name === 'OWNER') {
     const ownerCount = await queryOne(
@@ -332,8 +340,9 @@ export async function deleteUser(cid, uid, actorUserId) {
 }
 
 export async function resetPin(cid, uid, newPin, actorUserId) {
-  const account = await queryOne('SELECT r.role_name FROM user_accounts u JOIN roles r ON r.id=u.role_id WHERE u.id=$1 AND u.company_id=$2', [uid,cid]);
+  const account = await queryOne('SELECT r.role_name,u.is_system_administrator FROM user_accounts u JOIN roles r ON r.id=u.role_id WHERE u.id=$1 AND u.company_id=$2', [uid,cid]);
   if (!account) throw new Error('User not found');
+  if (account.is_system_administrator) throw new Error('Administrator password cannot be reset through user management.');
   const pinStr = credential(newPin, account.role_name);
   const hash = await bcrypt.hash(pinStr, BCRYPT_ROUNDS);
   const row = await queryOne(
@@ -783,7 +792,7 @@ function getProductDisplayRank(product) {
 // ====== PRODUCTS & UOM FOUNDATION (PHASE 1) ======
 export async function getProducts(cid, filters) {
   if (!filters) filters = {};
-  let sql = 'SELECT p.*, c.name as category_name, c.operational_unit as category_operational_unit FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.company_id=$1';
+  let sql = 'SELECT p.*, c.name as category_name, c.operational_unit as category_operational_unit FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.company_id=$1 AND p.deleted_at IS NULL';
   const params = [cid];
   let idx = 2;
   if (filters.active === 'true' || filters.active === true || filters.is_active === true || filters.is_active === 'true') {
@@ -992,7 +1001,7 @@ export async function addProduct(cid, d) {
 }
 
 export async function updateProduct(cid, prodId, d) {
-  const pOld = await queryOne('SELECT * FROM products WHERE id=$1 AND company_id=$2', [prodId, cid]);
+  const pOld = await queryOne('SELECT * FROM products WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL', [prodId, cid]);
   if (!pOld) throw new Error('Product not found.');
 
   const conversionFactor = d.pieces_per_unit !== undefined ? Number(d.pieces_per_unit) : Number(pOld.pieces_per_unit);
@@ -1082,7 +1091,7 @@ export async function updateProduct(cid, prodId, d) {
         piece_selling_price=COALESCE($15, piece_selling_price), direct_sale_rate=COALESCE($16, direct_sale_rate),
         min_stock_level=COALESCE($17, min_stock_level),
         icon=COALESCE($18, icon), image_url=COALESCE($19, image_url), updated_at=NOW()
-      WHERE id=$20 AND company_id=$21 RETURNING *`,
+      WHERE id=$20 AND company_id=$21 AND deleted_at IS NULL RETURNING *`,
       [
         targetCategoryId !== null ? targetCategoryId : null,
         targetCategoryName || (d.category && String(d.category).trim()) || null,
@@ -1097,6 +1106,7 @@ export async function updateProduct(cid, prodId, d) {
       ]
     );
     const prod = pRes.rows[0];
+    if (!prod) throw new Error('Product not found.');
 
     const baseBuyRate = parseFloat((buyRate / conversionFactor).toFixed(2));
     await client.query(
@@ -1134,7 +1144,7 @@ export async function updateProduct(cid, prodId, d) {
 }
 
 export async function updateProductPrice(cid, prodId, d, actorUserId) {
-  const pOld = await queryOne('SELECT * FROM products WHERE id=$1 AND company_id=$2', [prodId, cid]);
+  const pOld = await queryOne('SELECT * FROM products WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL', [prodId, cid]);
   if (!pOld) throw new Error('Product not found.');
 
   const client = await pool.connect();
@@ -1164,9 +1174,10 @@ export async function updateProductPrice(cid, prodId, d, actorUserId) {
     const pRes = await client.query(
       `UPDATE products SET
         purchase_price=$1, buy_rate_uom=$2, unit_selling_price=$3, piece_selling_price=$4, selling_rate_uom=$5, pieces_per_unit=$6, updated_at=NOW()
-      WHERE id=$7 AND company_id=$8 RETURNING *`,
+      WHERE id=$7 AND company_id=$8 AND deleted_at IS NULL RETURNING *`,
       [buyRate, buyRateUom, unitSellingPrice, pieceSellingPrice, sellingRateUom, conversionFactor, prodId, cid]
     );
+    if (!pRes.rows[0]) throw new Error('Product not found.');
 
     const baseUnit = pOld.base_unit || 'Piece';
     const purchaseUnit = pOld.selling_unit || 'Tray';
@@ -1201,15 +1212,21 @@ export async function updateProductPrice(cid, prodId, d, actorUserId) {
 }
 
 export async function toggleProductStatus(cid, prodId, is_active) {
-  const row = await queryOne('UPDATE products SET is_active=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3 RETURNING *', [Boolean(is_active), prodId, cid]);
+  const row = await queryOne('UPDATE products SET is_active=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3 AND deleted_at IS NULL RETURNING *', [Boolean(is_active), prodId, cid]);
   if (!row) throw new Error('Product not found.');
   return { success: true, product: row };
 }
 
 export async function deleteProduct(cid, prodId) {
-  const product = await queryOne('UPDATE products SET is_active=FALSE,updated_at=NOW() WHERE id=$1 AND company_id=$2 RETURNING *',[prodId,cid]);
-  if (!product) throw new Error('Product not found');
-  return {success:true,message:'Product deactivated; financial and stock history preserved.',product};
+  // Retain the referenced row, units and stock for old bills, returns and reports.
+  // A single atomic update also makes repeated delete requests safe.
+  const product = await queryOne(
+    `UPDATE products SET is_active=FALSE,
+      deleted_at=COALESCE(deleted_at,NOW()), updated_at=NOW()
+     WHERE id=$1 AND company_id=$2 RETURNING id`, [prodId, cid]
+  );
+  if (!product) throw new Error('Product not found.');
+  return { success: true, message: 'Product deleted successfully.', deletedProductId: product.id };
 }
 
 export async function getProductUoms(cid, prodId) {
@@ -1217,6 +1234,8 @@ export async function getProductUoms(cid, prodId) {
 }
 
 export async function configureProductUom(cid, prodId, uData) {
+  const product = await queryOne('SELECT id FROM products WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL', [prodId, cid]);
+  if (!product) throw new Error('Product not found.');
   const uom = (uData.uom || '').trim();
   if (!uom) throw new Error('UOM is required.');
   const conversion = Number(uData.conversion_to_base || 1);
@@ -1286,7 +1305,7 @@ async function receiveStockAttempt(cid, data, actorUserId) {
       const pid = Number(item.product_id);
       if (!Number.isFinite(qty) || qty <= 0) throw new Error('Quantity must be greater than 0');
       if (!pid) throw new Error('Valid product_id is required');
-      const pRes = await client.query('SELECT * FROM products WHERE id=$1 AND (company_id=$2) FOR UPDATE', [pid, cid]);
+      const pRes = await client.query('SELECT * FROM products WHERE id=$1 AND (company_id=$2) AND deleted_at IS NULL FOR UPDATE', [pid, cid]);
       if (pRes.rows.length === 0) throw new Error('Product not found');
       const prod = pRes.rows[0];
       const operational = getOperationalUnit(prod);
@@ -1376,7 +1395,7 @@ async function issueStockToEmployeeAttempt(cid, data, actorUserId) {
       const pid = Number(item.product_id);
       let qty = Number(item.qty_units || item.quantity);
       if (!Number.isFinite(qty) || qty <= 0) throw new Error('Quantity must be greater than 0');
-      const pRes = await client.query('SELECT * FROM products WHERE id=$1 AND company_id=$2 FOR UPDATE', [pid, cid]);
+      const pRes = await client.query('SELECT * FROM products WHERE id=$1 AND company_id=$2 AND deleted_at IS NULL FOR UPDATE', [pid, cid]);
       if (pRes.rows.length === 0) throw new Error('Product not found');
       const prod = pRes.rows[0];
       const operational = getOperationalUnit(prod);
