@@ -196,7 +196,7 @@ export const Header = ({ onLogout }) => {
             </div>
             <div className="text-left hidden sm:block pr-2">
               <div className="font-bold text-xs text-[#0b2545] leading-tight">{currentUser?.name}</div>
-              <div className="text-[9px] text-emerald-700 font-extrabold uppercase">{activeRole}</div>
+              <div className="text-[9px] text-emerald-700 font-extrabold uppercase">{currentUser?.is_system_administrator ? 'Administrator' : activeRole}</div>
             </div>
 
             <button
