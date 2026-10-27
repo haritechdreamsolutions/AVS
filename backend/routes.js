@@ -883,6 +883,7 @@ router.post('/sales', requireAuth, async (req, res) => {
     const payload = { ...req.body };
 
     if (userRole === 'DRIVER' || userRole === 'EMPLOYEE') {
+      if (payload.sale_type === 'STOREKEEPER_SHOP') return res.status(403).json({success:false,message:'Shop billing requires Owner or Store Keeper access.'});
       let resolvedEmpId = req.session.employeeId || payload.employee_id || null;
       let resolvedEmpName = req.session.userName || payload.employee_name || 'Driver POS';
 
@@ -900,13 +901,13 @@ router.post('/sales', requireAuth, async (req, res) => {
       payload.employee_id = req.session?.employeeId || null;
       payload.employee_name = req.body?.employee_name || req.session?.userName || 'Store Keeper';
       payload.is_store_direct_sale = true;
-      payload.sale_type = payload.sale_type || 'STOREKEEPER_DIRECT';
+      payload.sale_type = payload.sale_type === 'STOREKEEPER_SHOP' ? 'STOREKEEPER_SHOP' : 'STOREKEEPER_DIRECT';
       if (!payload.shop_name) payload.shop_name = 'AVS AGENCIES';
-    } else if (payload.is_store_direct_sale || payload.sale_type === 'STOREKEEPER_DIRECT') {
+    } else if (payload.is_store_direct_sale || payload.sale_type === 'STOREKEEPER_DIRECT' || payload.sale_type === 'STOREKEEPER_SHOP') {
       payload.employee_id = null;
       payload.employee_name = req.body?.employee_name || req.session?.userName || 'Store Keeper';
       payload.is_store_direct_sale = true;
-      payload.sale_type = 'STOREKEEPER_DIRECT';
+      payload.sale_type = payload.sale_type === 'STOREKEEPER_SHOP' ? 'STOREKEEPER_SHOP' : 'STOREKEEPER_DIRECT';
       if (!payload.shop_name) payload.shop_name = 'AVS AGENCIES';
     } else {
       // OWNER or other role

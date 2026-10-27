@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useApp } from '../../context/AppContext';
 import { getOperationalUnit, normalizeQuantity, checkReconciliationEquation } from '../../utils/unitHelper';
 import { ProductImage } from '../common/ProductImage';
@@ -2479,8 +2480,8 @@ export const StockReturnModal = ({ onClose }) => {
       {/* ========================================================================= */}
       {/* 9. DRIVER VEHICLE STOCK INSPECTION SHEET (STRICT 58MM THERMAL PRINTER FORMAT) */}
       {/* ========================================================================= */}
-      {showStockViewModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      {showStockViewModal && createPortal(
+        <div id="stock-sheet-print-root" className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
           <style dangerouslySetInnerHTML={{ __html: `
             #thermal-58mm-stock-sheet, #thermal-58mm-stock-sheet * {
               font-size: 14px !important;
@@ -2499,6 +2500,17 @@ export const StockReturnModal = ({ onClose }) => {
               }
               body * {
                 visibility: hidden !important;
+              }
+              body > :not(#stock-sheet-print-root) {
+                display: none !important;
+              }
+              #stock-sheet-print-root {
+                display: block !important;
+                position: static !important;
+                padding: 0 !important;
+                background: white !important;
+                backdrop-filter: none !important;
+                overflow: visible !important;
               }
               body :has(#thermal-58mm-stock-sheet) {
                 position: static !important;
@@ -2551,7 +2563,6 @@ export const StockReturnModal = ({ onClose }) => {
                   type="button"
                   onClick={() => {
                     window.print();
-                    setShowStockViewModal(false);
                   }}
                   className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-blue-600/25 active:scale-95 transition cursor-pointer"
                   title="Print Stock Sheet and Return"
@@ -2666,7 +2677,7 @@ export const StockReturnModal = ({ onClose }) => {
 
           </div>
         </div>
-      )}
+      , document.body)}
 
     </div>
   );

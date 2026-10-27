@@ -621,7 +621,7 @@ export async function getCategories(cid,activeOnly) {
   const x=activeOnly?' AND c.is_active=TRUE':'';
   return await queryAll(`
     SELECT c.*,
-      COALESCE((SELECT COUNT(*)::int FROM products p WHERE p.category_id = c.id AND p.company_id = $1), 0) as product_count
+      COALESCE((SELECT COUNT(*)::int FROM products p WHERE p.category_id = c.id AND p.company_id = $1 AND p.deleted_at IS NULL), 0) as product_count
     FROM categories c
     WHERE c.company_id = $1 ${x}
     ORDER BY c.name ASC
@@ -680,7 +680,7 @@ export async function deleteCategory(cid,catId) {
   }
 
   const prodCountRow = await queryOne(
-    'SELECT COUNT(*)::int as count FROM products WHERE category_id=$1 AND company_id=$2',
+    'SELECT COUNT(*)::int as count FROM products WHERE category_id=$1 AND company_id=$2 AND deleted_at IS NULL',
     [catId, cid]
   );
   const prodCount = prodCountRow ? parseInt(prodCountRow.count, 10) : 0;
@@ -870,7 +870,8 @@ export async function addProduct(cid, d) {
   if (d.category_id !== undefined && d.category_id !== null && d.category_id !== '') {
     const rawCatId = parseInt(d.category_id, 10);
     if (!isNaN(rawCatId)) {
-      const catCheck = await queryOne('SELECT id, name FROM categories WHERE id=$1 AND company_id=$2', [rawCatId, cid]);
+      const catCheck = await queryOne('SELECT id, name FROM categories WHERE id=$1 AND company_id=$2 AND is_active=TRUE', [rawCatId, cid]);
+      if (!catCheck) throw new Error('Selected category is inactive or unavailable. Please select an active category.');
       if (catCheck) {
         targetCategoryId = catCheck.id;
         targetCategoryName = catCheck.name;
@@ -879,7 +880,8 @@ export async function addProduct(cid, d) {
   }
 
   if (!targetCategoryId && d.category && String(d.category).trim()) {
-    const catByName = await queryOne('SELECT id, name FROM categories WHERE LOWER(TRIM(name))=LOWER(TRIM($1)) AND company_id=$2', [String(d.category).trim(), cid]);
+    const catByName = await queryOne('SELECT id, name FROM categories WHERE LOWER(TRIM(name))=LOWER(TRIM($1)) AND company_id=$2 AND is_active=TRUE', [String(d.category).trim(), cid]);
+    if (!catByName) throw new Error('Selected category is inactive or unavailable. Please select an active category.');
     if (catByName) {
       targetCategoryId = catByName.id;
       targetCategoryName = catByName.name;
@@ -1301,16 +1303,36 @@ async function receiveStockAttempt(cid, data, actorUserId) {
     const notes = data.notes || (supplier_name ? `Supplier: ${supplier_name}` : null);
     const results = [];
     for (const item of [...items].sort((first,second)=>Number(first.product_id)-Number(second.product_id))) {
-      const qty = Number(item.quantity || item.qty_units);
+      let qty = Number(item.quantity || item.qty_units);
       const pid = Number(item.product_id);
       if (!Number.isFinite(qty) || qty <= 0) throw new Error('Quantity must be greater than 0');
       if (!pid) throw new Error('Valid product_id is required');
-      const pRes = await client.query('SELECT * FROM products WHERE id=$1 AND (company_id=$2) AND deleted_at IS NULL FOR UPDATE', [pid, cid]);
+      const pRes = await client.query('SELECT p.*, c.name AS category_name, c.operational_unit AS category_operational_unit FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.id=$1 AND p.company_id=$2 AND p.deleted_at IS NULL FOR UPDATE OF p', [pid, cid]);
       if (pRes.rows.length === 0) throw new Error('Product not found');
       const prod = pRes.rows[0];
       const operational = getOperationalUnit(prod);
       if (item.unit && String(item.unit).toLowerCase() !== String(prod.selling_unit).toLowerCase()) throw new Error('Stock quantities must use the configured selling unit');
-      if (operational.isPieceBased ? Math.abs(qty*Number(prod.pieces_per_unit)-Math.round(qty*Number(prod.pieces_per_unit)))>0.000001 : !Number.isSafeInteger(qty)) throw new Error('Stock must correspond to whole operational pieces or selling units');
+      const ppu = Number(prod.pieces_per_unit);
+      let wholePieces = null;
+      if (operational.isPieceBased) {
+        if (item.total_pieces !== undefined) {
+          const exactQty = quantityFromWholePieces(item.total_pieces, ppu);
+          // Accept the old modal's four-decimal payload only when its exact count agrees.
+          if (Math.abs(qty-exactQty) > 0.00005001) throw new Error('Received quantity does not match the entered piece count.');
+          if (item.inward_trays !== undefined || item.inward_pieces !== undefined) {
+            const trays = Number(item.inward_trays ?? 0), pieces = Number(item.inward_pieces ?? 0);
+            if (!Number.isSafeInteger(trays) || trays < 0 || !Number.isSafeInteger(pieces) || pieces < 0 || trays*ppu+pieces !== Number(item.total_pieces)) {
+              throw new Error('Received tray and piece counts do not match.');
+            }
+          }
+          qty = exactQty;
+        }
+        wholePieces = Math.round(qty*ppu);
+        if (wholePieces <= 0 || Math.abs(qty*ppu-wholePieces)>0.000001) throw new Error('Stock must correspond to whole operational pieces or selling units');
+        qty = quantityFromWholePieces(wholePieces, ppu);
+      } else if (!Number.isSafeInteger(qty)) {
+        throw new Error(`Enter a whole number of ${prod.selling_unit || 'selling units'}.`);
+      }
       if (prod.is_active === false || prod.is_active === 0) {
         throw new Error('Cannot receive stock for an inactive product.');
       }
@@ -1319,7 +1341,9 @@ async function receiveStockAttempt(cid, data, actorUserId) {
         throw new Error(`Buy Rate is not configured for "${prod.display_name}". Please set product buy rate in Owner Login first.`);
       }
       const itemTotal = itemRate * qty;
-      const uRes = await client.query('UPDATE products SET warehouse_stock_units=warehouse_stock_units+$1, updated_at=NOW() WHERE id=$2 RETURNING *', [qty, pid]);
+      const uRes = operational.isPieceBased
+        ? await client.query('UPDATE products SET warehouse_stock_units=(ROUND(warehouse_stock_units*$2)+$3)/$2, updated_at=NOW() WHERE id=$1 RETURNING *', [pid,ppu,wholePieces])
+        : await client.query('UPDATE products SET warehouse_stock_units=warehouse_stock_units+$1, updated_at=NOW() WHERE id=$2 RETURNING *', [qty, pid]);
       const movNo = 'MOV-IN-' + Date.now() + '-' + Math.floor(Math.random()*1000);
         const movRes = await client.query(
           'INSERT INTO inventory_movements (company_id, movement_no, movement_type, product_id, product_name, supplier_id, supplier_name, qty_units, unit, rate, total_amount, reference, received_by, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
@@ -2050,7 +2074,9 @@ async function createSaleAttempt(cid, d, actorUserId) {
     const { employee_id, shop_id, payment_mode, items, cash_paid, gpay_paid, credit_paid } = d;
     if (!items || !Array.isArray(items) || items.length === 0) throw new Error('Sale items array is required');
 
-    const isStoreDirectSale = d.is_store_direct_sale === true || d.sale_type === 'STOREKEEPER_DIRECT' || (!employee_id && (!shop_id || d.shop_name === 'AVS AGENCIES') && (!d.employee_name || d.employee_name.toLowerCase().includes('store')));
+    const isStoreShopSale = d.sale_type === 'STOREKEEPER_SHOP';
+    if (isStoreShopSale && !shop_id) throw new Error('Shop selection is required for shop billing.');
+    const isStoreDirectSale = isStoreShopSale || d.is_store_direct_sale === true || d.sale_type === 'STOREKEEPER_DIRECT' || (!employee_id && (!shop_id || d.shop_name === 'AVS AGENCIES') && (!d.employee_name || d.employee_name.toLowerCase().includes('store')));
 
     const identity = requestIdentity(d);
     const clientRef = identity.key;
@@ -2074,6 +2100,7 @@ async function createSaleAttempt(cid, d, actorUserId) {
           if (shR.rows.length > 0) shop = shR.rows[0];
         }
       }
+      if (!shop && isStoreShopSale) throw new Error('Selected shop not found or inactive.');
       if (!shop) {
         shop = await getOrCreateDefaultOrgShop(cid, client);
       }
@@ -2119,6 +2146,7 @@ async function createSaleAttempt(cid, d, actorUserId) {
       );
       if (uR.rows.length > 0) {
         const u = uR.rows[0];
+        if (isStoreShopSale && !['OWNER','STORE_KEEPER'].includes(u.role_name)) throw new Error('Shop billing requires Owner or Store Keeper access.');
         if (u.role_name === 'DRIVER' || u.role_name === 'EMPLOYEE') {
           if (u.emp_id) empId = u.emp_id;
           empName = u.emp_name || u.name;
@@ -2200,22 +2228,33 @@ async function createSaleAttempt(cid, d, actorUserId) {
     let computedTotal = 0;
     let totalPaise = 0;
     const evaluatedItems = [];
+    const usesCataloguePricing = isStoreShopSale || Boolean(empId);
 
     for (const item of [...items].sort((first,second)=>Number(first.product_id)-Number(second.product_id))) {
       const pid = Number(item.product_id);
       const qty = Number(item.qty || item.quantity);
       if (!Number.isSafeInteger(qty) || qty <= 0) throw new Error('Sale quantity must be a positive whole number');
-      const pR = await client.query('SELECT * FROM products WHERE id=$1 AND company_id=$2 AND is_active=TRUE FOR UPDATE', [pid, cid]);
+      const pR = usesCataloguePricing
+        ? await client.query('SELECT p.*, c.name AS category_name FROM products p LEFT JOIN categories c ON c.id=p.category_id AND c.company_id=p.company_id WHERE p.id=$1 AND p.company_id=$2 AND p.is_active=TRUE FOR UPDATE OF p', [pid,cid])
+        : await client.query('SELECT * FROM products WHERE id=$1 AND company_id=$2 AND is_active=TRUE FOR UPDATE', [pid, cid]);
       if (pR.rows.length === 0) throw new Error(`Product ID ${pid} not found`);
       const prod = pR.rows[0];
 
       const itemUnit = item.unit_type || item.unit || prod.selling_unit || 'Tray';
       const isBaseUnit = itemUnit.toLowerCase() === (prod.base_unit || 'piece').toLowerCase();
       const ppu = Number(prod.pieces_per_unit || 1);
-      const qtyInSellingUnits = isBaseUnit ? (qty / ppu) : qty;
+      const categoryName = String(prod.category_name || prod.category || '').trim().toLowerCase();
+      const usesPiecePricing = categoryName ? categoryName === 'tray' : ['tray','piece'].includes(String(prod.selling_unit || '').toLowerCase());
+      const catalogueUnit = usesPiecePricing ? prod.base_unit || 'Piece' : prod.selling_unit;
+      if (usesCataloguePricing && String(itemUnit).toLowerCase() !== String(catalogueUnit).toLowerCase()) {
+        throw new Error(`${isStoreShopSale ? 'Shop' : 'Driver'} billing unit changed. Refresh products and select the correct whole unit or Tray pieces.`);
+      }
+      const usesBaseQuantity = usesCataloguePricing ? usesPiecePricing : isBaseUnit;
+      const qtyInSellingUnits = usesBaseQuantity ? (qty / ppu) : qty;
 
       if (![prod.base_unit, prod.selling_unit].some(unit => String(unit).toLowerCase() === String(itemUnit).toLowerCase())) throw new Error('Invalid sales unit');
-      const configuredRate = isStoreDirectSale && isBaseUnit && Number(prod.direct_sale_rate) > 0 ? prod.direct_sale_rate : isBaseUnit ? prod.piece_selling_price : prod.unit_selling_price;
+      const configuredRate = usesCataloguePricing ? (usesPiecePricing ? prod.piece_selling_price : prod.unit_selling_price)
+        : isStoreDirectSale && isBaseUnit && Number(prod.direct_sale_rate) > 0 ? prod.direct_sale_rate : isBaseUnit ? prod.piece_selling_price : prod.unit_selling_price;
       const ratePaise = paise(configuredRate);
       if (ratePaise <= 0) throw new Error('Product selling price must be configured');
       if (item.rate !== undefined && paise(item.rate) !== ratePaise) throw new Error('Price changed. Refresh products and confirm the bill again.');
@@ -2229,7 +2268,7 @@ async function createSaleAttempt(cid, d, actorUserId) {
       if (empId) {
         const esR = await client.query('SELECT * FROM employee_stock WHERE employee_id=$1 AND product_id=$2 AND company_id=$3 FOR UPDATE', [empId, pid, cid]);
         const heldUnits = esR.rows.length > 0 ? Number(esR.rows[0].qty_units) : 0;
-        if (isBaseUnit) {
+        if (usesBaseQuantity) {
           const heldPieces = Math.round(heldUnits * ppu);
           if (heldPieces < qty || heldUnits <= 0) {
             throw new Error(`Insufficient vehicle stock for '${prod.display_name}'. Available: ${heldPieces} Pcs, Attempted: ${qty} Pcs`);
@@ -2242,7 +2281,7 @@ async function createSaleAttempt(cid, d, actorUserId) {
         await client.query('UPDATE employee_stock SET qty_units = GREATEST(0, qty_units - $1), updated_at=NOW() WHERE employee_id=$2 AND product_id=$3 AND company_id=$4', [qtyInSellingUnits, empId, pid, cid]);
       } else {
         const whUnits = Number(prod.warehouse_stock_units || 0);
-        if (isBaseUnit) {
+        if (usesBaseQuantity) {
           const whPieces = Math.round(whUnits * ppu);
           if (whPieces < qty || whUnits <= 0) {
             throw new Error(`Insufficient warehouse stock for '${prod.display_name}'. Available: ${whPieces} Pcs, Attempted: ${qty} Pcs`);
@@ -3845,6 +3884,9 @@ export async function getDashboardSummary(cid) {
 }
 
 export async function getOwnerExecutiveDashboard(cid, filters = {}) {
+  if (!filters.period && !filters.range && !filters.start_date && !filters.end_date && !filters.from && !filters.to && !filters.date) {
+    filters = { ...filters, period: 'TODAY' };
+  }
   const { start, end, period, todayStr } = parseDateFilters(filters, 'sale_date');
 
   let salesDateCond = '';
@@ -3854,12 +3896,12 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
 
   if (start && end) {
     salesDateCond = ` AND (COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) >= '${start}' AND COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) <= '${end}')`;
-    expDateCond = ` AND ((e.created_at AT TIME ZONE 'Asia/Kolkata')::date >= '${start}' AND (e.created_at AT TIME ZONE 'Asia/Kolkata')::date <= '${end}')`;
+    expDateCond = ` AND (COALESCE(e.expense_date, (e.created_at AT TIME ZONE 'Asia/Kolkata')::date) >= '${start}' AND COALESCE(e.expense_date, (e.created_at AT TIME ZONE 'Asia/Kolkata')::date) <= '${end}')`;
     dmgDateCond = ` AND ((d.created_at AT TIME ZONE 'Asia/Kolkata')::date >= '${start}' AND (d.created_at AT TIME ZONE 'Asia/Kolkata')::date <= '${end}')`;
     retDateCond = ` AND ((dr.created_at AT TIME ZONE 'Asia/Kolkata')::date >= '${start}' AND (dr.created_at AT TIME ZONE 'Asia/Kolkata')::date <= '${end}')`;
   } else if (start) {
     salesDateCond = ` AND COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) >= '${start}'`;
-    expDateCond = ` AND (e.created_at AT TIME ZONE 'Asia/Kolkata')::date >= '${start}'`;
+    expDateCond = ` AND COALESCE(e.expense_date, (e.created_at AT TIME ZONE 'Asia/Kolkata')::date) >= '${start}'`;
     dmgDateCond = ` AND (d.created_at AT TIME ZONE 'Asia/Kolkata')::date >= '${start}'`;
     retDateCond = ` AND (dr.created_at AT TIME ZONE 'Asia/Kolkata')::date >= '${start}'`;
   }
@@ -3958,7 +4000,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
 
   // 7. Recent Invoices
   const inv = await queryAll(
-    "SELECT id, bill_no, employee_name, shop_name, total_amount, payment_mode, cash_paid, gpay_paid, credit_paid, created_at, sale_date FROM sales WHERE company_id=$1 AND (status IS NULL OR status = 'ACTIVE' OR status != 'CANCELLED') ORDER BY created_at DESC LIMIT 10",
+    `SELECT s.id, s.bill_no, s.employee_name, s.shop_name, s.total_amount, s.payment_mode, s.cash_paid, s.gpay_paid, s.credit_paid, s.created_at, s.sale_date FROM sales s WHERE s.company_id=$1 AND (s.status IS NULL OR s.status != 'CANCELLED') ${salesDateCond} ORDER BY s.created_at DESC LIMIT 10`,
     [cid]
   );
 
@@ -4041,7 +4083,7 @@ export async function getOwnerExecutiveDashboard(cid, filters = {}) {
       JOIN sales s ON s.id = si.sale_id
       JOIN products p ON p.id = si.product_id
       WHERE s.company_id = $1
-        AND COALESCE(s.sale_date, (s.created_at AT TIME ZONE 'Asia/Kolkata')::date) = '${start || todayStr}'
+        ${salesDateCond}
         AND (s.status IS NULL OR s.status = 'ACTIVE' OR s.status != 'CANCELLED')
       GROUP BY p.id, p.display_name, p.name, p.icon, p.selling_unit
       ORDER BY total_amount DESC

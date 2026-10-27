@@ -5,9 +5,19 @@ import {
   Save, CheckCircle2, ShieldAlert, AlertTriangle, Layers3, RefreshCw 
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { isCategoryActive } from '../../utils/categoryStatus';
 
 export const AdminCategoriesMasterView = () => {
   const { categories = [], products = [], addCategory, updateCategory, toggleCategoryStatus, deleteCategory } = useApp();
+  const productCounts = useMemo(() => {
+    const counts = new Map();
+    for (const product of products) {
+      if (product.deleted_at || product.category_id == null) continue;
+      const categoryId = Number(product.category_id);
+      counts.set(categoryId, (counts.get(categoryId) || 0) + 1);
+    }
+    return counts;
+  }, [products]);
 
   // Search & Modal State
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,7 +57,7 @@ export const AdminCategoriesMasterView = () => {
   // Key Metrics
   const metrics = useMemo(() => {
     const total = categories.length;
-    const activeCount = categories.filter(c => c.is_active !== 0).length;
+    const activeCount = categories.filter(c => isCategoryActive(c.is_active)).length;
     const totalProductsMapped = products.length;
 
     return { total, activeCount, totalProductsMapped };
@@ -175,8 +185,7 @@ export const AdminCategoriesMasterView = () => {
   };
 
   const handleToggleStatus = async (cat) => {
-    const currentStatus = cat.is_active !== 0;
-    const newStatus = currentStatus ? 0 : 1;
+    const newStatus = !isCategoryActive(cat.is_active);
 
     const res = await toggleCategoryStatus(cat.id, newStatus);
     if (res.success) {
@@ -187,8 +196,7 @@ export const AdminCategoriesMasterView = () => {
   };
 
   const handleRequestDelete = (cat) => {
-    const linkedFromProducts = products.filter(p => Number(p.category_id) === Number(cat.id)).length;
-    const linkedCount = Math.max(linkedFromProducts, Number(cat.product_count || 0));
+    const linkedCount = productCounts.get(Number(cat.id)) || 0;
 
     if (linkedCount > 0) {
       toast.error(`Cannot delete category '${cat.name}' because ${linkedCount} product(s) are linked to it.`);
@@ -308,7 +316,8 @@ export const AdminCategoriesMasterView = () => {
             </thead>
             <tbody className="divide-y divide-slate-200/80 font-medium text-slate-700 bg-white">
               {filteredCategories.map(cat => {
-                const isActive = cat.is_active !== 0;
+                const isActive = isCategoryActive(cat.is_active);
+                const linkedCount = productCounts.get(Number(cat.id)) || 0;
 
                 return (
                   <tr key={cat.id} className={`hover:bg-slate-50 transition ${!isActive ? 'opacity-60 bg-slate-50/50' : ''}`}>
@@ -341,7 +350,7 @@ export const AdminCategoriesMasterView = () => {
                     {/* Linked Products Count */}
                     <td className="p-3.5 text-center font-mono">
                       <span className="px-2.5 py-0.5 bg-purple-50 text-purple-900 font-black text-xs rounded-full border border-purple-200">
-                        {cat.product_count || 0} Products
+                        {linkedCount} Products
                       </span>
                     </td>
 
@@ -379,8 +388,9 @@ export const AdminCategoriesMasterView = () => {
 
                         <button
                           onClick={() => handleRequestDelete(cat)}
-                          className={`p-1.5 rounded-xl transition ${(cat.product_count > 0 || products.some(p => Number(p.category_id) === Number(cat.id))) ? 'bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-200' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'}`}
-                          title={(cat.product_count > 0 || products.some(p => Number(p.category_id) === Number(cat.id))) ? `Cannot delete category: ${cat.product_count || 0} product(s) linked` : `Delete category '${cat.name}'`}
+                          disabled={linkedCount > 0}
+                          className={`p-1.5 rounded-xl transition ${linkedCount > 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed hover:bg-slate-200' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'}`}
+                          title={linkedCount > 0 ? `Cannot delete category: ${linkedCount} product(s) linked` : `Delete category '${cat.name}'`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

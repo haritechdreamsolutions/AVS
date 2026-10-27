@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.jsx';
 import { AppProvider } from './context/AppContext.jsx';
+import { installModuleRecovery, isModuleLoadError } from './utils/moduleRecovery.js';
+
+installModuleRecovery(window);
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -25,9 +28,11 @@ class ErrorBoundary extends React.Component {
           <div className="w-16 h-16 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center text-3xl font-bold border border-rose-500/40">
             ⚠️
           </div>
-          <h2 className="text-xl font-black">Application Error Recovered</h2>
+          <h2 className="text-xl font-black">{isModuleLoadError(this.state.error) ? 'Unable to load this page' : 'Application error'}</h2>
           <p className="text-xs text-slate-300 max-w-md font-mono bg-slate-950 p-3 rounded-xl border border-slate-800">
-            {this.state.error?.toString() || 'React rendering error'}
+            {isModuleLoadError(this.state.error)
+              ? 'Check your internet connection, then reload to get the latest application version. Reloading will clear unsaved entries on this page.'
+              : 'Please reload the application and try again.'}
           </p>
           <button
             onClick={() => {

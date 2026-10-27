@@ -44,6 +44,7 @@ jobs:
         env: {VITE_API_URL: /api}
       - run: node backend/test/native-production.test.js
       - run: npx playwright install --with-deps chromium
+      - run: node --test backend/test/module-recovery.test.js
       - run: node backend/test/employee-code.test.js
         env: {AVS_TEST_EMPLOYEE_BROWSER: '1'}
       - run: node backend/test/users-update.test.js

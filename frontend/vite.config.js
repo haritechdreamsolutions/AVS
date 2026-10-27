@@ -15,6 +15,8 @@ export default defineConfig({
     }
   },
   build: {
+    // Existing tabs may still request chunks from the preceding release.
+    emptyOutDir: false,
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {

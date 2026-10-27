@@ -4,11 +4,11 @@ import session from 'express-session';
 import pgSession from 'connect-pg-simple';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import { pool } from './database/pg_pool.js';
 import { verifySchema } from './database/migrate.js';
 import { csrf } from './security.js';
 import routes from './routes.js';
+import { frontendAssets } from './frontendAssets.js';
 
 export const app = express();
 const production = process.env.NODE_ENV === 'production';
@@ -81,11 +81,7 @@ app.use('/api', csrf, routes);
 app.use('/api', (req, res) => res.status(404).json({ success: false, message: 'API endpoint not found.' }));
 app.use(['/system', '/admin'], (req, res) => res.status(404).json({ success: false, message: 'Not found.' }));
 const frontendDirectory = fileURLToPath(new URL('../frontend/dist/', import.meta.url));
-app.use(express.static(frontendDirectory, { index: false }));
-app.get('*', (req, res, next) => {
-  if (path.extname(req.path) || !req.accepts('html')) return next();
-  res.sendFile(path.join(frontendDirectory, 'index.html'), error => { if (error) next(error); });
-});
+app.use(frontendAssets(frontendDirectory));
 app.use((req, res) => res.status(404).json({ success: false, message: 'Not found.' }));
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);

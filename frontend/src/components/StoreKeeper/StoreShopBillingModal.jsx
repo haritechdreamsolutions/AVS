@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { getOperationalUnit, formatWarehouseStock } from '../../utils/unitHelper';
+import { getStoreShopPricing } from '../../utils/storeShopPricing';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
 import { 
   X, Store, MapPin, Search, ArrowLeft, ArrowRight, CheckCircle2, 
@@ -152,49 +152,17 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
   }, [activeProducts]);
 
   const getProductStockInfo = (product) => {
-    const opUnit = getOperationalUnit(product);
+    const {unitType,rate,isTray} = getStoreShopPricing(product);
     const piecesPerUnit = Math.max(1, Number(product.pieces_per_unit || 1));
     const whUnits = Number(product.warehouse_stock_units || 0);
-    const stockFormatted = formatWarehouseStock(product);
-    const billingUnit = opUnit.isPieceBased ? 'Piece' : opUnit.operationalUnit;
-    const isBaseUnit = billingUnit.toLowerCase() === (product.base_unit || 'Piece').toLowerCase();
-    const rate = Number(isBaseUnit && Number(product.direct_sale_rate) > 0
-      ? product.direct_sale_rate
-      : isBaseUnit ? product.piece_selling_price : product.unit_selling_price);
-
-    if (opUnit.isPieceBased) {
-      // Tray products: Milk, Curd -> Piece-based rates & available
-      const availableStock = stockFormatted.totalPieces;
-      return {
-        opUnit,
-        whUnits,
-        stockFormatted,
-        basePieces: availableStock,
-        piecesPerUnit,
-        availableStock,
-        unitLabel: 'Pieces',
-        shortUnit: 'Pcs',
-        sellingUnit: product.selling_unit || 'Trays',
-        rate,
-        isOutOfStock: stockFormatted.isOutOfStock
-      };
-    } else {
-      // Non-tray products: Case, Bag, Box
-      const availableStock = stockFormatted.units;
-      return {
-        opUnit,
-        whUnits,
-        stockFormatted,
-        basePieces: Math.round(whUnits * piecesPerUnit),
-        piecesPerUnit,
-        availableStock,
-        unitLabel: opUnit.pluralLabel,
-        shortUnit: opUnit.label,
-        sellingUnit: product.selling_unit || opUnit.label,
-        rate,
-        isOutOfStock: stockFormatted.isOutOfStock
-      };
-    }
+    const totalPieces = Math.round(whUnits * piecesPerUnit);
+    const availableStock = isTray ? totalPieces : Math.floor(whUnits);
+    const unitLabel = unitType === 'Box' ? 'Boxes' : unitType.endsWith('s') ? unitType : unitType + 's';
+    const text = isTray
+      ? Math.floor(totalPieces / piecesPerUnit) + ' ' + (product.selling_unit || 'Tray') + ' (' + totalPieces + ' Pcs)'
+      : availableStock + ' ' + unitLabel;
+    return {unitType,rate,isTray,availableStock,unitLabel,
+      shortUnit:isTray ? 'Pcs' : unitType,stockFormatted:{text},isOutOfStock:availableStock <= 0};
   };
 
   const filteredProducts = useMemo(() => {
@@ -210,6 +178,10 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
 
   const handleQtyChange = (product, val) => {
     const info = getProductStockInfo(product);
+    if (info.rate <= 0) {
+      toast.error(`${info.isTray ? 'Single Piece Rate' : 'Selling Rate'} is not configured for ${product.display_name}. Please set it in Product Master.`);
+      return;
+    }
     if (info.availableStock <= 0) {
       toast.error(`⚠️ ${product.display_name} is Out of Warehouse Stock (0 ${info.unitLabel})`);
       setQuantities(prev => ({ ...prev, [product.id]: '' }));
@@ -255,7 +227,7 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
           product_id: Number(pid),
           product_name: prod ? prod.display_name : 'Product',
           product: prod,
-          unit_type: info.opUnit.isPieceBased ? 'Piece' : info.opUnit.operationalUnit,
+          unit_type: info.unitType,
           display_unit: info.unitLabel,
           qty: qtyNum,
           rate: info.rate,
@@ -386,7 +358,7 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
 
     const payload = {
       is_store_direct_sale: true,
-      sale_type: 'STOREKEEPER_DIRECT',
+      sale_type: 'STOREKEEPER_SHOP',
       shop_id: activeShop.id,
       shop_name: activeShop.name,
       shop_code: activeShop.code || '',

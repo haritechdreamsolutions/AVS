@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useApp, apiFetch, API_URL } from '../../context/AppContext';
 import { resolveProductImageUrl } from '../../utils/productImageHelper';
 import { getProductDisplayRank } from '../../utils/productOrderHelper';
+import { buildBalanceUsers, getBalanceRecordKey } from '../../utils/userBalanceIdentity';
 import { 
   Search, Calendar, RotateCcw, AlertTriangle, X,
   Layers, AlertCircle, TrendingDown, Package, Sparkles
@@ -211,135 +212,10 @@ export const UserBalanceView = () => {
     return null;
   }, [fromDate, toDate]);
 
-  // Extract all unique users (Store Keeper + Drivers / Delivery Executives)
-  const availableUsers = useMemo(() => {
-    const map = new Map();
-    map.set('STORE', {
-      id: 'STORE',
-      name: 'Store Keeper (Counter Direct)',
-      vehicleNumber: 'Counter',
-      icon: '🏬'
-    });
-
-    // 1. All Employees
-    (employees || []).forEach(emp => {
-      const key = String(emp.id);
-      map.set(key, {
-        id: key,
-        name: emp.full_name || `Driver #${emp.id}`,
-        vehicleNumber: emp.vehicle_number || '',
-        icon: '🚚'
-      });
-    });
-
-    // 2. All Drivers
-    (drivers || []).forEach(drv => {
-      const key = String(drv.id || drv.employee_id);
-      if (!map.has(key)) {
-        map.set(key, {
-          id: key,
-          name: drv.full_name || drv.name || drv.driver_name || `Driver #${key}`,
-          vehicleNumber: drv.vehicle_number || '',
-          icon: '🚚'
-        });
-      }
-    });
-
-    // 3. Registered User Accounts (Role DRIVER or EMPLOYEE)
-    (users || []).forEach(u => {
-      const role = (u.role || u.role_name || '').toUpperCase();
-      if (role === 'DRIVER' || role === 'EMPLOYEE') {
-        const key = String(u.employee_id || u.id);
-        const uName = (u.name || '').trim();
-        let exists = false;
-        for (const entry of map.values()) {
-          if (entry.id === 'STORE') continue;
-          if (entry.name && entry.name.toLowerCase() === uName.toLowerCase()) {
-            exists = true;
-            break;
-          }
-        }
-        if (!exists && !map.has(key)) {
-          map.set(key, {
-            id: key,
-            name: u.name || `Driver #${key}`,
-            vehicleNumber: u.vehicle_no || u.vehicle_number || '',
-            icon: '🚚'
-          });
-        }
-      }
-    });
-
-    // 4. Any distinct billed-by names in actual sales
-    (sales || []).forEach(s => {
-      const isStore = s.is_store_direct_sale === true || (s.employee_name && s.employee_name.toLowerCase().includes('store'));
-      if (!isStore && s.employee_name) {
-        const normName = s.employee_name.trim().toLowerCase();
-        let exists = false;
-        for (const entry of map.values()) {
-          if (entry.id === 'STORE') continue;
-          if ((entry.name || '').trim().toLowerCase() === normName) {
-            exists = true;
-            break;
-          }
-        }
-        if (!exists) {
-          const key = s.employee_id ? String(s.employee_id) : `NAME_${s.employee_name.trim()}`;
-          map.set(key, {
-            id: key,
-            name: s.employee_name.trim(),
-            vehicleNumber: s.vehicle_number || '',
-            icon: '🚚'
-          });
-        }
-      }
-    });
-
-    return Array.from(map.values());
-  }, [employees, drivers, users, sales]);
-
-  // Helper to determine if a sale is strictly a Store Keeper counter sale
-  const isStoreCounterSale = (sale) => {
-    if (!sale) return false;
-    const name = (sale.employee_name || '').toLowerCase();
-    if (name.includes('store') || name.includes('counter')) return true;
-    if (sale.is_store_direct_sale && (!sale.employee_name || name.includes('store'))) return true;
-    if (Number(sale.employee_id) === 6 && (!sale.employee_name || name.includes('store'))) return true;
-    return false;
-  };
-
-  // Helper to resolve the user key in summaryMap for any given sale
-  const getSaleUserKey = (sale, summaryMap) => {
-    if (isStoreCounterSale(sale)) return 'STORE';
-
-    // 1. Match by employee_id if directly present
-    if (sale.employee_id && summaryMap.has(String(sale.employee_id))) {
-      return String(sale.employee_id);
-    }
-
-    // 2. Match by exact user name (case-insensitive) against all mapped users
-    if (sale.employee_name) {
-      const normSaleName = sale.employee_name.trim().toLowerCase();
-      for (const [key, entry] of summaryMap.entries()) {
-        if (key === 'STORE') continue;
-        if ((entry.user?.name || '').trim().toLowerCase() === normSaleName) {
-          return key;
-        }
-      }
-    }
-
-    // 3. Fallback: by employee_id if present
-    if (sale.employee_id) {
-      return String(sale.employee_id);
-    }
-
-    // 4. Fallback: by employee_name if present and not store
-    if (sale.employee_name && !sale.employee_name.toLowerCase().includes('store')) {
-      return `NAME_${sale.employee_name.trim()}`;
-    }
-
-    return 'STORE';
-  };
+  // Current staff and historical identities share stable employee IDs, never names.
+  const availableUsers = useMemo(() => buildBalanceUsers({
+    employees, drivers, users, sales, expenses, damages, shortages
+  }), [employees, drivers, users, sales, expenses, damages, shortages]);
 
   // Filter sales by date range and search
   const filteredSales = useMemo(() => {
@@ -347,28 +223,15 @@ export const UserBalanceView = () => {
 
     return (sales || []).filter(sale => {
       const saleYmd = extractSaleDateYMD(sale);
-      const isStoreCounter = isStoreCounterSale(sale);
+
 
       // Date Range Filter
       if (fromDate && saleYmd && saleYmd < fromDate) return false;
       if (toDate && saleYmd && saleYmd > toDate) return false;
       if ((fromDate || toDate) && !saleYmd) return false;
 
-      // User Filter
-      if (userFilter !== 'ALL') {
-        if (userFilter === 'STORE') {
-          if (!isStoreCounter) return false;
-        } else {
-          const selectedUser = availableUsers.find(u => u.id === userFilter);
-          const selName = selectedUser ? (selectedUser.name || '').trim().toLowerCase() : '';
-          const sName = (sale.employee_name || '').trim().toLowerCase();
-
-          const idMatches = String(sale.employee_id) === String(userFilter);
-          const nameMatches = selName && sName === selName;
-
-          if ((!idMatches && !nameMatches) || isStoreCounter) return false;
-        }
-      }
+      // Use the same identity for filtering and aggregation.
+      if (userFilter !== 'ALL' && getBalanceRecordKey(sale) !== userFilter) return false;
 
       // Search Query
       if (searchQuery.trim()) {
@@ -383,7 +246,7 @@ export const UserBalanceView = () => {
 
       return true;
     });
-  }, [sales, fromDate, toDate, userFilter, searchQuery, dateError, availableUsers]);
+  }, [sales, fromDate, toDate, userFilter, searchQuery, dateError]);
 
   // Filter expenses by date range
   const filteredExpenses = useMemo(() => {
@@ -394,21 +257,10 @@ export const UserBalanceView = () => {
       if (toDate && expYmd && expYmd > toDate) return false;
       if ((fromDate || toDate) && !expYmd) return false;
 
-      if (userFilter !== 'ALL') {
-        if (userFilter === 'STORE') {
-          if (exp.employee_id) return false;
-        } else {
-          const selectedUser = availableUsers.find(u => u.id === userFilter);
-          const selName = selectedUser ? (selectedUser.name || '').trim().toLowerCase() : '';
-          const expName = (exp.employee_name || '').trim().toLowerCase();
-          const idMatches = String(exp.employee_id) === String(userFilter);
-          const nameMatches = selName && expName === selName;
-          if (!idMatches && !nameMatches) return false;
-        }
-      }
+      if (userFilter !== 'ALL' && getBalanceRecordKey(exp) !== userFilter) return false;
       return true;
     });
-  }, [expenses, fromDate, toDate, userFilter, dateError, availableUsers]);
+  }, [expenses, fromDate, toDate, userFilter, dateError]);
 
   // Filter damages by date range
   const filteredDamages = useMemo(() => {
@@ -419,21 +271,10 @@ export const UserBalanceView = () => {
       if (toDate && dmgYmd && dmgYmd > toDate) return false;
       if ((fromDate || toDate) && !dmgYmd) return false;
 
-      if (userFilter !== 'ALL') {
-        if (userFilter === 'STORE') {
-          if (dmg.employee_id) return false;
-        } else {
-          const selectedUser = availableUsers.find(u => u.id === userFilter);
-          const selName = selectedUser ? (selectedUser.name || '').trim().toLowerCase() : '';
-          const dmgName = (dmg.employee_name || '').trim().toLowerCase();
-          const idMatches = String(dmg.employee_id) === String(userFilter);
-          const nameMatches = selName && dmgName === selName;
-          if (!idMatches && !nameMatches) return false;
-        }
-      }
+      if (userFilter !== 'ALL' && getBalanceRecordKey(dmg) !== userFilter) return false;
       return true;
     });
-  }, [damages, fromDate, toDate, userFilter, dateError, availableUsers]);
+  }, [damages, fromDate, toDate, userFilter, dateError]);
 
   // Filter shortages by date range
   const filteredShortages = useMemo(() => {
@@ -444,22 +285,11 @@ export const UserBalanceView = () => {
       if (toDate && shtYmd && shtYmd > toDate) return false;
       if ((fromDate || toDate) && !shtYmd) return false;
 
-      const driverId = sht.driver_id || sht.employee_id;
-      if (userFilter !== 'ALL') {
-        if (userFilter === 'STORE') {
-          if (driverId) return false;
-        } else {
-          const selectedUser = availableUsers.find(u => u.id === userFilter);
-          const selName = selectedUser ? (selectedUser.name || '').trim().toLowerCase() : '';
-          const shtName = (sht.driver_name || sht.employee_name || '').trim().toLowerCase();
-          const idMatches = String(driverId) === String(userFilter);
-          const nameMatches = selName && shtName === selName;
-          if (!idMatches && !nameMatches) return false;
-        }
-      }
+
+      if (userFilter !== 'ALL' && getBalanceRecordKey(sht) !== userFilter) return false;
       return true;
     });
-  }, [shortages, fromDate, toDate, userFilter, dateError, availableUsers]);
+  }, [shortages, fromDate, toDate, userFilter, dateError]);
 
   // Aggregate stats per user (Sales + Expenses + Damages + Shortages)
   const userSummaries = useMemo(() => {
@@ -480,9 +310,9 @@ export const UserBalanceView = () => {
       });
     });
 
-    // 1. Process Sales with strict name and ID attribution
+    // 1. Process sales using the same employee identity as the filters.
     filteredSales.forEach(sale => {
-      const key = getSaleUserKey(sale, summaryMap);
+      const key = getBalanceRecordKey(sale);
 
       if (!summaryMap.has(key)) {
         summaryMap.set(key, {
@@ -515,16 +345,7 @@ export const UserBalanceView = () => {
 
     // 2. Process Expenses per Driver
     filteredExpenses.forEach(exp => {
-      let key = exp.employee_id ? String(exp.employee_id) : 'STORE';
-      if (!summaryMap.has(key) && exp.employee_name) {
-        const normName = exp.employee_name.trim().toLowerCase();
-        for (const [k, e] of summaryMap.entries()) {
-          if (k !== 'STORE' && (e.user?.name || '').trim().toLowerCase() === normName) {
-            key = k;
-            break;
-          }
-        }
-      }
+      const key = getBalanceRecordKey(exp);
       if (summaryMap.has(key)) {
         summaryMap.get(key).totalExpenses += Number(exp.amount || 0);
       }
@@ -533,16 +354,7 @@ export const UserBalanceView = () => {
     // 3. Process Damages per Driver
     const dmgMapByUser = new Map();
     filteredDamages.forEach(dmg => {
-      let key = dmg.employee_id ? String(dmg.employee_id) : 'STORE';
-      if (!summaryMap.has(key) && dmg.employee_name) {
-        const normName = dmg.employee_name.trim().toLowerCase();
-        for (const [k, e] of summaryMap.entries()) {
-          if (k !== 'STORE' && (e.user?.name || '').trim().toLowerCase() === normName) {
-            key = k;
-            break;
-          }
-        }
-      }
+      const key = getBalanceRecordKey(dmg);
       if (!dmgMapByUser.has(key)) {
         dmgMapByUser.set(key, new Map());
       }
@@ -581,16 +393,7 @@ export const UserBalanceView = () => {
     // 4. Process Shortages per Driver
     const shortMapByUser = new Map();
     filteredShortages.forEach(sht => {
-      let key = sht.driver_id ? String(sht.driver_id) : (sht.employee_id ? String(sht.employee_id) : 'STORE');
-      if (!summaryMap.has(key) && (sht.driver_name || sht.employee_name)) {
-        const normName = (sht.driver_name || sht.employee_name).trim().toLowerCase();
-        for (const [k, e] of summaryMap.entries()) {
-          if (k !== 'STORE' && (e.user?.name || '').trim().toLowerCase() === normName) {
-            key = k;
-            break;
-          }
-        }
-      }
+      const key = getBalanceRecordKey(sht);
       if (!shortMapByUser.has(key)) {
         shortMapByUser.set(key, new Map());
       }
@@ -626,7 +429,8 @@ export const UserBalanceView = () => {
       }
     });
 
-    let list = Array.from(summaryMap.values());
+    const historyKeys = new Set([...filteredSales, ...filteredExpenses, ...filteredDamages, ...filteredShortages].map(getBalanceRecordKey));
+    let list = Array.from(summaryMap.values()).filter(entry => !entry.user.isHistorical || historyKeys.has(entry.user.id));
 
     if (userFilter !== 'ALL') {
       list = list.filter(item => item.user.id === userFilter);
@@ -835,7 +639,7 @@ export const UserBalanceView = () => {
               <option value="ALL">All Users & Drivers</option>
               <option value="STORE">🏬 Store Keeper</option>
               {availableUsers.filter(u => u.id !== 'STORE').map(u => (
-                <option key={u.id} value={u.id}>🚚 {u.name}</option>
+                <option key={u.id} value={u.id}>🚚 {u.name}{u.isHistorical ? ' (History)' : ''}</option>
               ))}
             </select>
           </div>
@@ -954,6 +758,7 @@ export const UserBalanceView = () => {
                           <div>
                             <span className="font-black text-slate-900 text-sm sm:text-base block leading-tight">
                               {user.name}
+                              {user.isHistorical && <span className="ml-1.5 text-[10px] font-bold text-slate-500">History</span>}
                             </span>
                             {user.vehicleNumber && user.vehicleNumber !== 'Counter' && (
                               <span className="text-[11px] font-bold text-slate-500 block">
@@ -1050,7 +855,7 @@ export const UserBalanceView = () => {
                         {user.icon || '👤'}
                       </div>
                       <div>
-                        <h4 className="font-black text-sm text-slate-900 leading-tight">{user.name}</h4>
+                        <h4 className="font-black text-sm text-slate-900 leading-tight">{user.name}{user.isHistorical && <span className="ml-1.5 text-[10px] font-bold text-slate-500">History</span>}</h4>
                         {user.vehicleNumber && user.vehicleNumber !== 'Counter' && (
                           <span className="text-[10px] font-bold text-slate-500">{user.vehicleNumber}</span>
                         )}
