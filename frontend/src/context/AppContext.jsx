@@ -1748,7 +1748,7 @@ export const AppProvider = ({ children }) => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setCategories(prev => prev.map(c => Number(c.id) === Number(categoryId) ? { ...c, is_active: is_active ? 1 : 0 } : c));
+        setCategories(prev => prev.map(c => Number(c.id) === Number(categoryId) ? { ...c, ...data.category } : c));
         fetchData();
         return { success: true, category: data.category };
       } else {

@@ -1,9 +1,9 @@
 import React from 'react';
 import { TrendingUp, BarChart3, CreditCard, Banknote, Smartphone, Sparkles } from 'lucide-react';
 
-export const AdminAnalyticsChart = ({ data }) => {
+export const AdminAnalyticsChart = ({ data, period = 'TODAY' }) => {
   const analytics = data?.analytics || {};
-  const salesTrend = analytics.seven_day_trend || [
+  const rawSalesTrend = analytics.seven_day_trend || [
     { day: "Mon", sales: 0, label: "₹0", height: "8%", isPeak: false },
     { day: "Tue", sales: 0, label: "₹0", height: "8%", isPeak: false },
     { day: "Wed", sales: 0, label: "₹0", height: "8%", isPeak: false },
@@ -12,9 +12,13 @@ export const AdminAnalyticsChart = ({ data }) => {
     { day: "Sat", sales: 0, label: "₹0", height: "8%", isPeak: false },
     { day: "Today", sales: 0, label: "₹0", height: "8%", isPeak: false }
   ];
-  const sevenDayTotal = Number(analytics.seven_day_total || 0);
-  const dailyAverage = Number(analytics.daily_average || 0);
-  const highestDay = analytics.highest_day || 'None (₹0)';
+  const isDaily = period === 'TODAY' || period === 'YESTERDAY';
+  const salesTrend = isDaily
+    ? (data?.date_range?.start ? rawSalesTrend.filter(row => row.date === data.date_range.start) : rawSalesTrend.slice(-1))
+    : rawSalesTrend;
+  const sevenDayTotal = isDaily ? salesTrend.reduce((sum,row) => sum + Number(row.sales || 0),0) : Number(analytics.seven_day_total || 0);
+  const dailyAverage = isDaily ? sevenDayTotal : Number(analytics.daily_average || 0);
+  const highestDay = isDaily ? (sevenDayTotal > 0 ? `₹${sevenDayTotal.toLocaleString()}` : 'None (₹0)') : analytics.highest_day || 'None (₹0)';
   const paymentBreakdown = analytics.payment_breakdown || [];
   const paymentTotal = Number(analytics.payment_total || 0);
   const topProducts = analytics.top_products_today || [];
@@ -31,13 +35,13 @@ export const AdminAnalyticsChart = ({ data }) => {
               ADMIN SALES & ANALYTICS VISUAL GRAPH (விற்பனை வரைபடம்)
             </h3>
           </div>
-          <p className="text-xs text-sky-800/80 font-bold mt-0.5">Easy 7-Day Revenue Trend & Payment Breakdown at a glance</p>
+          <p className="text-xs text-sky-800/80 font-bold mt-0.5">{isDaily ? 'Selected Day Revenue & Payment Breakdown' : '7-Day Revenue Trend & Payment Breakdown'}</p>
         </div>
 
         {/* 7-Day Quick Stats */}
         <div className="flex flex-wrap gap-2 text-xs font-mono">
           <div className="bg-sky-50 px-3 py-1.5 rounded-xl border border-sky-200">
-            <span className="text-sky-900 block font-bold text-[10px]">7-Day Total</span>
+            <span className="text-sky-900 block font-bold text-[10px]">{isDaily ? `${period === 'TODAY' ? 'Today' : 'Yesterday'} Total` : '7-Day Total'}</span>
             <span className="font-black text-sky-700">₹{sevenDayTotal.toLocaleString()}</span>
           </div>
           <div className="bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
@@ -59,10 +63,10 @@ export const AdminAnalyticsChart = ({ data }) => {
           <div className="flex justify-between items-center text-xs font-extrabold text-sky-900">
             <span className="flex items-center gap-1.5">
               <TrendingUp className="w-4 h-4 text-emerald-600" />
-              Weekly Revenue Trend (கடந்த 7 நாட்கள் விற்பனை)
+              {isDaily ? `${period === 'TODAY' ? 'Today' : 'Yesterday'} Revenue` : 'Weekly Revenue Trend (கடந்த 7 நாட்கள் விற்பனை)'}
             </span>
             <span className="text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300 font-black">
-              7 Days Real-Time DB Sync 📊
+              {isDaily ? 'Daily Live Sync' : '7 Days Real-Time DB Sync 📊'}
             </span>
           </div>
 
@@ -150,7 +154,7 @@ export const AdminAnalyticsChart = ({ data }) => {
           {/* Top Selling Products */}
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2.5">
             <h4 className="font-extrabold text-xs text-slate-900 uppercase tracking-wider">
-              Top Products Sold Today
+              Top Products Sold ({period.replaceAll('_',' ')})
             </h4>
             {topProducts.length === 0 ? (
               <div className="text-center py-4 text-slate-400 font-sans text-xs">

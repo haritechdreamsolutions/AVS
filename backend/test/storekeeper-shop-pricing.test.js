@@ -40,12 +40,12 @@ try {
   await page.getByRole('button',{name:/GENERATE SHOP BILL & PRINT/}).click();
   const response=await saved,data=await response.json();
   assert.equal(response.status(),200,data.message);
-  assert.equal(Number(data.sale.total_amount),254);
-  assert.equal(Number(data.sale.cash_paid),254);
+  assert.equal(Number(data.sale.total_amount),240);
+  assert.equal(Number(data.sale.cash_paid),240);
   assert.equal(data.sale.employee_id,null);
   await expect(page.locator('.printable-thermal-80mm')).toBeVisible();
   const persisted=(await pool.query('SELECT product_id,rate FROM sale_items WHERE sale_id=$1 ORDER BY product_id',[data.sale.id])).rows;
-  assert.deepEqual(persisted.map(item=>Number(item.rate)),[12,15,100]);
+  assert.deepEqual(persisted.map(item=>Number(item.rate)),[10,10,100]);
   assert.equal(Number((await pool.query('SELECT current_due FROM shops WHERE id=$1',[shop])).rows[0].current_due),20);
   const payload=response.request().postDataJSON();
   payload.idempotency_key=randomUUID();payload.client_reference=payload.idempotency_key;payload.items[0].rate=1;

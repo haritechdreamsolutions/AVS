@@ -1,94 +1,108 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { AdminAnalyticsChart } from './AdminAnalyticsChart';
 import { 
   TrendingUp, Printer, RefreshCw, Eye, ShoppingBag, 
   DollarSign, Smartphone, CreditCard, ArrowRightLeft, UserCheck, 
   Truck, Store, Snowflake, Sparkles, CheckCircle2, Clock, X, Download, FileText,
-  AlertTriangle, Trash2, ArrowRight
+  ArrowRight
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateOwnerExecutivePDFReport } from '../../utils/pdfReportGenerator';
+import { dashboardBusinessDay, dashboardDateRange, millisecondsToDashboardMidnight, dashboardPeriodSales } from '../../utils/executiveDashboardPeriod';
 
 export const OwnerDashboardOverview = ({ onNavigateTab }) => {
   const { 
-    summary, sales = [], refreshData, fetchExecutiveDashboard, 
-    activeBill, setActiveBill, fetchExpenses, fetchDamages, 
+    sales = [], refreshData, fetchExecutiveDashboard,
+    fetchExpenses, fetchDamages,
     fetchMissingStockReport, companyInfo,
-    resetTransactionsAndInventory,
     shops = [], freezers = [], villages = []
   } = useApp();
   const [selectedSaleForDetails, setSelectedSaleForDetails] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
-  const [showResetModal, setShowResetModal] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
   const [filterSellerType, setFilterSellerType] = useState('ALL'); // ALL, STORE, DRIVER
   const [selectedPeriod, setSelectedPeriod] = useState('TODAY'); // TODAY, YESTERDAY, THIS_WEEK, THIS_MONTH
-  const [dashboardData, setDashboardData] = useState(null);
+  const [businessDayKey, setBusinessDayKey] = useState(() => dashboardBusinessDay());
+  const [dashboardResult, setDashboardResult] = useState(null);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
+  const dateRange = useMemo(() => dashboardDateRange(selectedPeriod, new Date(businessDayKey + 'T12:00:00+05:30')), [selectedPeriod, businessDayKey]);
+  const requestKey = selectedPeriod + ':' + dateRange.start + ':' + dateRange.end;
+  const dashboardData = dashboardResult?.key === requestKey ? dashboardResult.data : null;
+  const apiRef = useRef({fetchExecutiveDashboard, refreshData});
+  apiRef.current = {fetchExecutiveDashboard, refreshData};
+  const currentKeyRef = useRef(requestKey);
+  currentKeyRef.current = requestKey;
+  const requestVersion = useRef(0);
+  const inFlight = useRef(new Set());
 
-  const loadExecutiveDashboard = async (period = selectedPeriod) => {
-    if (!fetchExecutiveDashboard) return;
+  const loadExecutiveDashboard = useCallback(async () => {
+    if (!apiRef.current.fetchExecutiveDashboard || inFlight.current.has(requestKey)) return;
+    if (dashboardBusinessDay() !== businessDayKey) return;
+    const version = ++requestVersion.current;
+    inFlight.current.add(requestKey);
+    setLoadingDashboard(true);
     try {
-      setLoadingDashboard(true);
-      const data = await fetchExecutiveDashboard({ period });
-      if (data) {
-        setDashboardData(data);
+      const data = await apiRef.current.fetchExecutiveDashboard({period:'CUSTOM', start_date:dateRange.start, end_date:dateRange.end});
+      if (version === requestVersion.current && currentKeyRef.current === requestKey && dashboardBusinessDay() === businessDayKey && data?.kpis
+          && data.date_range?.start === dateRange.start && data.date_range?.end === dateRange.end) {
+        setDashboardResult({key:requestKey, data:{...data, period:selectedPeriod}});
       }
     } catch (err) {
-      console.error("Error loading executive dashboard data:", err);
+      console.error('Error loading executive dashboard data:', err);
     } finally {
-      setLoadingDashboard(false);
+      inFlight.current.delete(requestKey);
+      if (version === requestVersion.current && currentKeyRef.current === requestKey) setLoadingDashboard(false);
     }
-  };
+  }, [requestKey, selectedPeriod, dateRange.start, dateRange.end, businessDayKey]);
 
   useEffect(() => {
-    loadExecutiveDashboard(selectedPeriod);
-  }, [selectedPeriod]);
+    currentKeyRef.current = requestKey;
+    setSelectedSaleForDetails(null);
+    loadExecutiveDashboard();
+    return () => { currentKeyRef.current = null; };
+  }, [requestKey, loadExecutiveDashboard]);
 
-  // Auto-refresh background polling every 5 seconds to sync live sales instantly
+  // Roll over at IST midnight and recover after a sleeping tab resumes.
+  useEffect(() => {
+    const syncDay = () => setBusinessDayKey(dashboardBusinessDay());
+    syncDay();
+    const timer = setTimeout(syncDay, millisecondsToDashboardMidnight() + 1);
+    const onVisible = () => { if (document.visibilityState === 'visible') syncDay(); };
+    window.addEventListener('focus', syncDay);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('focus', syncDay);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [businessDayKey]);
+
   useEffect(() => {
     const interval = setInterval(() => {
-      if (refreshData) refreshData();
-      loadExecutiveDashboard(selectedPeriod);
+      const day = dashboardBusinessDay();
+      if (day !== businessDayKey) { setBusinessDayKey(day); return; }
+      if (apiRef.current.refreshData) apiRef.current.refreshData();
+      loadExecutiveDashboard();
     }, 5000);
-
     return () => clearInterval(interval);
-  }, [refreshData, selectedPeriod]);
+  }, [businessDayKey, loadExecutiveDashboard]);
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
     if (refreshData) await refreshData();
-    await loadExecutiveDashboard(selectedPeriod);
+    await loadExecutiveDashboard();
     setTimeout(() => setIsRefreshing(false), 500);
   };
 
   const handleDownloadPDFReport = async () => {
     if (isGeneratingPDF) return;
+    if (!dashboardData) { toast.info('Please wait for the selected day to finish refreshing.'); return; }
     setIsGeneratingPDF(true);
     try {
       toast.info('Generating Executive PDF Report...');
 
-      const now = new Date();
-      const todayStr = now.toISOString().split('T')[0];
-      let dateFilters = {};
-      if (selectedPeriod === 'TODAY') {
-        dateFilters = { date: todayStr };
-      } else if (selectedPeriod === 'YESTERDAY') {
-        const yesterday = new Date(now);
-        yesterday.setDate(now.getDate() - 1);
-        dateFilters = { date: yesterday.toISOString().split('T')[0] };
-      } else if (selectedPeriod === 'THIS_WEEK') {
-        const startOfWeek = new Date(now);
-        const day = now.getDay();
-        const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-        startOfWeek.setDate(diff);
-        dateFilters = { start_date: startOfWeek.toISOString().split('T')[0], end_date: todayStr };
-      } else if (selectedPeriod === 'THIS_MONTH') {
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        dateFilters = { start_date: startOfMonth.toISOString().split('T')[0], end_date: todayStr };
-      }
+      const dateFilters = {start_date:dateRange.start, end_date:dateRange.end};
 
       const [expData, dmgData, missData] = await Promise.all([
         typeof fetchExpenses === 'function' ? fetchExpenses(dateFilters) : [],
@@ -104,7 +118,7 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
         expenses: Array.isArray(expData) ? expData : [],
         damages: Array.isArray(dmgData) ? dmgData : [],
         missingRecords: Array.isArray(missData?.records) ? missData.records : (Array.isArray(missData) ? missData : []),
-        recentSales: sales || [],
+        recentSales: periodSales,
         companyInfo: companyInfo || {}
       });
 
@@ -117,46 +131,32 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
     }
   };
 
-  const handleConfirmReset = async () => {
-    if (!resetTransactionsAndInventory) return;
-    setIsResetting(true);
-    try {
-      const res = await resetTransactionsAndInventory();
-      setShowResetModal(false);
-      await loadExecutiveDashboard(selectedPeriod);
-      toast.success(res?.message || 'All transaction and inventory data cleared successfully! Ready for fresh entries.');
-    } catch (err) {
-      console.error('Error resetting transactions:', err);
-      toast.error('Failed to reset transaction data. Please try again.');
-    } finally {
-      setIsResetting(false);
-    }
-  };
-
-  // KPI figures from backend executive API or fallback to context summary
+  // Never show the previous day or a different period while fresh data loads.
   const kpis = dashboardData?.kpis || {
-    gross_sales: summary?.todaySales || 0,
-    cash_collected: summary?.cashCollection || 0,
-    gpay_collected: summary?.gpayCollection || 0,
-    credit_issued: summary?.creditSales || 0,
-    expenses: summary?.totalExpenses || 0,
-    damage_loss: summary?.damageCost || 0,
+    gross_sales: 0,
+    cash_collected: 0,
+    gpay_collected: 0,
+    credit_issued: 0,
+    expenses: 0,
+    damage_loss: 0,
     cogs: 0,
     net_profit: 0,
     profit_margin_pct: 0,
     cost_data_incomplete: false
   };
 
-  // Filter last 9 live sales for ticker
+  const periodSales = useMemo(() => dashboardPeriodSales(sales, dateRange), [sales, dateRange]);
+
+  // Filter last 9 live sales for the selected business dates.
   const recentLiveSales = useMemo(() => {
-    return (sales || []).filter(sale => {
+    return periodSales.filter(sale => {
       if (!sale) return false;
       const isStore = (sale.is_store_direct_sale === true || Number(sale.employee_id) === 6 || sale.role === 'STORE_KEEPER' || (sale.employee_name && sale.employee_name.toLowerCase().includes('store'))) && (!sale.employee_name || sale.employee_name.toLowerCase().includes('store'));
       if (filterSellerType === 'STORE') return isStore;
       if (filterSellerType === 'DRIVER') return !isStore;
       return true;
     }).slice(0, 9);
-  }, [sales, filterSellerType]);
+  }, [periodSales, filterSellerType]);
 
   const renderPaymentBadge = (mode) => {
     const m = (mode || 'CASH').toUpperCase();
@@ -195,36 +195,36 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
       <div className="p-4 sm:p-6 rounded-3xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white border border-slate-800 shadow-xl flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-        <div className="relative z-10">
+        <div className="relative z-10 min-w-0 flex-1">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300 shrink-0">
               <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg sm:text-xl md:text-2xl font-black text-white tracking-tight leading-tight">
+                <h2 className="text-base sm:text-lg xl:text-xl font-black text-white tracking-tight leading-tight">
                   ADMIN EXECUTIVE DASHBOARD
                 </h2>
                 <span className="text-[10px] sm:text-xs bg-emerald-500/20 text-emerald-300 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-400/30 flex items-center gap-1.5 animate-pulse">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  Live Auto-Sync
+                  {loadingDashboard ? 'Updating...' : 'Live Auto-Sync'}
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-300 font-medium mt-0.5 leading-snug">
-                Real-time Financial, Driver Delivery & Store Counter Billing Engine
+                {dateRange.start === dateRange.end ? dateRange.start : dateRange.start + ' – ' + dateRange.end} · 12:00 AM–11:59 PM IST
               </p>
             </div>
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-wrap items-center gap-2.5 w-full xl:w-auto justify-between sm:justify-end">
+        <div className="relative z-10 flex flex-col sm:flex-row sm:flex-wrap xl:flex-nowrap items-stretch sm:items-center gap-2 w-full xl:w-auto shrink-0 sm:justify-end">
           {/* Period Selector Tabs */}
           <div className="flex items-center bg-slate-900/90 p-1 rounded-2xl border border-slate-700/80 shadow-inner overflow-x-auto max-w-full">
             {['TODAY', 'YESTERDAY', 'THIS_WEEK', 'THIS_MONTH'].map(p => (
               <button
                 key={p}
                 onClick={() => setSelectedPeriod(p)}
-                className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-xs font-extrabold tracking-wide transition cursor-pointer whitespace-nowrap ${
+                className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded-xl text-[10px] sm:text-xs font-extrabold tracking-wide transition cursor-pointer whitespace-nowrap ${
                   selectedPeriod === p 
                     ? 'bg-blue-600 text-white shadow-sm' 
                     : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
@@ -253,14 +253,7 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
               {isGeneratingPDF ? 'Generating...' : 'Download PDF'}
             </button>
 
-            <button
-              onClick={() => setShowResetModal(true)}
-              className="px-3 py-2 sm:py-2.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white font-extrabold text-xs sm:text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer whitespace-nowrap border border-rose-500/50"
-              title="Reset Live Transactions & Stock"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Reset Live Data</span>
-            </button>
+
           </div>
         </div>
       </div>
@@ -429,7 +422,7 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
               onClick={() => setFilterSellerType('ALL')}
               className={`px-3.5 py-1.5 rounded-lg text-[0.85rem] font-extrabold transition cursor-pointer ${filterSellerType === 'ALL' ? 'bg-white text-[#002244] shadow-xs' : 'text-sky-800 hover:text-[#002244]'}`}
             >
-              All Bills ({sales.length})
+              All Bills ({periodSales.length})
             </button>
             <button
               onClick={() => setFilterSellerType('STORE')}
@@ -518,14 +511,14 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
             onClick={() => onNavigateTab && onNavigateTab('sales')}
             className="text-xs font-black text-sky-700 hover:text-sky-900 flex items-center gap-1 hover:underline cursor-pointer"
           >
-            <span>View All Sales Records & Billing History ({sales.length} Bills)</span>
+            <span>View All Sales Records & Billing History</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
       {/* Visual Analytics Chart */}
-      <AdminAnalyticsChart data={dashboardData} />
+      <AdminAnalyticsChart data={dashboardData} period={selectedPeriod} />
 
       {/* Freezer Asset Allocation Rich Card (Mobile & Desktop Responsive) */}
       {/* Compact Single-Line Freezer Asset Bar (Mobile & Desktop Responsive) */}
@@ -631,67 +624,6 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
             >
               Close Receipt
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Reset Confirmation Modal */}
-      {showResetModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl border border-rose-200 animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center gap-3 text-rose-600 mb-3">
-              <div className="w-12 h-12 rounded-2xl bg-rose-100 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-slate-900">Reset Live Transactions?</h3>
-                <p className="text-xs text-rose-600 font-bold">Safe Data Cleanup for Fresh Start</p>
-              </div>
-            </div>
-
-            <div className="space-y-2.5 text-xs text-slate-600 my-4 bg-rose-50/70 p-3.5 rounded-2xl border border-rose-100">
-              <p className="font-extrabold text-slate-800">The following transaction data will be erased:</p>
-              <ul className="list-disc list-inside space-y-1 font-medium text-slate-700">
-                <li>All Bills, Sales, Invoices & Payments</li>
-                <li>Warehouse Stock & Movements (reset to 0)</li>
-                <li>Driver Allocations, Returns & Day Closings</li>
-                <li>Damages & Missing Stock Records</li>
-                <li>Expenses & Daily Cash Settlements</li>
-                <li>All Shop Dues will be reset to ₹0.00</li>
-              </ul>
-              <div className="pt-2 border-t border-rose-200/80 text-[11px] font-bold text-emerald-700">
-                ✓ Master Data KEPT: Routes, Villages, Shops, Categories, Products & User Logins are safe!
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2.5 mt-5">
-              <button
-                type="button"
-                onClick={() => setShowResetModal(false)}
-                disabled={isResetting}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmReset}
-                disabled={isResetting}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs transition shadow-md shadow-rose-600/30 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                {isResetting ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Cleaning...</span>
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Yes, Clear Live Data</span>
-                  </>
-                )}
-              </button>
-            </div>
           </div>
         </div>
       )}

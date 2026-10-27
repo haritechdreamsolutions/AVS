@@ -1,10 +1,13 @@
+import { getCatalogueSalePricing } from './catalogSalePricing.js';
+
+export const getDriverBillingInfo = getCatalogueSalePricing;
+
 export function driverUnitPrice(product, unit) {
   if (!product || product.is_active === false || product.is_active === 0) throw new Error('Product is unavailable. Return to the bill and refresh products.');
   const requested = String(unit || '').toLowerCase();
-  const base = String(product.base_unit || '').toLowerCase();
-  const selling = String(product.selling_unit || '').toLowerCase();
-  if (!requested || ![base, selling].includes(requested)) throw new Error('Product unit changed. Return to the bill and select the product again.');
-  const value = requested === base ? product.piece_selling_price : product.unit_selling_price;
+  const pricing = getDriverBillingInfo(product);
+  if (!requested || requested !== pricing.unitType.toLowerCase()) throw new Error('Product unit changed. Return to the bill and select the product again.');
+  const value = pricing.isTray ? product.piece_selling_price : product.unit_selling_price;
   if (!/^\d+(?:\.\d{1,2})?$/.test(String(value)) || Number(value) <= 0) throw new Error('Product selling price is not configured. Contact the owner.');
   return Number(value);
 }

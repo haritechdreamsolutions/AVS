@@ -93,7 +93,7 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
               type="button"
               onClick={handleLoginSubmit}
               disabled={isLoading || pin.length < 4}
-              className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60 text-white font-black text-xs shadow-md active:scale-95 transition"
+              className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60 text-white font-black text-xs shadow-md active:scale-95 transition cursor-pointer disabled:cursor-not-allowed"
             >
               {isLoading ? '...' : 'Enter'}
             </button>

@@ -42,7 +42,8 @@ export function getOperationalUnit(product, category = null) {
   }
 
   // Rule: Category / Product operational unit for Box, Case, Bag, Bottle, etc.
-  const rawUnit = catOpUnit || product?.selling_unit || product?.unit || (catName ? (catName.charAt(0).toUpperCase() + catName.slice(1)) : 'Case');
+  const isWholeBulk = ['box', 'case'].includes(sellUnit) && baseUnit === sellUnit && Number(product?.pieces_per_unit || 1) === 1;
+  const rawUnit = (isWholeBulk ? product.selling_unit : catOpUnit) || product?.selling_unit || product?.unit || (catName ? (catName.charAt(0).toUpperCase() + catName.slice(1)) : 'Case');
   const bundleUnit = rawUnit.charAt(0).toUpperCase() + rawUnit.slice(1);
   let pluralLabel = `${bundleUnit}s`;
   if (bundleUnit.toLowerCase() === 'box') {

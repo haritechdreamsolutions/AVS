@@ -266,7 +266,8 @@ export const StockReceiveModal = ({ onClose }) => {
         const numPieces = Number(alloc?.pieces || 0);
         const totalPcs = (numTrays * ppu) + numPieces;
         if (totalPcs > 0) {
-          const qtyInSellingUnits = parseFloat((totalPcs / ppu).toFixed(4));
+          // Preserve whole-piece precision; rounding here rejects valid loose pieces.
+          const qtyInSellingUnits = totalPcs / ppu;
           const itemTotal = (numTrays * trayRate) + (numPieces * pieceRate);
           items.push({
             product_id: pid,

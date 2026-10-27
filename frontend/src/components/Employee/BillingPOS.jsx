@@ -1,9 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ArrowLeft, ArrowRight, ShoppingBag, AlertTriangle, X, Search, Box } from 'lucide-react';
-import { getOperationalUnit } from '../../utils/unitHelper';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
-import { driverUnitPrice } from '../../utils/driverPricing';
+import { driverUnitPrice, getDriverBillingInfo } from '../../utils/driverPricing';
 
 export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) => {
   const { products, employeeStock, shops } = useApp();
@@ -33,8 +32,11 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
 
   // Helper to find stock info, operational unit, available stock, unit label, and selling rate
   const getProductStockInfo = (product) => {
-    const stock = (employeeStock || []).find(item => item.product_id === product.id);
-    const opUnit = getOperationalUnit(product);
+    const stock = (employeeStock || []).find(item => String(item.product_id) === String(product.id));
+    const pricing = getDriverBillingInfo(product);
+    const unit = pricing.unitType;
+    const opUnit = {isPieceBased:pricing.isTray,operationalUnit:unit,label:unit,
+      pluralLabel:unit === 'Box' ? 'Boxes' : unit.endsWith('s') ? unit : unit + 's'};
     const piecesPerUnit = Math.max(1, Number(product.pieces_per_unit || 1));
     const heldUnits = Number(stock?.qty_units || 0);
     const basePieces = Math.round(heldUnits * piecesPerUnit);

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { getOperationalUnit, formatWarehouseStock } from '../../utils/unitHelper';
+import { formatWarehouseStock } from '../../utils/unitHelper';
+import { getStoreDirectPricing } from '../../utils/storeDirectPricing';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
 import { 
   X, ShoppingBag, Plus, Minus, CheckCircle2, 
@@ -85,43 +86,10 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
   }, [activeProducts, activeCategory]);
 
   const getProductStockInfo = (prod) => {
-    const opUnit = getOperationalUnit(prod);
-    const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
-    const whUnits = Number(prod.warehouse_stock_units || 0);
-    const directSaleRate = Number(prod.direct_sale_rate || 0);
+    const pricing = getStoreDirectPricing(prod);
     const stockFormatted = formatWarehouseStock(prod);
-
-    if (opUnit.isPieceBased) {
-      const maxAvailable = stockFormatted.totalPieces;
-      const fallbackRate = Number(prod.piece_selling_price || (Number(prod.unit_selling_price || 0) / ppu) || 0);
-      const rate = directSaleRate > 0 ? directSaleRate : fallbackRate;
-      return {
-        opUnit,
-        maxAvailable,
-        stockFormatted,
-        rate,
-        unitType: 'Piece',
-        displayUnit: 'Piece',
-        pluralUnit: 'Pieces'
-      };
-    } else {
-      const maxAvailable = stockFormatted.units;
-      const fallbackRate = Number(prod.unit_selling_price || (Number(prod.piece_selling_price || 0) * ppu) || 0);
-      const rate = directSaleRate > 0 ? directSaleRate : fallbackRate;
-      return {
-        opUnit,
-        maxAvailable,
-        stockFormatted,
-        rate,
-        unitType: opUnit.operationalUnit,
-        displayUnit: opUnit.operationalUnit,
-        pluralUnit: opUnit.pluralLabel
-      };
-    }
-  };
-
-  const getAvailablePieces = (prod) => {
-    return getProductStockInfo(prod).maxAvailable;
+    return {...pricing, stockFormatted,
+      maxAvailable:pricing.opUnit.isPieceBased ? stockFormatted.totalPieces : stockFormatted.units};
   };
 
   const handleQtyChange = (product, newQty) => {
@@ -224,14 +192,21 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
 
     // Validate Quantity & Live Stock Availability before submission
     for (const item of cartList) {
-      const available = getAvailablePieces(item.product);
+      const currentProduct = activeProducts.find(product => String(product.id) === String(item.product.id));
+      if (!currentProduct) { toast.error('This product is unavailable. Remove it and refresh products.'); return; }
+      const currentInfo = getProductStockInfo(currentProduct);
+      if (currentInfo.unitType !== item.unit_type || Math.round(currentInfo.rate*100) !== Math.round(item.rate*100)) {
+        toast.error('Product units or price changed. Remove the product and add it again to confirm the current bill.');
+        return;
+      }
+      const available = currentInfo.maxAvailable;
       const qty = parseInt(item.qty, 10);
       if (isNaN(qty) || qty <= 0) {
-        toast.error(`Invalid quantity for ${item.product.display_name}. Must be at least 1 piece.`);
+        toast.error(`Invalid quantity for ${item.product.display_name}. Must be at least 1 ${item.display_unit || item.unit_type}.`);
         return;
       }
       if (qty > available) {
-        toast.error(`Insufficient warehouse stock for ${item.product.display_name}! Available: ${available} Pcs, Attempted: ${qty} Pcs`);
+        toast.error(`Insufficient warehouse stock for ${item.product.display_name}! Available: ${available} ${currentInfo.pluralUnit}, Attempted: ${qty} ${currentInfo.pluralUnit}`);
         return;
       }
     }
@@ -287,7 +262,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
       items: cartList.map(item => ({
         product_id: item.product.id,
         product_name: item.product.display_name,
-        unit_type: 'Piece',
+        unit_type: item.unit_type,
         qty: parseInt(item.qty, 10),
         rate: item.rate,
         amount: parseFloat((parseInt(item.qty, 10) * item.rate).toFixed(2))
@@ -310,7 +285,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
             qty: i.qty,
             rate: i.rate,
             amount: i.amount,
-            unit_type: 'Piece'
+            unit_type: i.unit_type
           }))
         };
         toast.success(`🎉 Direct Store Bill #${fullSale.bill_no || fullSale.id} generated successfully! Warehouse stock updated.`);
@@ -530,7 +505,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                     <ShoppingCart className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-xs font-black">{totalItemsCount} Pcs Selected</div>
+                    <div className="text-xs font-black">{totalItemsCount} Units Selected</div>
                     <div className="text-emerald-400 font-mono font-black text-sm">₹{totalAmount.toLocaleString()}</div>
                   </div>
                 </div>
@@ -558,7 +533,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                   Cart Items
                 </h4>
                 <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
-                  {cartList.length} Selected ({totalItemsCount} Pcs)
+                  {cartList.length} Selected ({totalItemsCount} Units)
                 </span>
               </div>
 
@@ -582,7 +557,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
                       <div className="min-w-0 flex-1 pr-2">
                         <p className="font-extrabold text-slate-900 truncate">{item.product.display_name}</p>
                         <p className="text-[10px] text-slate-500 font-mono">
-                          {item.qty} Pcs x ₹{item.rate}
+                          {item.qty} {item.display_unit || item.unit_type} x ₹{item.rate}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">

@@ -4,6 +4,8 @@ import { AdminProductRatesView } from './AdminProductRatesView';
 import { AdminCategoriesMasterView } from './AdminCategoriesMasterView';
 import { ProductImage } from '../common/ProductImage';
 import { normalizeProductImage } from '../../utils/imageNormalizer';
+import { isCategoryActive } from '../../utils/categoryStatus';
+import { applyProductCategory, applyProductSellingUnit, isWholePackageUnit } from '../../utils/productPackaging';
 import { 
   Package, Plus, Search, Filter, Tag, CheckCircle2, XCircle, 
   Eye, Edit3, Power, Trash2, AlertTriangle, Layers, ArrowLeft, Save, 
@@ -13,7 +15,7 @@ import { toast } from 'sonner';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
 
 const SELLING_UNITS = ['Tray', 'Box', 'Case', 'Pack', 'Crate', 'Bottle'];
-const BASE_UNITS = ['Piece', 'Bottle', 'Packet', 'Can', 'Pouches'];
+const BASE_UNITS = ['Piece', 'Box', 'Case', 'Bottle', 'Packet', 'Can', 'Pouches'];
 
 export const AdminProductsMasterView = () => {
   const { products = [], categories = [], addProduct, updateProduct, toggleProductStatus, deleteProduct, addCategory } = useApp();
@@ -63,7 +65,7 @@ export const AdminProductsMasterView = () => {
 
   // Active Categories list for dropdown selection
   const activeCategories = useMemo(() => {
-    return categories.filter(c => c.is_active !== 0 && c.is_active !== false);
+    return categories.filter(c => isCategoryActive(c.is_active));
   }, [categories]);
 
   // Add Product Form State
@@ -100,11 +102,7 @@ export const AdminProductsMasterView = () => {
       setFormData(prev => {
         const isValid = activeCategories.some(c => String(c.id) === String(prev.category_id));
         if (!isValid || !prev.category_id) {
-          return {
-            ...prev,
-            category_id: activeCategories[0].id,
-            category: activeCategories[0].name
-          };
+          return applyProductCategory(prev, activeCategories[0]);
         }
         return prev;
       });
@@ -217,33 +215,7 @@ export const AdminProductsMasterView = () => {
       if (field === 'category_id') {
         const foundCat = categories.find(c => String(c.id) === String(value));
         if (foundCat) {
-          updated.category_id = foundCat.id;
-          updated.category = foundCat.name;
-          const opUnit = (foundCat.operational_unit || 'Piece').trim();
-          const cName = foundCat.name.toLowerCase();
-          if (cName.includes('milk') || cName.includes('curd') || cName === 'tray' || opUnit === 'Piece') {
-            updated.base_unit = 'Piece';
-            updated.selling_unit = 'Tray';
-            updated.buy_rate_uom = 'Tray';
-            updated.selling_rate_uom = 'Tray';
-            if (cName.includes('curd')) {
-              updated.pieces_per_unit = 30;
-            } else if (cName.includes('milk')) {
-              updated.pieces_per_unit = 72;
-            }
-          } else if (opUnit === 'Box' || cName === 'box') {
-            updated.base_unit = 'Box';
-            updated.selling_unit = 'Box';
-            updated.buy_rate_uom = 'Box';
-            updated.selling_rate_uom = 'Box';
-            updated.pieces_per_unit = 1;
-          } else if (opUnit === 'Case' || cName === 'case') {
-            updated.base_unit = 'Case';
-            updated.selling_unit = 'Case';
-            updated.buy_rate_uom = 'Case';
-            updated.selling_rate_uom = 'Case';
-            updated.pieces_per_unit = 1;
-          }
+          Object.assign(updated, applyProductCategory(prev, foundCat));
         } else {
           updated.category_id = '';
           updated.category = '';
@@ -251,8 +223,7 @@ export const AdminProductsMasterView = () => {
       } else if (field === 'category') {
         const foundCat = categories.find(c => c.name === value || String(c.id) === String(value));
         if (foundCat) {
-          updated.category_id = foundCat.id;
-          updated.category = foundCat.name;
+          Object.assign(updated, applyProductCategory(prev, foundCat));
         }
       }
 
@@ -266,8 +237,7 @@ export const AdminProductsMasterView = () => {
       }
 
       if (field === 'selling_unit') {
-        updated.buy_rate_uom = value;
-        updated.selling_rate_uom = value;
+        Object.assign(updated, applyProductSellingUnit(prev, value));
       }
 
       // Auto-recalculate piece price when unit price or pieces/unit changes
@@ -316,11 +286,7 @@ export const AdminProductsMasterView = () => {
 
     if (res.success) {
       toast.success(`🎉 Category '${res.category.name}' created and selected!`);
-      setFormData(prev => ({
-        ...prev,
-        category_id: res.category.id,
-        category: res.category.name
-      }));
+      setFormData(prev => applyProductCategory(prev, res.category));
       setNewCatName('');
       setNewCatCode('');
       setNewCatUnit('Piece');
@@ -360,7 +326,11 @@ export const AdminProductsMasterView = () => {
     }
 
     if (addProduct) {
-      const selectedCat = categories.find(c => String(c.id) === String(formData.category_id)) || activeCategories.find(c => String(c.id) === String(formData.category_id));
+      const selectedCat = activeCategories.find(c => String(c.id) === String(formData.category_id));
+      if (!selectedCat) {
+        toast.error('Please select an active category.');
+        return;
+      }
       const categoryName = selectedCat?.name || formData.category || 'General';
       const categoryId = selectedCat?.id || formData.category_id || (activeCategories[0]?.id || 1);
 
@@ -388,7 +358,7 @@ export const AdminProductsMasterView = () => {
         setActiveTab('list');
         setFormErrors({});
         // Reset form
-        setFormData({
+        setFormData(applyProductCategory({
           name: '',
           display_name: '',
           pack_size: '200ml',
@@ -410,7 +380,7 @@ export const AdminProductsMasterView = () => {
           is_active: 1,
           image: '',
           icon: '🥛'
-        });
+        }, activeCategories[0]));
       } else {
         toast.error(`Failed to create product: ${res.message}`);
       }
@@ -1173,9 +1143,10 @@ export const AdminProductsMasterView = () => {
               </div>
 
               <div>
-                <label className="font-extrabold text-slate-700 block mb-1">Base Unit (Single Pc)</label>
+                <label className="font-extrabold text-slate-700 block mb-1">{isWholePackageUnit(formData.selling_unit) ? 'Sale Unit (Whole Package)' : 'Base Unit (Single Pc)'}</label>
                 <select
                   value={formData.base_unit}
+                  disabled={isWholePackageUnit(formData.selling_unit)}
                   onChange={(e) => handleFormChange('base_unit', e.target.value)}
                   className="w-full p-2.5 font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-indigo-500"
                 >
@@ -1184,10 +1155,11 @@ export const AdminProductsMasterView = () => {
               </div>
 
               <div>
-                <label className="font-extrabold text-slate-700 block mb-1">Pieces per {formData.selling_unit} (Ratio)</label>
+                <label className="font-extrabold text-slate-700 block mb-1">{isWholePackageUnit(formData.selling_unit) ? `${formData.selling_unit} per ${formData.selling_unit} (Ratio)` : `Pieces per ${formData.selling_unit} (Ratio)`}</label>
                 <input
                   type="number"
                   value={formData.pieces_per_unit}
+                  disabled={isWholePackageUnit(formData.selling_unit)}
                   onChange={(e) => handleFormChange('pieces_per_unit', e.target.value)}
                   className={`w-full p-2.5 font-mono font-black bg-white border rounded-xl focus:outline-none ${formErrors?.pieces_per_unit ? 'border-rose-500' : 'border-slate-300 focus:border-indigo-500'}`}
                 />
@@ -1239,13 +1211,14 @@ export const AdminProductsMasterView = () => {
 
               <div>
                 <label className="font-extrabold text-slate-700 block mb-1">
-                  Single Piece Rate (₹ / {formData.base_unit})
+                  {isWholePackageUnit(formData.selling_unit) ? `Whole ${formData.base_unit} Rate (₹ / ${formData.base_unit})` : `Single Piece Rate (₹ / ${formData.base_unit})`}
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-black text-slate-400">₹</span>
                   <input
                     type="number"
                     value={formData.piece_selling_price}
+                    readOnly={isWholePackageUnit(formData.selling_unit)}
                     onChange={(e) => handleFormChange('piece_selling_price', e.target.value)}
                     className="w-full pl-7 pr-3 p-2.5 font-mono font-black bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-emerald-500"
                   />
