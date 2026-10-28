@@ -13,6 +13,7 @@ import {
   Wind, ArrowLeft, ClipboardCheck, CheckSquare, Square
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { printStockReport } from '../../services/stockReportPrinter.js';
 
 export const StockReturnModal = ({ onClose }) => {
   const { 
@@ -47,6 +48,40 @@ export const StockReturnModal = ({ onClose }) => {
 
   // Stock View / Inspection Modal State
   const [showStockViewModal, setShowStockViewModal] = useState(false);
+  const stockPrintPending = useRef(false);
+
+  const [stockPrinting, setStockPrinting] = useState(false);
+
+  const handleStockReportPrint = async () => {
+    if (stockPrintPending.current) return;
+    stockPrintPending.current = true;
+    setStockPrinting(true);
+    try {
+      const report = {
+        driver: driverInfo.name || driverInfo.full_name || 'Driver',
+        vehicle: driverInfo.vehicle_number || 'N/A',
+        date: new Date().toLocaleString('en-GB'),
+        items: reconciliationData.items.map(p => {
+          const master = masterProducts.find(m => Number(m.id) === Number(p.product_id)) || {};
+          const name = (p.product_name || master.display_name || master.name || 'Item').trim();
+          const pack = (master.pack_size || p.pack_size || '').trim();
+          return { name: pack && !name.toLowerCase().includes(pack.toLowerCase()) ? `${name} ${pack}` : name,
+            alloc:p.alloc, sold:p.sold, retStock:p.retStock };
+        }),
+        totalAllocated:reconciliationData.totalAllocated,
+        totalSold:reconciliationData.totalSold,
+        totalReturn:reconciliationData.totalReturn
+      };
+      await printStockReport(report);
+      setShowStockViewModal(false);
+      toast.success('Stock report sent to the printer.');
+    } catch (error) {
+      toast.error(error.message || 'Stock report could not be printed. Check your printer and retry.');
+    } finally {
+      stockPrintPending.current = false;
+      setStockPrinting(false);
+    }
+  };
 
   // Expense Modal / Form State (Phase 3)
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -2495,7 +2530,7 @@ export const StockReturnModal = ({ onClose }) => {
             }
             @media print {
               @page {
-                size: 80mm auto;
+                size: 82mm auto;
                 margin: 0;
               }
               body * {
@@ -2526,8 +2561,8 @@ export const StockReturnModal = ({ onClose }) => {
                 position: absolute !important;
                 left: 0 !important;
                 top: 0 !important;
-                width: 80mm !important;
-                max-width: 80mm !important;
+                width: 82mm !important;
+                max-width: 82mm !important;
                 box-sizing: border-box !important;
                 margin: 0 !important;
                 padding: 2mm 3mm !important;
@@ -2551,8 +2586,9 @@ export const StockReturnModal = ({ onClose }) => {
             <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 print:hidden shrink-0">
               <button
                 type="button"
+                disabled={stockPrinting}
                 onClick={() => setShowStockViewModal(false)}
-                className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1 transition cursor-pointer"
+                className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Back</span>
@@ -2561,19 +2597,19 @@ export const StockReturnModal = ({ onClose }) => {
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => {
-                    window.print();
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-blue-600/25 active:scale-95 transition cursor-pointer"
-                  title="Print Stock Sheet and Return"
+                  onClick={handleStockReportPrint}
+                  disabled={stockPrinting || reconciliationData.items.length === 0}
+                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-blue-600/25 active:scale-95 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Print Stock Sheet on Posiflow 80/82mm Printer and Return"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Print</span>
+                  <span>{stockPrinting ? 'Printing...' : 'Print'}</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowStockViewModal(false)}
-                  className="p-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                  disabled={stockPrinting}
+                onClick={() => setShowStockViewModal(false)}
+                  className="p-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Close"
                 >
                   <X className="w-4 h-4" />

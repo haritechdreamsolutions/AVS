@@ -344,9 +344,9 @@ export const ThermalBillModal = ({
 
           {/* Totals Section */}
           <div className="border-t border-b border-dashed border-slate-400 py-2 space-y-1.5">
-            <div className={`flex justify-between font-black ${is80mm ? 'text-base sm:text-lg' : 'text-xs sm:text-sm'} pt-0.5 text-slate-900`}>
+            <div className={`receipt-total flex justify-between font-black ${is80mm ? 'text-base sm:text-lg' : 'text-xs sm:text-sm'} pt-0.5 text-slate-900`}>
               <span>BILL TOTAL:</span>
-              <span className="text-emerald-700">₹{totalAmount.toFixed(2)}</span>
+              <span className="receipt-total-amount text-emerald-700">₹{totalAmount.toFixed(2)}</span>
             </div>
             {previousDue > 0 && (
               <>
@@ -360,9 +360,9 @@ export const ThermalBillModal = ({
                     <span className="font-mono">₹{oldCreditPaid.toFixed(2)}</span>
                   </div>
                 )}
-                <div className={`flex justify-between font-black ${is80mm ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'} text-slate-950 pt-0.5 border-t border-slate-300`}>
+                <div className={`receipt-total flex justify-between font-black ${is80mm ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'} text-slate-950 pt-0.5 border-t border-slate-300`}>
                   <span>NET GRAND TOTAL:</span>
-                  <span className="font-mono text-purple-700">
+                  <span className="receipt-total-amount font-mono text-purple-700">
                     ₹{grandTotal.toFixed(2)}
                   </span>
                 </div>

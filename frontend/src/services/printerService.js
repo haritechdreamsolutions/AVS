@@ -166,14 +166,16 @@ export const generateEscPos58mmBuffer = (bill) => {
   const oldCreditPaid = Number(bill.old_credit_paid || 0);
   const grandTotal = totalAmount + previousDue;
 
-  addTwoColumnRow('BILL TOTAL:', `Rs. ${totalAmount.toFixed(2)}`, true);
+  addText('BILL TOTAL:', 'LEFT', true);
+  addText(`Rs. ${totalAmount.toFixed(2)}`, 'RIGHT', true, 'DOUBLE_HEIGHT');
 
   if (previousDue > 0) {
     addTwoColumnRow('OLD CREDIT:', `Rs. ${previousDue.toFixed(2)}`, false);
     if (oldCreditPaid > 0) {
       addTwoColumnRow('OLD CREDIT PAID:', `Rs. ${oldCreditPaid.toFixed(2)}`, false);
     }
-    addTwoColumnRow('NET GRAND TOTAL:', `Rs. ${grandTotal.toFixed(2)}`, true);
+    addText('NET GRAND TOTAL:', 'LEFT', true);
+    addText(`Rs. ${grandTotal.toFixed(2)}`, 'RIGHT', true, 'DOUBLE_HEIGHT');
   }
 
   addDashedLine();
@@ -228,7 +230,7 @@ export const generateEscPos58mmRasterBuffer = (bill) => {
   
   // Calculate approximate height
   const items = bill.items || bill.sale?.items || [];
-  const baseHeight = 540 + (items.length * 28);
+  const baseHeight = 612 + (items.length * 28);
   canvas.height = baseHeight;
 
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -372,10 +374,12 @@ export const generateEscPos58mmRasterBuffer = (bill) => {
 
   y += 22;
   ctx.textAlign = 'left';
-  ctx.font = `bold 15px ${fontMonoStack}`;
+  ctx.font = `bold 17px ${fontMonoStack}`;
   ctx.fillText('BILL TOTAL:', 10, y);
+  y += 30;
+  ctx.font = `bold 24px ${fontMonoStack}`;
   ctx.textAlign = 'right';
-  ctx.fillText(`Rs. ${totalAmount.toFixed(2)}`, width - 10, y);
+  ctx.fillText(`Rs. ${totalAmount.toFixed(2)}`, width - 10, y, width - 20);
 
   if (previousDue > 0) {
     y += 20;
@@ -398,10 +402,12 @@ export const generateEscPos58mmRasterBuffer = (bill) => {
 
     y += 20;
     ctx.textAlign = 'left';
-    ctx.font = `bold 14px ${fontMonoStack}`;
+    ctx.font = `bold 16px ${fontMonoStack}`;
     ctx.fillText('NET GRAND TOTAL:', 10, y);
+    y += 30;
+    ctx.font = `bold 24px ${fontMonoStack}`;
     ctx.textAlign = 'right';
-    ctx.fillText(`Rs. ${grandTotal.toFixed(2)}`, width - 10, y);
+    ctx.fillText(`Rs. ${grandTotal.toFixed(2)}`, width - 10, y, width - 20);
   }
 
   // Dashed Line
@@ -526,6 +532,7 @@ export const generateEscPos80mmBuffer = (bill) => {
     else addBytes(CMD_ALIGN_LEFT);
 
     if (size === 'DOUBLE_SIZE' || size === true) addBytes(CMD_DOUBLE_SIZE_ON);
+    else if (size === 'DOUBLE_HEIGHT') addBytes([GS, 0x21, 0x01]);
     else addBytes(CMD_NORMAL_TEXT);
 
     if (bold) {
@@ -616,14 +623,16 @@ export const generateEscPos80mmBuffer = (bill) => {
   const oldCreditPaid = Number(bill.old_credit_paid || 0);
   const grandTotal = totalAmount + previousDue;
 
-  addTwoColumnRow('BILL TOTAL:', `Rs. ${totalAmount.toFixed(2)}`, true);
+  addText('BILL TOTAL:', 'LEFT', true);
+  addText(`Rs. ${totalAmount.toFixed(2)}`, 'RIGHT', true, 'DOUBLE_HEIGHT');
 
   if (previousDue > 0) {
     addTwoColumnRow('OLD CREDIT:', `Rs. ${previousDue.toFixed(2)}`, false);
     if (oldCreditPaid > 0) {
       addTwoColumnRow('OLD CREDIT PAID:', `Rs. ${oldCreditPaid.toFixed(2)}`, false);
     }
-    addTwoColumnRow('NET GRAND TOTAL:', `Rs. ${grandTotal.toFixed(2)}`, true);
+    addText('NET GRAND TOTAL:', 'LEFT', true);
+    addText(`Rs. ${grandTotal.toFixed(2)}`, 'RIGHT', true, 'DOUBLE_HEIGHT');
   }
 
   addDashedLine();
@@ -674,7 +683,7 @@ export const generateEscPos80mmRasterBuffer = (bill) => {
   canvas.width = width;
 
   const items = bill.items || bill.sale?.items || [];
-  const baseHeight = 620 + (items.length * 36);
+  const baseHeight = 704 + (items.length * 36);
   canvas.height = baseHeight;
 
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -816,10 +825,12 @@ export const generateEscPos80mmRasterBuffer = (bill) => {
 
   y += 26;
   ctx.textAlign = 'left';
-  ctx.font = `bold 19px ${fontMonoStack}`;
+  ctx.font = `bold 21px ${fontMonoStack}`;
   ctx.fillText('BILL TOTAL:', 12, y);
+  y += 36;
+  ctx.font = `bold 30px ${fontMonoStack}`;
   ctx.textAlign = 'right';
-  ctx.fillText(`Rs. ${totalAmount.toFixed(2)}`, width - 12, y);
+  ctx.fillText(`Rs. ${totalAmount.toFixed(2)}`, width - 12, y, width - 24);
 
   if (previousDue > 0) {
     y += 24;
@@ -842,10 +853,12 @@ export const generateEscPos80mmRasterBuffer = (bill) => {
 
     y += 24;
     ctx.textAlign = 'left';
-    ctx.font = `bold 17px ${fontMonoStack}`;
+    ctx.font = `bold 19px ${fontMonoStack}`;
     ctx.fillText('NET GRAND TOTAL:', 12, y);
+    y += 36;
+    ctx.font = `bold 30px ${fontMonoStack}`;
     ctx.textAlign = 'right';
-    ctx.fillText(`Rs. ${grandTotal.toFixed(2)}`, width - 12, y);
+    ctx.fillText(`Rs. ${grandTotal.toFixed(2)}`, width - 12, y, width - 24);
   }
 
   y += 18;
@@ -939,14 +952,15 @@ export const generateEscPos80mmRasterBuffer = (bill) => {
  * Direct Web Bluetooth GATT Print implementation (Native Chrome Bluetooth Device Selector).
  * Automatically caches the connected printer for instant one-click subsequent printing.
  */
-export const printViaWebBluetooth = async (billData, widthMode = '58mm') => {
+export const printViaWebBluetooth = async (billData, widthMode = '58mm', preparedBytes = null) => {
   if (!navigator.bluetooth) {
+    if (preparedBytes) throw new Error('Direct stock printing requires Chrome/Edge Bluetooth support and a paired BLE printer.');
     return printViaRawBT(billData, widthMode);
   }
 
   // Use High-Resolution Raster Bit-Image Buffer to ensure 100% Tamil typography prints perfectly
-  let escPosBytes;
-  try {
+  let escPosBytes = preparedBytes;
+  if (!escPosBytes) try {
     escPosBytes = widthMode === '80mm'
       ? generateEscPos80mmRasterBuffer(billData)
       : generateEscPos58mmRasterBuffer(billData);
@@ -974,6 +988,10 @@ export const printViaWebBluetooth = async (billData, widthMode = '58mm') => {
       }
       return { success: true, transport: 'WebBluetooth' };
     } catch (e) {
+      if (preparedBytes) {
+        cachedCharacteristic = null;
+        throw new Error('Printer connection interrupted. Check the paper before retrying; part of the report may have printed.');
+      }
       console.warn("Cached write error, attempting reconnect...", e);
       writeCharacteristic = null;
     }
@@ -1010,6 +1028,10 @@ export const printViaWebBluetooth = async (billData, widthMode = '58mm') => {
         return { success: true, transport: 'WebBluetooth' };
       }
     } catch (e) {
+      if (preparedBytes) {
+        cachedCharacteristic = null;
+        throw new Error('Printer connection interrupted. Check the paper before retrying; part of the report may have printed.');
+      }
       console.warn("Reconnection failed, opening Bluetooth search...", e);
       device = null;
     }
