@@ -27,7 +27,7 @@ try {
     const detail=route.request().url().endsWith('/1');
     if(detail)detailCalls++;
     if(detail&&mode==='error')return route.fulfill({status:500,body:'failure'});
-    const data=detail?(mode==='zero'?{...positive,total:'0',shops:[]}:positive):[{...positive,total:'0',shops:[]},{id:2,name:'Empty route',driver_name:null,total:'0',shops:[]}];
+    const data=detail?(mode==='zero'?{...positive,total:'0',shops:[]}:mode==='unassigned'?{...positive,driver_name:null}:mode==='ambiguous'?{...positive,driver_name:null,assignment_error:true}:positive):[{...positive,total:'0',shops:[]},{id:2,name:'Empty route',driver_name:null,total:'0',shops:[]}];
     await route.fulfill({json:data});
    });
    await page.goto(base+'/route-dues-test.html');
@@ -47,6 +47,25 @@ try {
    assert.equal(await page.evaluate(()=>window.printCount),0);
    mode='error';await page.getByRole('button',{name:'View',exact:true}).first().click();
    await page.getByText('Unable to load route dues. Please retry.',{exact:true}).waitFor();assert.equal(await page.getByRole('dialog').count(),0);
+   for(const driverMode of ['unassigned','ambiguous']) {
+    mode=driverMode;
+    await page.getByRole('button',{name:'View',exact:true}).first().click();await page.getByRole('dialog').waitFor();
+    assert.equal(await page.getByRole('dialog').locator('.dues-driver strong').innerText(),'null');
+    await page.getByRole('button',{name:'Print',exact:true}).click();
+    await page.waitForFunction(()=>window.printCount>0);
+    await page.emulateMedia({media:'print'});
+    const printed=page.locator('#route-dues-receipt');
+    assert.ok((await printed.innerText()).includes('Driver: null'));
+    const meta=printed.locator('.dues-print-meta p');
+    const left=await meta.first().boundingBox(),right=await meta.last().boundingBox();
+    assert.ok(left.x<right.x);assert.ok(Math.abs(left.y-right.y)<1);
+    for(const th of await printed.locator('th').all())assert.equal(await th.evaluate(e=>getComputedStyle(e).whiteSpace),'nowrap');
+    assert.equal(await printed.locator('tbody tr').count(),1);
+    await page.evaluate(()=>window.dispatchEvent(new Event('afterprint')));
+    await page.getByRole('dialog').waitFor({state:'detached'});
+    await page.emulateMedia({media:'screen'});
+    await page.evaluate(()=>{window.printCount=0;});
+   }
    mode='positive';await page.getByRole('button',{name:'View',exact:true}).first().click();await page.getByRole('dialog').waitFor();
    assert.ok((await page.getByRole('dialog').innerText()).includes('₹123.45'));
    for(const width of [320,390,768,1440]) {

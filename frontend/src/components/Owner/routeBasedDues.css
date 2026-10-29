@@ -54,6 +54,7 @@
 .route-view-button:disabled {opacity:.5;cursor:wait;}
 .route-view-button:focus-visible {outline:3px solid #5eead4;outline-offset:3px;}
 .route-assignment-error {color:#b45309;}
+.route-driver-unassigned {color:#879b94;font-size:12px;}
 .route-balance-loading,.route-balance-empty {padding:32px;text-align:center;color:#648079;font-size:13px;}
 .route-balance-error {padding:20px;background:#fff1f2;border:1px solid #fecdd3;border-radius:14px;color:#9f1239;}
 .route-balance-error button {margin-top:12px;text-decoration:underline;}
@@ -87,7 +88,7 @@
  .route-balance-table tr {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px 10px;padding:16px;margin-bottom:10px;border:1px solid #dceae5;border-radius:12px;background:#fcfefd;}
  .route-balance-table tr:last-child {margin-bottom:0;}
  .route-balance-table td {display:block;border:0;padding:0!important;white-space:normal;font-size:13px;min-width:0;}
- .route-balance-table td::before {content:attr(data-label);display:block;font-size:9px;font-weight:600;letter-spacing:.4px;color:#7f948c;margin-bottom:5px;}
+ .route-balance-table td::before {content:attr(data-label);display:block;font-size:8px;font-weight:600;letter-spacing:.4px;color:#7f948c;margin-bottom:5px;}
  .route-balance-table td:first-child {display:none;}
  .route-balance-table td:nth-child(3) {text-align:right;}
  .route-balance-table td:nth-child(4) {text-align:left;align-self:center;}
@@ -144,19 +145,42 @@
 }
 #route-dues-receipt {display:none;}
 @media print {
- @page {size:58mm auto;margin:2mm;}
+ @page route-dues {size:52mm 200mm;margin:2mm;}
  body:has(> #route-dues-receipt) > :not(#route-dues-receipt) {display:none!important;}
  body:has(> #route-dues-receipt) {margin:0!important;padding:0!important;background:white!important;min-width:0!important;}
  #route-dues-receipt,#route-dues-receipt * {visibility:visible!important;color:black!important;background:white!important;box-sizing:border-box;}
- #route-dues-receipt {display:block!important;width:54mm;max-width:100%;font:10px/1.35 Arial,sans-serif;}
+ #route-dues-receipt {page:route-dues;display:block!important;width:48mm!important;max-width:100%!important;position:static!important;margin:0!important;padding:0;font:11px/1.45 Arial,sans-serif;text-align:left;}
  #route-dues-receipt header {display:block!important;text-align:center;}
- #route-dues-receipt h2 {font-size:12px;margin:3px 0;}
+ #route-dues-receipt h2 {font-size:12px;font-weight:700;margin:2mm 0 3mm;}
  #route-dues-receipt p {margin:4px 0;overflow-wrap:anywhere;}
+ #route-dues-receipt .dues-print-meta {display:flex;justify-content:space-between;gap:2mm;margin:5px 0;}
+ #route-dues-receipt .dues-print-meta p {flex:1;min-width:0;margin:0;font-size:10px;}
+ #route-dues-receipt .dues-print-meta p:last-child {text-align:right;}
+ #route-dues-receipt .dues-print-date {text-align:left;font-size:9px;margin:2mm 0 3mm;}
  #route-dues-receipt table {width:100%;table-layout:fixed;border-collapse:collapse;}
- #route-dues-receipt th,#route-dues-receipt td {padding:3px 1px;vertical-align:top;overflow-wrap:anywhere;}
- #route-dues-receipt th:first-child {width:10%;}
+ #route-dues-receipt th,#route-dues-receipt td {padding:1.5mm .3mm;vertical-align:top;overflow-wrap:anywhere;}
+ #route-dues-receipt th {font-size:9px;white-space:nowrap;overflow-wrap:normal;text-align:left;border-top:1px dashed black;border-bottom:1px dashed black;padding-top:5px;padding-bottom:5px;}
+ #route-dues-receipt th:first-child {width:15%;white-space:nowrap!important;word-break:normal!important;overflow-wrap:normal!important;}
+ #route-dues-receipt th:nth-child(2) {width:47%;}
  #route-dues-receipt th:last-child {width:38%;text-align:right;}
- #route-dues-receipt .dues-money {white-space:normal;overflow-wrap:anywhere;}
+ #route-dues-receipt .dues-money {text-align:right;font-weight:600;font-variant-numeric:tabular-nums;white-space:normal;overflow-wrap:anywhere;}
  #route-dues-receipt tr {break-inside:avoid;}
- #route-dues-receipt .dues-grand {text-align:right;font-weight:bold;border-top:1px dashed black;padding-top:4px;}
+ #route-dues-receipt .dues-grand {text-align:right;font-size:11px;font-weight:700;border-top:1px dashed black;padding-top:2mm;margin-top:2mm;}
+}
+
+.dues-shop-table th:first-child {width:15%;white-space:nowrap;word-break:normal;overflow-wrap:normal;}
+
+/* Keep the serial heading intact even when shared print styles wrap cells. */
+th.dues-serial-heading,
+#route-dues-receipt th.dues-serial-heading {
+ min-width:3.5em!important;
+ white-space:nowrap!important;
+ word-break:normal!important;
+ overflow-wrap:normal!important;
+}
+th.dues-serial-heading>span {
+ display:inline-block!important;
+ white-space:nowrap!important;
+ word-break:normal!important;
+ overflow-wrap:normal!important;
 }
