@@ -100,17 +100,9 @@ export const KeeperDashboard = () => {
         </div>
 
         {/* Level 2: Operations Quick Toolbar */}
-        <div className="relative z-10 grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 pt-1 w-full">
+        <div className="relative z-10 grid grid-cols-2 sm:flex sm:flex-wrap items-stretch gap-2 pt-1 w-full min-w-0">
           <span className="text-[11px] font-extrabold uppercase text-slate-400 tracking-wider mr-1 hidden sm:inline-block">Quick Actions:</span>
           
-          <button
-            onClick={() => setActiveModal('SHOP_BILL')}
-            className="px-3.5 py-2.5 rounded-xl bg-sky-600/90 hover:bg-sky-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-sky-400/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
-          >
-            <Store className="w-4 h-4" />
-            Shop Bill
-          </button>
-
           <button
             onClick={() => setActiveModal('ADD_SHOP')}
             className="px-3.5 py-2.5 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-purple-400/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
@@ -153,7 +145,7 @@ export const KeeperDashboard = () => {
 
           <button
             onClick={() => setActiveModal('SALES_HISTORY')}
-            className="col-span-2 sm:col-span-1 px-3.5 py-2.5 rounded-xl bg-slate-700/90 hover:bg-slate-600 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-slate-500/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
+            className="px-3.5 py-2.5 rounded-xl bg-slate-700/90 hover:bg-slate-600 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-slate-500/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
           >
             <FileText className="w-4 h-4" />
             Sales & Receipts
