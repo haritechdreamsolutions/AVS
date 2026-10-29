@@ -104,14 +104,24 @@ try {
     const owner=await client('synthetic-owner','Changed-synthetic-password!');
     assert.equal((await owner.request("/api/analytics/dashboard?start_date="+encodeURIComponent("2026-01-01' OR '1'='1"))).status,400);
   });
-  await test('failed logins never lock an account',async()=>{
+  await test('three failed logins lock for one minute and expiry resets attempts',async()=>{
     const database=await import('../db_pg.js');
     const result=await Promise.all(Array.from({length:5},()=>database.login('synthetic-driver','bad-pin')));
     assert.ok(result.every(row=>!row.success));
+    assert.equal(result.filter(row=>row.code==='INVALID_CREDENTIALS').length,2);
     const row=(await pool.query('SELECT failed_attempts,locked_until FROM user_accounts WHERE id=$1',[ids['synthetic-driver']])).rows[0];
-    assert.equal(row.failed_attempts,5);
-    assert.equal(row.locked_until,null);
+    assert.equal(row.failed_attempts,3);
+    assert.ok(new Date(row.locked_until).getTime()>Date.now());
+    const locked=await database.login('synthetic-driver','482916');
+    assert.equal(locked.code,'LOGIN_LOCKED');assert.ok(locked.retry_after>0&&locked.retry_after<=60);
+    const anonymous=await client();
+    const response=await anonymous.request('/api/auth/login','POST',{login_id:'synthetic-driver',pin:'482916'});
+    assert.equal(response.status,429);assert.ok(Number(response.headers.get('Retry-After'))>0);
+    await pool.query("UPDATE user_accounts SET locked_until=clock_timestamp()-INTERVAL '1 second' WHERE id=$1",[ids['synthetic-driver']]);
+    assert.equal((await database.login('synthetic-driver','bad-pin')).code,'INVALID_CREDENTIALS');
     assert.equal((await database.login('synthetic-driver','482916')).success,true);
+    const reset=(await pool.query('SELECT failed_attempts,locked_until FROM user_accounts WHERE id=$1',[ids['synthetic-driver']])).rows[0];
+    assert.equal(reset.failed_attempts,0);assert.equal(reset.locked_until,null);
   });
   await test('login request throttling returns a retry interval',async()=>{
     const anonymous=await client();

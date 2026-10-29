@@ -207,6 +207,33 @@ body {
   box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);
 }
 
+/* Shared total emphasis for Storekeeper and Driver receipt previews and print. */
+.receipt-total.receipt-total {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 0;
+  border-top: 2px solid currentColor;
+  break-inside: avoid;
+}
+.receipt-total.receipt-total > span {
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  line-height: 1.3 !important;
+  color: #0f172a;
+}
+.receipt-total.receipt-total > .receipt-total-amount {
+  font-family: monospace;
+  font-size: 24px !important;
+  text-align: right;
+  color: #047857;
+  overflow-wrap: anywhere;
+}
+@media print {
+  .receipt-total.receipt-total > span { color: black !important; }
+}
+
 /* 58mm Thermal Receipt Print CSS */
 @media print {
   @page {

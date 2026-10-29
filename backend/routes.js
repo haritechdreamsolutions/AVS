@@ -3,6 +3,7 @@ import * as db from './db_pg.js';
 import { csrfToken, loginLimiter, authorize, requireAuth, requireRole } from './security.js';
 import { salesReport } from './reports.js';
 import { refundSale } from './payments.js';
+import { routeDuesHandler } from './route-dues.js';
 
 const router = express.Router();
 
@@ -14,6 +15,8 @@ const getCid = (req) => req.session?.companyId || 1;
 // ====== AUTH ROUTES ======
 router.get('/auth/csrf', csrfToken);
 router.use(authorize);
+router.get('/owner/route-dues', requireRole('OWNER'), routeDuesHandler(db.query));
+router.get('/owner/route-dues/:routeId', requireRole('OWNER'), routeDuesHandler(db.query));
 
 router.post('/auth/login', loginLimiter(), async (req, res) => {
   try {
@@ -22,7 +25,10 @@ router.post('/auth/login', loginLimiter(), async (req, res) => {
       return res.status(400).json({ success: false, message: 'login_id and pin are required.' });
     }
     const result = await db.login(login_id, pin);
-    if (!result.success) return res.status(401).json(result);
+    if (!result.success) {
+      if (result.code === 'LOGIN_LOCKED') return res.set('Retry-After',String(result.retry_after)).status(429).json(result);
+      return res.status(401).json(result);
+    }
     await new Promise((resolve, reject) => req.session.regenerate(error => error ? reject(error) : resolve()));
     req.session.userId = result.user.id;
     req.session.companyId = result.user.company_id;

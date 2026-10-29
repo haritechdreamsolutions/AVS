@@ -1,0 +1,162 @@
+.dues-table { width:100%;border-collapse:collapse;text-align:left; }
+.dues-table th,.dues-table td {padding:12px;border-bottom:1px solid #e2e8f0;}
+.dues-money {text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.route-balance-page {display:grid;gap:20px;min-width:0;color:#15352f;}
+.route-balance-page,.route-balance-page * {box-sizing:border-box;}
+.route-balance-hero {position:relative;isolation:isolate;overflow:hidden;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:32px;border:1px solid #246477;border-radius:22px;background:linear-gradient(115deg,#102b42,#124c57 70%,#0e6962);box-shadow:0 10px 25px #102b421a;}
+.route-balance-hero::after {content:'';position:absolute;z-index:-1;width:300px;height:300px;right:-60px;top:-140px;border:45px solid #ffffff08;border-radius:50%;box-shadow:0 0 0 35px #ffffff04;pointer-events:none;}
+.route-balance-intro {display:flex;gap:16px;align-items:center;min-width:0;}
+.route-balance-symbol {display:flex;align-items:center;justify-content:center;width:60px;height:60px;flex-shrink:0;border:1px solid #ffffff30;border-radius:18px;background:#ffffff12;color:#8ef0dc;box-shadow:inset 0 1px 0 #ffffff15;}
+.route-balance-eyebrow {font-size:10px;font-weight:800;letter-spacing:1.7px;color:#83dccd;}
+.route-balance-hero h1 {margin:5px 0 7px;font-size:30px;font-weight:800;letter-spacing:-.7px;color:#fff;}
+.route-balance-hero p {font-size:12px;color:#c0d7dc;margin:0;}
+.route-balance-note {display:flex;align-items:center;gap:8px;padding:12px 16px;border:1px solid #ffffff26;border-radius:12px;background:#ffffff0c;color:#e2faf4;font-size:11px;font-weight:600;}
+.route-balance-stats {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;}
+.route-balance-stats>.route-stat-card {display:block;position:relative;border:1px solid #dbe5ed;border-top:3px solid var(--stat-accent);border-radius:16px;padding:20px 22px;background:linear-gradient(135deg,#fff 45%,var(--stat-tint));min-width:0;box-shadow:0 5px 18px #163b3305;}
+.stat-blue {--stat-accent:#3b82f6;--stat-tint:#eff6ff;--stat-ink:#1d4ed8;}
+.stat-amber {--stat-accent:#f59e0b;--stat-tint:#fffbeb;--stat-ink:#a16207;}
+.stat-green {--stat-accent:#10b981;--stat-tint:#ecfdf5;--stat-ink:#047857;}
+.route-stat-top {display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.route-stat-top>span:first-child {font-size:12px;font-weight:650;color:#5d7283;}
+.route-stat-icon {display:flex;align-items:center;justify-content:center;width:36px;height:36px;background:var(--stat-tint);color:var(--stat-ink);border-radius:11px;flex-shrink:0;}
+.route-balance-stats strong {display:block;margin:5px 0;font-size:34px;line-height:1.2;font-weight:800;color:#19354a;letter-spacing:-1px;}
+.route-balance-stats small {display:block;color:#7c8d9c;font-size:10px;}
+.route-stat-dot {width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.routes-dot {background:#3b82f6;}.pending-dot {background:#f59e0b;}.clear-dot {background:#10b981;}
+.route-balance-panel {overflow:hidden;border-radius:18px;border:1px solid #d5e5e1;background:white;box-shadow:0 8px 28px #163b3306;}
+.route-balance-panel-title {display:flex;align-items:center;justify-content:space-between;padding:20px 24px;gap:12px;}
+.route-balance-panel-title h2 {font-size:15px;font-weight:750;}
+.route-balance-panel-title p {font-size:11px;color:#80928b;margin-top:4px;}
+.route-balance-panel-title>span {font-size:11px;background:#ecfdf5;color:#0f766e;border-radius:20px;padding:4px 10px;font-weight:600;}
+.route-balance-table {table-layout:fixed;}
+.route-balance-table th {background:#f1f8f6;color:#58736b;font-size:11px;font-weight:700;}
+.route-balance-table th,.route-balance-table td {padding:18px 20px;overflow-wrap:anywhere;}
+.route-balance-table th:first-child {width:9%;}
+.route-balance-table th:nth-child(2) {width:30%;}
+.route-balance-table th:nth-child(3) {width:22%;}
+.route-balance-table th:nth-child(4) {width:24%;text-align:right;}
+.route-balance-table th:last-child {width:15%;text-align:center;}
+.route-balance-table td {font-size:13px;}
+.route-balance-table td:last-child {text-align:center;}
+.route-balance-table tr:last-child td {border-bottom:0;}
+.route-balance-table tbody tr:hover {background:#f7fcfa;}
+.route-row-number {display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:#f1f5f9;color:#718394;font-size:11px;font-weight:650;font-variant-numeric:tabular-nums;}
+.route-name-cell {font-weight:700;}
+.route-name-wrap {display:flex;align-items:center;gap:10px;}
+.route-name-icon {display:flex;align-items:center;justify-content:center;flex-shrink:0;width:30px;height:30px;border-radius:9px;background:#edf7f5;color:#0f766e;}
+.route-driver-chip {display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid #e3eaf2;border-radius:20px;color:#53677d;background:#f8fafc;font-size:12px;max-width:100%;}
+.route-driver-chip span {min-width:0;overflow-wrap:anywhere;}
+.route-driver-chip svg {flex-shrink:0;}
+.route-amount {color:#879b94;font-weight:650;}
+.route-amount.has-dues {color:#0f766e;background:#ecfdf5;border-radius:7px;padding:6px 9px;font-weight:800;}
+.route-view-button {display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:8px 16px;border:1px solid #0f766e;border-radius:10px;background:linear-gradient(120deg,#0f766e,#0d9488);color:#fff;font-size:12px;font-weight:750;cursor:pointer;box-shadow:0 3px 8px #0f766e18;transition:background .15s,box-shadow .15s;}
+.route-view-button:hover {background:#0f766e;color:white;border-color:#0f766e;}
+.route-view-button:disabled {opacity:.5;cursor:wait;}
+.route-view-button:focus-visible {outline:3px solid #5eead4;outline-offset:3px;}
+.route-assignment-error {color:#b45309;}
+.route-balance-loading,.route-balance-empty {padding:32px;text-align:center;color:#648079;font-size:13px;}
+.route-balance-error {padding:20px;background:#fff1f2;border:1px solid #fecdd3;border-radius:14px;color:#9f1239;}
+.route-balance-error button {margin-top:12px;text-decoration:underline;}
+@media(max-width:900px) {
+ .route-balance-note {display:none;}
+ .route-balance-table th,.route-balance-table td {padding:15px 10px;}
+ .route-balance-stats>div {padding:14px 10px;gap:6px;}
+}
+@media(max-width:600px) {
+ .route-balance-page {gap:14px;}
+ .route-balance-hero {padding:20px 16px;border-radius:16px;}
+ .route-balance-intro {gap:12px;}
+ .route-balance-symbol {width:44px;height:44px;border-radius:12px;}
+ .route-balance-hero h1 {font-size:23px;}
+ .route-balance-eyebrow {font-size:8px;letter-spacing:1px;}
+ .route-balance-hero p {font-size:11px;}
+ .route-balance-stats {gap:7px;}
+ .route-balance-stats>.route-stat-card {padding:12px 9px;border-radius:12px;}
+ .route-stat-top {display:block;}
+ .route-stat-top>span:first-child {font-size:10px;display:block;min-height:28px;}
+ .route-stat-icon {width:27px;height:27px;margin:5px 0;}
+ .route-stat-icon svg {width:15px;height:15px;}
+ .route-balance-stats strong {font-size:26px;margin:7px 0 0;}
+ .route-balance-stats small {display:none;}
+ .route-name-icon {display:none;}
+ .route-driver-chip {font-size:11px;padding:4px 7px;gap:4px;}
+ .route-balance-panel-title {padding:16px;}
+ .route-balance-table,.route-balance-table tbody {display:block;width:100%;}
+ .route-balance-table thead {display:none;}
+ .route-balance-table tbody {padding:0 12px 12px;}
+ .route-balance-table tr {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px 10px;padding:16px;margin-bottom:10px;border:1px solid #dceae5;border-radius:12px;background:#fcfefd;}
+ .route-balance-table tr:last-child {margin-bottom:0;}
+ .route-balance-table td {display:block;border:0;padding:0!important;white-space:normal;font-size:13px;min-width:0;}
+ .route-balance-table td::before {content:attr(data-label);display:block;font-size:9px;font-weight:600;letter-spacing:.4px;color:#7f948c;margin-bottom:5px;}
+ .route-balance-table td:first-child {display:none;}
+ .route-balance-table td:nth-child(3) {text-align:right;}
+ .route-balance-table td:nth-child(4) {text-align:left;align-self:center;}
+ .route-balance-table td:last-child {text-align:right;align-self:center;}
+ .route-balance-table td:last-child::before {display:none;}
+ .route-amount.has-dues {display:inline-block;max-width:100%;padding:4px 7px;overflow-wrap:anywhere;}
+ .route-view-button {min-height:44px;}
+}
+.dues-table th:has(+ th:last-child):nth-child(4),.dues-table th:last-child:nth-child(3) {text-align:right;}
+.dues-overlay {position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.62);backdrop-filter:blur(4px);}
+.dues-modal {width:100%;max-width:680px;max-height:90dvh;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 24px 80px #02061740;color:#16332f;}
+.dues-modal-heading {padding:24px 28px 20px;background:linear-gradient(135deg,#ecfdf5,#f0fdfa);border-bottom:1px solid #cce8df;flex-shrink:0;}
+.dues-eyebrow {display:block;text-align:center;font-size:10px;font-weight:800;letter-spacing:2px;color:#0f766e;}
+.dues-modal h2 {margin:5px 0 22px;text-align:center;font-size:25px;font-weight:800;letter-spacing:-.6px;}
+.dues-route-details {display:flex;justify-content:space-between;gap:20px;}
+.dues-route-details>div {min-width:0;flex:1;}
+.dues-route-details span {display:block;margin-bottom:4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#648079;}
+.dues-route-details strong {display:block;font-size:15px;overflow-wrap:anywhere;}
+.dues-driver {text-align:right;}
+.dues-modal-body {overflow-y:auto;min-height:0;padding:10px 28px 0;}
+.dues-shop-table {table-layout:fixed;}
+.dues-shop-table th {font-size:11px;color:#648079;background:#fff;position:sticky;top:-10px;z-index:1;}
+.dues-shop-table th:first-child {width:12%;}
+.dues-shop-table th:last-child {width:34%;text-align:right;}
+.dues-shop-table td {font-size:14px;overflow-wrap:anywhere;}
+.dues-shop-table td:first-child {color:#879b95;font-size:12px;}
+.dues-shop-table td:last-child {font-weight:750;color:#0f766e;white-space:normal;overflow-wrap:anywhere;}
+.dues-shop-table th,.dues-shop-table td {padding:15px 8px;}
+.dues-shop-table tbody tr:nth-child(even) {background:#f7fbf9;}
+.dues-modal-footer {padding:18px 28px 24px;flex-shrink:0;}
+.dues-total {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;background:#ecfdf5;border:1px solid #cce8df;border-radius:12px;}
+.dues-total span {font-size:12px;font-weight:700;color:#45665d;}
+.dues-total strong {font-size:23px;color:#0f766e;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;min-width:0;}
+.dues-modal-actions {display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
+.dues-modal-actions button {min-height:44px;padding:10px 26px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:background .15s;}
+.dues-close {border:1px solid #d4dfda;background:#fff;color:#45665d;}
+.dues-close:hover {background:#f1f5f3;}
+.dues-print {border:1px solid #0f766e;background:#0f766e;color:white;box-shadow:0 4px 12px #0f766e22;}
+.dues-print:hover {background:#115e59;}
+.dues-modal-actions button:disabled {opacity:.5;cursor:wait;}
+.dues-modal-actions button:focus-visible {outline:3px solid #5eead4;outline-offset:3px;}
+@media(max-width:480px) {
+ .dues-overlay {padding:12px;}
+ .dues-modal {border-radius:18px;max-height:94dvh;}
+ .dues-modal-heading {padding:20px 16px 16px;}
+ .dues-modal-body {padding:8px 12px 0;}
+ .dues-shop-table th,.dues-shop-table td {padding:13px 4px;}
+ .dues-shop-table th {font-size:10px;}
+ .dues-shop-table td {font-size:12px;}
+ .dues-modal-footer {padding:14px 16px 18px;}
+ .dues-total {padding:12px;}
+ .dues-total strong {font-size:20px;}
+ .dues-modal-actions button {flex:1;}
+}
+#route-dues-receipt {display:none;}
+@media print {
+ @page {size:58mm auto;margin:2mm;}
+ body:has(> #route-dues-receipt) > :not(#route-dues-receipt) {display:none!important;}
+ body:has(> #route-dues-receipt) {margin:0!important;padding:0!important;background:white!important;min-width:0!important;}
+ #route-dues-receipt,#route-dues-receipt * {visibility:visible!important;color:black!important;background:white!important;box-sizing:border-box;}
+ #route-dues-receipt {display:block!important;width:54mm;max-width:100%;font:10px/1.35 Arial,sans-serif;}
+ #route-dues-receipt header {display:block!important;text-align:center;}
+ #route-dues-receipt h2 {font-size:12px;margin:3px 0;}
+ #route-dues-receipt p {margin:4px 0;overflow-wrap:anywhere;}
+ #route-dues-receipt table {width:100%;table-layout:fixed;border-collapse:collapse;}
+ #route-dues-receipt th,#route-dues-receipt td {padding:3px 1px;vertical-align:top;overflow-wrap:anywhere;}
+ #route-dues-receipt th:first-child {width:10%;}
+ #route-dues-receipt th:last-child {width:38%;text-align:right;}
+ #route-dues-receipt .dues-money {white-space:normal;overflow-wrap:anywhere;}
+ #route-dues-receipt tr {break-inside:avoid;}
+ #route-dues-receipt .dues-grand {text-align:right;font-weight:bold;border-top:1px dashed black;padding-top:4px;}
+}

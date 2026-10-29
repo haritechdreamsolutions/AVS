@@ -305,7 +305,7 @@ export const AppProvider = ({ children }) => {
         fetchData();
         return { success: true };
       } else {
-        return { success: false, message: data.message };
+        return { success: false, message: data.message, code: data.code, retry_after: data.retry_after || (res.status === 429 ? Number(res.headers.get('Retry-After')) : 0) };
       }
     } catch (err) {
       return { success: false, message: "Network error logging in" };
