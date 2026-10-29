@@ -24,6 +24,7 @@ const OwnerDriverExpensesView = lazy(() => import('./OwnerDriverExpensesView').t
 const OwnerDamagePiecesView = lazy(() => import('./OwnerDamagePiecesView').then(m => ({ default: m.OwnerDamagePiecesView })));
 const OwnerMissingPiecesView = lazy(() => import('./OwnerMissingPiecesView').then(m => ({ default: m.OwnerMissingPiecesView })));
 const OwnerSuppliersView = lazy(() => import('./OwnerSuppliersView').then(m => ({ default: m.OwnerSuppliersView })));
+const RouteBasedDues = lazy(() => import('./RouteBasedDues').then(m => ({ default: m.RouteBasedDues })));
 
 const TabLoadingFallback = () => (
   <div className="h-64 w-full flex flex-col items-center justify-center gap-2 bg-white rounded-xl shadow-sm border border-slate-200 p-8">
@@ -48,6 +49,7 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
     { id: 'sales', label: 'Sales & Bills', icon: <ShoppingBag className="w-5 h-5" /> },
     { id: 'shops', label: 'Shops & Dues', icon: <Store className="w-5 h-5" /> },
     { id: 'user_balance', label: 'User Balance 💳', icon: <Wallet className="w-5 h-5 text-teal-400" /> },
+    ...(currentUser?.role === 'OWNER' ? [{ id: 'route_based_dues', label: 'Route balance', icon: <MapPin className="w-5 h-5 text-teal-400" /> }] : []),
   ];
 
   return (
@@ -159,6 +161,7 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
       {/* Main Content Area — ONLY this div scrolls */}
       <main className="flex-1 h-full overflow-y-auto touch-scroll p-3 sm:p-4 md:p-6 w-full max-w-full min-w-0 overflow-x-hidden pb-20 md:pb-6">
         <Suspense fallback={<TabLoadingFallback />}>
+          {activeTab === 'route_based_dues' && currentUser?.role === 'OWNER' && <RouteBasedDues />}
           {/* DASHBOARD TAB — Renders Owner Executive Dashboard Overview */}
           {activeTab === 'dashboard' && (
             <OwnerDashboardOverview onNavigateTab={(tab) => setActiveTab(tab)} />

@@ -3,6 +3,7 @@ import * as db from './db_pg.js';
 import { csrfToken, loginLimiter, authorize, requireAuth, requireRole } from './security.js';
 import { salesReport } from './reports.js';
 import { refundSale } from './payments.js';
+import { routeDuesHandler } from './route-dues.js';
 
 const router = express.Router();
 
@@ -14,6 +15,8 @@ const getCid = (req) => req.session?.companyId || 1;
 // ====== AUTH ROUTES ======
 router.get('/auth/csrf', csrfToken);
 router.use(authorize);
+router.get('/owner/route-dues', requireRole('OWNER'), routeDuesHandler(db.query));
+router.get('/owner/route-dues/:routeId', requireRole('OWNER'), routeDuesHandler(db.query));
 
 router.post('/auth/login', loginLimiter(), async (req, res) => {
   try {

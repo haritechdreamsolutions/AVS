@@ -1,0 +1,94 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { toast } from 'sonner';
+import { MapPin, ArrowUpRight, Wallet } from 'lucide-react';
+import { apiFetch } from '../../context/AppContext';
+import './routeBasedDues.css';
+
+// Format PostgreSQL decimal strings without converting money to floating point.
+export function duesCurrency(value) {
+ const [whole,fraction='']=String(value).split('.');
+ return `₹${BigInt(whole).toLocaleString('en-IN')}.${fraction.padEnd(2,'0').slice(0,2)}`;
+}
+const endpoint='/api/owner/route-dues';
+async function load(url) {
+ const response=await apiFetch(url);
+ if(!response.ok) throw new Error('Unable to load route dues. Please retry.');
+ return response.json();
+}
+function ShopRows({shops}) {
+ return shops.map((shop,index)=><tr key={shop.id}><td>{index+1}</td><td>{shop.name}</td><td className="dues-money">{duesCurrency(shop.balance)}</td></tr>);
+}
+export function RouteBasedDues() {
+ const [routes,setRoutes]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
+ const [selected,setSelected]=useState(null),[busy,setBusy]=useState(false),[printSnapshot,setPrintSnapshot]=useState(null);
+ const locked=useRef(false),printing=useRef(false),alive=useRef(true);
+ async function refresh() {
+  setLoading(true);setError('');
+  try { const data=await load(endpoint);if(alive.current)setRoutes(data); }
+  catch(e) {if(alive.current)setError(e.message);}
+  finally {if(alive.current)setLoading(false);}
+ }
+ useEffect(()=>{alive.current=true;refresh();return()=>{alive.current=false;};},[]);
+ async function view(id) {
+  if(locked.current)return;
+  locked.current=true;setBusy(true);
+  try {
+   const detail=await load(`${endpoint}/${id}`);
+   if(!alive.current)return;
+   setRoutes(old=>old.map(row=>row.id===detail.id?detail:row));
+   if(detail.assignment_error) {toast.error('Multiple active drivers assigned. Resolve the route assignment before viewing dues.');return;}
+   if(!detail.shops.length) {toast.info('No pending due shops');return;}
+   setSelected(detail);
+  } catch(e) {if(alive.current)toast.error(e.message);}
+  finally {locked.current=false;if(alive.current)setBusy(false);}
+ }
+ useEffect(()=>{
+  if(!printSnapshot)return;
+  let finished=false,enteredPrint=false,started=false;
+  const media=window.matchMedia('print');
+  const cleanup=()=>{
+   window.removeEventListener('afterprint',finish);
+   window.removeEventListener('beforeprint',before);
+   media.removeEventListener('change',mediaChanged);
+  };
+  const finish=()=>{
+   if(finished || !started)return;
+   finished=true;cleanup();printing.current=false;
+   setPrintSnapshot(null);setSelected(null);refresh();
+  };
+  const before=()=>{enteredPrint=true;};
+  const mediaChanged=event=>{
+   if(event.matches)enteredPrint=true;
+   else if(enteredPrint)finish();
+  };
+  window.addEventListener('afterprint',finish);
+  window.addEventListener('beforeprint',before);
+  media.addEventListener('change',mediaChanged);
+  const timer=setTimeout(()=>{
+   started=true;
+   try {window.print();} catch {
+    // Keep the verified modal available so the Owner can retry.
+    finished=true;cleanup();printing.current=false;setPrintSnapshot(null);
+    toast.error('Unable to open print dialog. Please retry.');
+   }
+  },100);
+  return()=>{clearTimeout(timer);cleanup();};
+ },[printSnapshot]);
+ function print() {
+  if(printing.current || !selected?.shops.length)return;
+  printing.current=true;
+  setPrintSnapshot({...selected,shops:selected.shops.map(s=>({...s})),printedAt:new Date().toLocaleString('en-IN')});
+ }
+ return <section className="route-balance-page">
+  <div className="route-balance-hero"><div className="route-balance-intro"><div className="route-balance-symbol"><MapPin size={26}/></div><div><span className="route-balance-eyebrow">OWNER ? ROUTE OVERVIEW</span><h1>Route balance</h1><p>Track pending shop dues, route by route.</p></div></div><div className="route-balance-note"><Wallet size={17}/><span>View dues ? Print collection list</span></div></div>
+  {!loading&&!error&&<div className="route-balance-stats"><div><span className="route-stat-dot routes-dot"/><span>Total routes</span><strong>{routes.length}</strong></div><div><span className="route-stat-dot pending-dot"/><span>Routes with dues</span><strong>{routes.filter(r=>/[1-9]/.test(r.total)).length}</strong></div><div><span className="route-stat-dot clear-dot"/><span>No pending dues</span><strong>{routes.filter(r=>!/[1-9]/.test(r.total)).length}</strong></div></div>}
+  {error?<div role="alert" className="route-balance-error"><p>{error}</p><button onClick={refresh}>Try again</button></div>:loading?<p role="status" className="route-balance-loading">Loading route balances?</p>:<div className="route-balance-panel"><div className="route-balance-panel-title"><h2>Route overview</h2><span>{routes.length} routes</span></div><table className="dues-table route-balance-table"><thead><tr>{['S.No','Route Name','Driver Name','Total Balance','Action'].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{routes.map((r,i)=><tr key={r.id}><td data-label="S.No"><span className="route-row-number">{String(i+1).padStart(2,'0')}</span></td><td data-label="Route Name" className="route-name-cell">{r.name}</td><td data-label="Driver Name">{r.assignment_error?<span role="alert" className="route-assignment-error">Assignment error</span>:r.driver_name||''}</td><td data-label="Total Balance" className="dues-money"><span className={/[1-9]/.test(r.total)?'route-amount has-dues':'route-amount'}>{duesCurrency(r.total)}</span></td><td data-label="Action"><button disabled={busy} onClick={()=>view(r.id)} className="route-view-button">View <ArrowUpRight size={15} aria-hidden="true"/></button></td></tr>)}</tbody></table>{!routes.length&&<p className="route-balance-empty">No routes found.</p>}</div>}
+  {selected&&<div className="dues-overlay"><div role="dialog" aria-modal="true" aria-labelledby="dues-title" className="dues-modal">
+   <div className="dues-modal-heading"><span className="dues-eyebrow">ROUTE BASED DUES</span><h2 id="dues-title">Shop Balance</h2><div className="dues-route-details"><div><span>Route</span><strong>{selected.name}</strong></div><div className="dues-driver"><span>Driver</span><strong>{selected.driver_name||'\u00a0'}</strong></div></div></div>
+   <div className="dues-modal-body"><table className="dues-table dues-shop-table"><thead><tr><th>S.No</th><th>Shop Name</th><th>Balance Amount</th></tr></thead><tbody><ShopRows shops={selected.shops}/></tbody></table></div>
+   <div className="dues-modal-footer"><div className="dues-total"><span>Total Outstanding</span><strong>{duesCurrency(selected.total)}</strong></div><div className="dues-modal-actions"><button disabled={!!printSnapshot} onClick={()=>setSelected(null)} className="dues-close">Close</button><button disabled={!!printSnapshot} onClick={print} className="dues-print">Print</button></div></div>
+  </div></div>}
+  {printSnapshot&&createPortal(<article id="route-dues-receipt"><header><strong>AVS Billing</strong><h2>ROUTE BASED DUES</h2></header><p>Route: {printSnapshot.name}</p><p>Driver: {printSnapshot.driver_name||''}</p><p>{printSnapshot.printedAt}</p><table><thead><tr><th>S.No</th><th>Shop Name</th><th>Credit Balance</th></tr></thead><tbody><ShopRows shops={printSnapshot.shops}/></tbody></table><p className="dues-grand">Grand Total: {duesCurrency(printSnapshot.total)}</p></article>,document.body)}
+ </section>;
+}
