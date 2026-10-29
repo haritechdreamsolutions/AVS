@@ -21,7 +21,7 @@ try {
   const {rows}=await client.query(routeDuesSQL,[1,null]);
   assert.deepEqual(rows.map(r=>r.id),[1,2,3,6]);assert.equal(rows[0].total,'30.06');
   assert.equal(rows[1].total,'0');assert.equal(rows[1].driver_name,null);
-  assert.equal(rows[0].driver_name,'Today');assert.equal(rows[2].driver_name,'Sole driver');assert.equal(rows[3].assignment_error,true);
+  assert.equal(rows[0].driver_name,'Today');assert.equal(rows[2].driver_name,'Sole driver');assert.equal(rows[3].assignment_error,false);assert.equal(rows[3].driver_name,'One, Two');
  });
  await test('detail respects village precedence, distinct IDs, positive filtering and exact decimal sum',async()=>{
   const {rows:[detail]}=await client.query(routeDuesSQL,[1,1]);

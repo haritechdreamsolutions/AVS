@@ -8,21 +8,28 @@ WITH positive_shops AS (
  AND ($2::integer IS NULL OR COALESCE(v.route_id,s.route_id)=$2)
 ), totals AS (
  SELECT route_id,SUM(current_due) AS total FROM positive_shops GROUP BY route_id
-), fallback AS (
- SELECT route_id,COUNT(*) AS count,MIN(id) AS employee_id
- FROM employees WHERE company_id=$1 AND is_active=TRUE GROUP BY route_id
+), drivers AS (
+ SELECT route_id,MIN(id) AS employee_id,
+ string_agg(NULLIF(trim(full_name),''), ', ' ORDER BY full_name,id) AS driver_name
+ FROM employees e WHERE company_id=$1 AND is_active=TRUE
+ AND NOT EXISTS (SELECT 1 FROM route_assignments ra WHERE ra.route_id=e.route_id AND ra.assigned_date=CURRENT_DATE)
+ GROUP BY route_id
+ UNION ALL
+ SELECT ra.route_id,MIN(e.id),
+ string_agg(NULLIF(trim(e.full_name),''), ', ' ORDER BY e.full_name,e.id)
+ FROM (SELECT DISTINCT route_id,employee_id FROM route_assignments WHERE assigned_date=CURRENT_DATE) ra
+ JOIN employees e ON e.id=ra.employee_id AND e.company_id=$1 AND e.is_active=TRUE
+ GROUP BY ra.route_id
 )
-SELECT r.id,r.name,e.id AS driver_id,e.full_name AS driver_name,
- (ra.employee_id IS NULL AND COALESCE(f.count,0)>1) AS assignment_error,
+SELECT r.id,r.name,d.employee_id AS driver_id,d.driver_name,
+ FALSE AS assignment_error,
  COALESCE(t.total,0)::text AS total,
  CASE WHEN $2::integer IS NULL THEN '[]'::json ELSE
  COALESCE((SELECT json_agg(json_build_object('id',p.id,'name',p.name,'balance',p.current_due::text) ORDER BY p.name,p.id)
  FROM positive_shops p WHERE p.route_id=r.id),'[]'::json) END AS shops
 FROM routes r
 LEFT JOIN totals t ON t.route_id=r.id
-LEFT JOIN route_assignments ra ON ra.route_id=r.id AND ra.assigned_date=CURRENT_DATE
-LEFT JOIN fallback f ON f.route_id=r.id
-LEFT JOIN employees e ON e.id=COALESCE(ra.employee_id,CASE WHEN f.count=1 THEN f.employee_id END) AND e.company_id=$1
+LEFT JOIN drivers d ON d.route_id=r.id
 WHERE r.company_id=$1 AND r.is_active=TRUE AND ($2::integer IS NULL OR r.id=$2)
 ORDER BY r.code,r.name,r.id`;
 

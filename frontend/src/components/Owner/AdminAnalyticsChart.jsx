@@ -24,7 +24,7 @@ export const AdminAnalyticsChart = ({ data, period = 'TODAY' }) => {
   const topProducts = analytics.top_products_today || [];
 
   return (
-    <div className="glass-panel p-5 rounded-3xl border border-sky-200 space-y-5 shadow-sm">
+    <div className="glass-panel min-w-0 max-w-full p-3 sm:p-5 rounded-3xl border border-sky-200 space-y-5 shadow-sm">
       
       {/* Header with KPI Summary Chips */}
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-sky-100 pb-4">
@@ -56,11 +56,11 @@ export const AdminAnalyticsChart = ({ data, period = 'TODAY' }) => {
       </div>
 
       {/* Main Grid: Bar Chart (Left 65%) + Payment/Product Share (Right 35%) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Left Side: 7-Day Bar Chart */}
-        <div className="lg:col-span-2 space-y-3 bg-[#f0f7fd] p-4 rounded-2xl border border-sky-200">
-          <div className="flex justify-between items-center text-xs font-extrabold text-sky-900">
+        <div className="lg:col-span-2 min-w-0 max-w-full space-y-3 bg-[#f0f7fd] p-4 rounded-2xl border border-sky-200">
+          <div className="flex flex-wrap gap-2 justify-between items-center text-xs font-extrabold text-sky-900">
             <span className="flex items-center gap-1.5">
               <TrendingUp className="w-4 h-4 text-emerald-600" />
               {isDaily ? `${period === 'TODAY' ? 'Today' : 'Yesterday'} Revenue` : 'Weekly Revenue Trend (கடந்த 7 நாட்கள் விற்பனை)'}
@@ -70,10 +70,11 @@ export const AdminAnalyticsChart = ({ data, period = 'TODAY' }) => {
             </span>
           </div>
 
-          {/* Bar Graph Visual Container */}
-          <div className="h-56 flex items-end justify-between gap-2 sm:gap-3 pt-10 pb-2 px-2 sm:px-4 bg-white/90 rounded-xl border border-sky-200">
+          {/* Scroll wide charts within the card. */}
+          <div className="w-full min-w-0 overflow-x-auto overscroll-x-contain" role="region" aria-label="Revenue chart: swipe to see all days" tabIndex={0}>
+          <div style={{minWidth: isDaily ? undefined : 420}} className="h-56 flex items-end justify-between gap-2 sm:gap-3 pt-10 pb-2 px-2 sm:px-4 bg-white/90 rounded-xl border border-sky-200">
             {salesTrend.map((st, idx) => (
-              <div key={idx} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+              <div key={idx} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full group relative">
                 
                 {/* Visible Amount Label Always On Top */}
                 <span className={`text-[11px] font-mono font-black mb-1.5 px-1.5 py-0.5 rounded-md border transition-all ${
@@ -109,18 +110,20 @@ export const AdminAnalyticsChart = ({ data, period = 'TODAY' }) => {
             ))}
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-sky-800 font-bold px-1 pt-1">
+          </div>
+
+          <div className="flex flex-wrap gap-2 items-center justify-between text-[11px] text-sky-800 font-bold px-1 pt-1">
             <span>💡 குறிப்பு: உயர்ந்த பார் (Peak Bar) அன்றைய அதிகபட்ச விற்பனையைக் குறிக்கும்.</span>
             <span className="text-sky-700 font-black">7 Days Active Route</span>
           </div>
         </div>
 
         {/* Right Side: Payment Breakdown & Product Share */}
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           
           {/* Payment Method Breakdown */}
           <div className="bg-[#f0f7fd] p-4 rounded-2xl border border-sky-200 space-y-3">
-            <h4 className="font-extrabold text-xs text-[#002244] uppercase tracking-wider flex items-center justify-between">
+            <h4 className="font-extrabold text-xs text-[#002244] uppercase tracking-wider flex flex-wrap gap-2 items-center justify-between">
               <span>Payment Mode Share (பணம் வந்த முறை)</span>
               <span className="font-mono text-emerald-700 font-black text-xs">₹{paymentTotal.toLocaleString()}</span>
             </h4>
@@ -133,7 +136,7 @@ export const AdminAnalyticsChart = ({ data, period = 'TODAY' }) => {
 
                 return (
                   <div key={idx} className="space-y-1">
-                    <div className="flex justify-between items-center text-xs font-bold">
+                    <div className="flex flex-wrap gap-1 justify-between items-center text-xs font-bold">
                       <span className="flex items-center gap-1.5 text-slate-800">
                         {icon}
                         {pm.label}
