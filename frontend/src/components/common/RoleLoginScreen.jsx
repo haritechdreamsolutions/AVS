@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ShieldCheck, KeyRound, User } from 'lucide-react';
 import { toast } from 'sonner';
@@ -10,9 +10,22 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
   const [pin, setPin] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [lockedUntil,setLockedUntil] = useState(()=>Number(sessionStorage.getItem('avs_login_locked_until'))||0);
+  const [now,setNow] = useState(Date.now());
+  const submitting=useRef(false),failures=useRef(0);
+  const secondsLeft=Math.max(0,Math.ceil((lockedUntil-now)/1000));
+  useEffect(()=>{
+    if(!lockedUntil)return;
+    const tick=()=>{
+      const time=Date.now();setNow(time);
+      if(time>=lockedUntil){setLockedUntil(0);sessionStorage.removeItem('avs_login_locked_until');failures.current=0;setErrorMsg('');}
+    };
+    tick();const timer=setInterval(tick,250);return()=>clearInterval(timer);
+  },[lockedUntil]);
 
   const handleLoginSubmit = async (e) => {
     if (e) e.preventDefault();
+    if(submitting.current || Date.now()<lockedUntil)return;
     if (!loginId.trim()) {
       setErrorMsg('Login ID உள்ளிடவும்');
       toast.error('Please enter your Login ID');
@@ -23,13 +36,19 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
       toast.error('Please enter your password or driver PIN');
       return;
     }
-    setIsLoading(true);
-    const res = await loginUser(loginId.trim(), pin);
-    setIsLoading(false);
+    submitting.current=true;setIsLoading(true);
+    let res;
+    try {res=await loginUser(loginId.trim(), pin);}
+    catch {res={success:false,message:'Network error logging in'};}
+    finally {submitting.current=false;setIsLoading(false);}
     if (res.success) {
+      sessionStorage.removeItem('avs_login_locked_until');failures.current=0;
       toast.success('Login Successful!');
       onLoginSuccess();
     } else {
+      if(res.code==='INVALID_CREDENTIALS')failures.current++;
+      const wait=Number(res.retry_after)|| (failures.current>=3?60:0);
+      if(wait>0){const until=Date.now()+wait*1000;sessionStorage.setItem('avs_login_locked_until',String(until));setLockedUntil(until);setNow(Date.now());}
       setErrorMsg(res.message || 'தவறான Login ID அல்லது PIN!');
       toast.error(res.message || 'Invalid Login ID or PIN');
       setPin('');
@@ -82,9 +101,9 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
             <input id="login-credential" type="password" autoComplete="current-password" aria-label="Password or driver PIN" value={pin} maxLength={72} onChange={event => { setPin(event.target.value); setErrorMsg(''); }} onKeyDown={event => { if (event.key === 'Enter') handleLoginSubmit(); }} className="w-full bg-[#f0f8ff] border border-sky-200 rounded-xl px-4 py-3 mt-2 text-sm font-bold" />
           </div>
 
-          {errorMsg && (
+          {(errorMsg || secondsLeft>0) && (
             <p className="text-xs text-rose-600 font-bold text-center bg-rose-50 p-2 rounded-xl border border-rose-200">
-              {errorMsg}
+              {secondsLeft>0 ? `Too many incorrect attempts. Please wait 1 minute. Try again in ${secondsLeft}s.` : errorMsg}
             </p>
           )}
 
@@ -92,10 +111,10 @@ export const RoleLoginScreen = ({ onLoginSuccess }) => {
             <button
               type="button"
               onClick={handleLoginSubmit}
-              disabled={isLoading || pin.length < 4}
+              disabled={isLoading || secondsLeft>0 || pin.length < 4}
               className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60 text-white font-black text-xs shadow-md active:scale-95 transition cursor-pointer disabled:cursor-not-allowed"
             >
-              {isLoading ? '...' : 'Enter'}
+              {secondsLeft>0 ? `Wait ${Math.floor(secondsLeft/60)}:${String(secondsLeft%60).padStart(2,'0')}` : isLoading ? '...' : 'Enter'}
             </button>
           </div>
         </div>

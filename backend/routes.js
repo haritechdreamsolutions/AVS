@@ -25,7 +25,10 @@ router.post('/auth/login', loginLimiter(), async (req, res) => {
       return res.status(400).json({ success: false, message: 'login_id and pin are required.' });
     }
     const result = await db.login(login_id, pin);
-    if (!result.success) return res.status(401).json(result);
+    if (!result.success) {
+      if (result.code === 'LOGIN_LOCKED') return res.set('Retry-After',String(result.retry_after)).status(429).json(result);
+      return res.status(401).json(result);
+    }
     await new Promise((resolve, reject) => req.session.regenerate(error => error ? reject(error) : resolve()));
     req.session.userId = result.user.id;
     req.session.companyId = result.user.company_id;

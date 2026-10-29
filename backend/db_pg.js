@@ -9,8 +9,7 @@ import { getOperationalUnit, normalizeQuantity, checkReconciliationEquation, REC
 export { getOperationalUnit, normalizeQuantity, checkReconciliationEquation, RECONCILIATION_EPSILON, quantityFromWholePieces };
 
 const BCRYPT_ROUNDS = 12;
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_MIN = 15;
+const MAX_ATTEMPTS = 3;
 
 // ====== DB QUERY HELPERS ======
 export async function query(text, params) {
@@ -60,20 +59,28 @@ export async function login(loginId, pin) {
     const row = result.rows[0];
     if (!row) {
       await client.query('COMMIT');
-      return { success: false, message: 'Invalid credentials.' };
+      return { success: false, code: 'INVALID_CREDENTIALS', message: 'Invalid credentials.' };
     }
     if (row.account_status !== 'ACTIVE') {
       await client.query('COMMIT');
       return { success: false, message: 'Account ' + row.account_status + '. Contact administrator.' };
     }
+    const remaining = row.locked_until ? Math.ceil((new Date(row.locked_until).getTime()-Date.now())/1000) : 0;
+    if (remaining > 0) {
+      await client.query('COMMIT');
+      return {success:false,code:'LOGIN_LOCKED',retry_after:remaining,message:'Too many incorrect attempts. Please wait 1 minute before trying again.'};
+    }
     const pinStr = String(pin);
     const ok = await bcrypt.compare(pinStr, row.pin_hash);
     if (!ok) {
-      const attempts = (row.failed_attempts || 0) + 1;
-      await client.query('UPDATE user_accounts SET failed_attempts=$1, locked_until=NULL WHERE id=$2', [attempts, row.id]);
+      const attempts = (row.locked_until ? 0 : (row.failed_attempts || 0)) + 1;
+      const locked = attempts >= MAX_ATTEMPTS;
+      await client.query("UPDATE user_accounts SET failed_attempts=$1, locked_until=CASE WHEN $3 THEN clock_timestamp()+INTERVAL '1 minute' ELSE NULL END WHERE id=$2", [attempts, row.id, locked]);
       await client.query('COMMIT');
       await auditLog({ companyId: row.company_id, action: 'LOGIN_FAILED', entityId: row.id });
-      return { success: false, message: 'Invalid credentials.' };
+      return locked
+        ? {success:false,code:'LOGIN_LOCKED',retry_after:60,message:'Too many incorrect attempts. Please wait 1 minute before trying again.'}
+        : {success:false,code:'INVALID_CREDENTIALS',message:'Invalid credentials.'};
     }
 
     await client.query('UPDATE user_accounts SET failed_attempts=0, locked_until=NULL, last_login_at=NOW() WHERE id=$1', [row.id]);
