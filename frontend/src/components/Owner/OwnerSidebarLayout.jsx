@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { 
   LayoutDashboard, ShoppingBag, Package, Users, Store, 
   Printer, Grid, LogOut, ShieldCheck, ChevronRight, Menu, X, Snowflake, TrendingUp, Tag, MapPin, Scale, RotateCcw,
-  DollarSign, AlertOctagon, AlertTriangle, Building2, Wallet
+  DollarSign, AlertOctagon, AlertTriangle, Building2, Wallet, ReceiptText
 } from 'lucide-react';
 
 // Lazy loading heavy Admin & Owner views to reduce initial bundle size & optimize LCP
@@ -24,6 +24,8 @@ const OwnerDriverExpensesView = lazy(() => import('./OwnerDriverExpensesView').t
 const OwnerDamagePiecesView = lazy(() => import('./OwnerDamagePiecesView').then(m => ({ default: m.OwnerDamagePiecesView })));
 const OwnerMissingPiecesView = lazy(() => import('./OwnerMissingPiecesView').then(m => ({ default: m.OwnerMissingPiecesView })));
 const OwnerSuppliersView = lazy(() => import('./OwnerSuppliersView').then(m => ({ default: m.OwnerSuppliersView })));
+const ShopBalanceReceipt = lazy(() => import('./ShopBalanceReceipt').then(m => ({default:m.ShopBalanceReceipt})));
+const FreezerReceipt = lazy(() => import('./FreezerReceipt').then(m => ({default:m.FreezerReceipt})));
 const RouteBasedDues = lazy(() => import('./RouteBasedDues').then(m => ({ default: m.RouteBasedDues })));
 
 const TabLoadingFallback = () => (
@@ -41,15 +43,17 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
     { id: 'employees', label: 'Employees & Routes', icon: <Users className="w-5 h-5" /> },
-    { id: 'villages', label: 'Villages Master 📍', icon: <MapPin className="w-5 h-5 text-amber-400" /> },
-    { id: 'products', label: 'Products & Rates 📦', icon: <Package className="w-5 h-5 text-emerald-400" /> },
+    { id: 'villages', label: 'Villages Master', icon: <MapPin className="w-5 h-5 text-amber-400" /> },
+    { id: 'products', label: 'Products & Rates', icon: <Package className="w-5 h-5 text-emerald-400" /> },
     { id: 'users', label: 'Users Master', icon: <ShieldCheck className="w-5 h-5 text-indigo-400" /> },
-    { id: 'freezer', label: 'Freezer Assets 🧊', icon: <Snowflake className="w-5 h-5 text-cyan-400" /> },
-    { id: 'suppliers', label: 'Companies & Inward 🏭', icon: <Building2 className="w-5 h-5 text-sky-400" /> },
+    { id: 'freezer', label: 'Freezer Assets', icon: <Snowflake className="w-5 h-5 text-cyan-400" /> },
+    { id: 'suppliers', label: 'Companies & Inward', icon: <Building2 className="w-5 h-5 text-sky-400" /> },
     { id: 'sales', label: 'Sales & Bills', icon: <ShoppingBag className="w-5 h-5" /> },
     { id: 'shops', label: 'Shops & Dues', icon: <Store className="w-5 h-5" /> },
-    { id: 'user_balance', label: 'User Balance 💳', icon: <Wallet className="w-5 h-5 text-teal-400" /> },
+    { id: 'user_balance', label: 'User Balance', icon: <Wallet className="w-5 h-5 text-teal-400" /> },
     ...(currentUser?.role === 'OWNER' ? [{ id: 'route_based_dues', label: 'Route balance', icon: <MapPin className="w-5 h-5 text-teal-400" /> }] : []),
+    ...(currentUser?.role === 'OWNER' ? [{id:'shop_balance_receipt',label:'Shop Balance Receipt',icon:<ReceiptText className="w-5 h-5"/>}] : []),
+    ...(currentUser?.role === 'OWNER' ? [{id:'freezer_receipt',label:'Freezer Receipt',icon:<Snowflake className="w-5 h-5"/>}] : []),
   ];
 
   return (
@@ -161,6 +165,8 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
       {/* Main Content Area — ONLY this div scrolls */}
       <main className="flex-1 h-full overflow-y-auto touch-scroll p-3 sm:p-4 md:p-6 w-full max-w-full min-w-0 overflow-x-hidden pb-20 md:pb-6">
         <Suspense fallback={<TabLoadingFallback />}>
+          {activeTab === 'freezer_receipt' && currentUser?.role === 'OWNER' && <FreezerReceipt />}
+          {activeTab === 'shop_balance_receipt' && currentUser?.role === 'OWNER' && <ShopBalanceReceipt />}
           {activeTab === 'route_based_dues' && currentUser?.role === 'OWNER' && <RouteBasedDues />}
           {/* DASHBOARD TAB — Renders Owner Executive Dashboard Overview */}
           {activeTab === 'dashboard' && (

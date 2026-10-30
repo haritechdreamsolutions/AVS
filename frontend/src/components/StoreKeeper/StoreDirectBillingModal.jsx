@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatWarehouseStock } from '../../utils/unitHelper';
 import { getStoreDirectPricing } from '../../utils/storeDirectPricing';
-import { sortProductsCustom } from '../../utils/productOrderHelper';
+import { sortOwnerProducts } from '../../utils/ownerProductOrder';
 import { 
   X, ShoppingBag, Plus, Minus, CheckCircle2, 
   CreditCard, DollarSign, Smartphone, Trash2, ArrowRightLeft, Sparkles,
@@ -61,11 +61,11 @@ const PRODUCT_IMAGES = {
   20: { image: '/images/aquafresh_water_2l.png', sizeBadge: '2 Ltr' }
 };
 
-export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
+export const StoreDirectBillingModal = ({ onClose, onBillGenerated, wholesale = false }) => {
   const { products = [], createSale, currentUser } = useApp();
   
   const activeProducts = useMemo(() => {
-    return sortProductsCustom((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
+    return sortOwnerProducts((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
   }, [products]);
 
   const billingRequest = useRef({ key: crypto.randomUUID(), payload: '' });
@@ -87,6 +87,13 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
 
   const getProductStockInfo = (prod) => {
     const pricing = getStoreDirectPricing(prod);
+    if (wholesale) {
+      pricing.unitType = prod.base_unit || 'Piece';
+      pricing.displayUnit = pricing.unitType;
+      pricing.pluralUnit = pricing.unitType + 's';
+      pricing.rate = Number(prod.piece_selling_price || 0);
+      pricing.opUnit = {...pricing.opUnit, isPieceBased:true};
+    }
     const stockFormatted = formatWarehouseStock(prod);
     return {...pricing, stockFormatted,
       maxAvailable:pricing.opUnit.isPieceBased ? stockFormatted.totalPieces : stockFormatted.units};
@@ -115,7 +122,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
           unit_type: info.unitType,
           display_unit: info.displayUnit,
           rate: info.rate,
-          amount: qty * info.rate
+          amount: Math.round(qty * Math.round(info.rate * 100)) / 100
         }
       };
     });
@@ -124,7 +131,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
   const cartList = useMemo(() => Object.values(cart), [cart]);
 
   const totalAmount = useMemo(() => {
-    return cartList.reduce((sum, item) => sum + item.amount, 0);
+    return cartList.reduce((sum, item) => sum + Math.round(item.amount * 100), 0) / 100;
   }, [cartList]);
 
   const totalItemsCount = useMemo(() => {
@@ -246,7 +253,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
 
     const salePayload = {
       is_store_direct_sale: true,
-      sale_type: 'STOREKEEPER_DIRECT',
+      sale_type: wholesale ? 'STOREKEEPER_WHOLESALE' : 'STOREKEEPER_DIRECT',
       shop_name: 'AVS AGENCIES',
       customer_name: 'Walk-in Counter Customer',
       employee_id: null,
@@ -316,7 +323,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated }) => {
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <h3 className="font-black text-xs sm:text-base text-white truncate">
-                  STORE KEEPER DIRECT POS BILLING
+                  {wholesale ? 'WHOLESALE BILLING' : 'STORE KEEPER DIRECT POS BILLING'}
                 </h3>
                 <span className="hidden sm:inline text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold px-2 py-0.5 rounded-full border border-emerald-400/30">
                   Live Stock

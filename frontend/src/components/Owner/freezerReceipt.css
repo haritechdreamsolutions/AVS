@@ -1,0 +1,45 @@
+﻿.fr-page{max-width:1200px;margin:auto;padding:24px;color:#16332f}.fr-page>header{padding:22px;border-left:4px solid #0891b2;border-radius:0 18px 18px 0;background:#f0faff;margin-bottom:24px}.fr-page header span{font-size:11px;font-weight:800;letter-spacing:1.5px;color:#036987}.fr-page h1{font-size:30px;font-weight:850;margin:6px 0}.fr-page header p{color:#577381}
+.fr-controls,.fr-results{padding:24px;border:1px solid #c4e0ec;border-radius:18px;background:white;box-shadow:0 5px 20px #0369a110}.fr-controls{display:flex;gap:16px;align-items:flex-end;background:#eff9ff}.fr-controls label{display:flex;flex:1;min-width:0;flex-direction:column;gap:8px;font-size:13px;font-weight:750}.fr-controls select{min-width:0;width:100%;padding:12px;border:1px solid #abd0e6;border-radius:10px;background:white;min-height:46px}
+.fr-page button{background:#087f96;color:white;font-weight:750;padding:12px 24px;border-radius:10px;min-height:46px;cursor:pointer}.fr-page button:disabled{opacity:.5;cursor:default}.fr-page :focus-visible{outline:3px solid #67e8f9;outline-offset:3px}
+.fr-results{margin-top:24px}.fr-result-heading{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;margin-bottom:18px}.fr-results h2{font-size:20px;font-weight:800}.fr-result-heading span{color:#507180;font-size:13px}.fr-scroll{overflow-x:auto}.fr-results table{width:100%;border-collapse:collapse;font-size:14px}.fr-results th,.fr-results td{padding:14px 10px;border-bottom:1px solid #dceae5;text-align:left}.fr-results th{background:#eff9fc;color:#28576b;white-space:nowrap}.fr-results tbody tr:nth-child(even){background:#f8fcff}.fr-results button{display:block;margin:20px 0 0 auto}.fr-error{padding:16px;background:#fff1f2;color:#9f1239;border-radius:10px;margin-top:16px}
+#freezer-receipt-print{display:none}
+@media(max-width:600px){.fr-page{padding:12px}.fr-controls,.fr-results{padding:16px}.fr-controls{gap:10px}.fr-page h1{font-size:25px}.fr-page button{padding:12px 16px}.fr-results table{min-width:620px}}
+@media print{
+ @page freezer-receipt{size:A4 portrait;margin:12mm}
+ body:has(> #freezer-receipt-print)>:not(#freezer-receipt-print){display:none!important}
+ body:has(> #freezer-receipt-print){margin:0!important;padding:0!important;background:white!important;min-width:0!important}
+ #freezer-receipt-print,#freezer-receipt-print *{visibility:visible!important;color:black!important;background:white!important;box-sizing:border-box}
+ #freezer-receipt-print{page:freezer-receipt;display:block!important;width:100%!important;position:static!important;margin:0!important;font:11pt/1.4 Arial,sans-serif}
+ #freezer-receipt-print h1{text-align:center;font-size:21pt;font-weight:800;margin:0 0 3mm}#freezer-receipt-print h2{text-align:center;font-size:14pt;margin:0 0 7mm}
+ .fr-print-meta{display:flex;justify-content:space-between;gap:8mm;margin-bottom:6mm;overflow-wrap:anywhere}
+ #freezer-receipt-print table{width:100%;border-collapse:collapse;table-layout:fixed}#freezer-receipt-print th,#freezer-receipt-print td{border:1px solid #555;padding:3mm 2mm;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+ #freezer-receipt-print th{font-weight:bold}#freezer-receipt-print th:first-child{width:8%;white-space:nowrap}#freezer-receipt-print th:nth-child(2){width:30%}#freezer-receipt-print th:nth-child(3){width:20%}#freezer-receipt-print th:nth-child(4){width:24%}#freezer-receipt-print th:last-child{width:18%}
+ #freezer-receipt-print thead{display:table-header-group}#freezer-receipt-print tr{break-inside:avoid}#freezer-receipt-print>p{margin-top:5mm;font-weight:bold}
+}
+
+/* A4 report: leave room for borders and long serial/model values. */
+@media print{
+ #freezer-receipt-print{max-width:186mm!important;font-size:10pt!important;line-height:1.45}
+ #freezer-receipt-print h1{font-size:22pt;letter-spacing:1px;margin-bottom:2mm}
+ #freezer-receipt-print h2{font-size:12pt;font-weight:600;margin-bottom:6mm}
+ .fr-print-meta{padding:3mm 0;margin-bottom:4mm;border-top:1.5px solid #111;border-bottom:1px solid #777;font-size:10pt}
+ #freezer-receipt-print table{width:100%!important;max-width:100%!important;border:1px solid #333}
+ #freezer-receipt-print th,#freezer-receipt-print td{padding:3mm 2mm!important;border:1px solid #666!important;word-break:normal;overflow-wrap:anywhere;font-size:10pt}
+ #freezer-receipt-print th{font-size:9pt;font-weight:750}
+ #freezer-receipt-print th:first-child{width:8%!important}
+ #freezer-receipt-print th:nth-child(2){width:26%!important}
+ #freezer-receipt-print th:nth-child(3){width:23%!important}
+ #freezer-receipt-print th:nth-child(4){width:25%!important}
+ #freezer-receipt-print th:last-child{width:18%!important}
+ #freezer-receipt-print td:first-child{text-align:center}
+ #freezer-receipt-print>p{padding-top:3mm;border-top:1px solid #777;text-align:right;font-size:10pt}
+}
+
+.fr-route-list table{table-layout:fixed;width:100%}.fr-route-list th:first-child{width:12%}.fr-route-list th:last-child{width:24%;text-align:right}.fr-route-list td:last-child{text-align:right}.fr-route-list td{overflow-wrap:anywhere}.fr-route-list td button{display:inline-block;margin:0;padding:8px 20px;min-height:40px}.fr-route-list td:nth-child(2){font-weight:750}
+@media(max-width:600px){.fr-route-list table{min-width:0}.fr-route-list th,.fr-route-list td{padding:12px 6px;font-size:12px}.fr-route-list th:first-child{width:15%}.fr-route-list th:last-child{width:28%}.fr-route-list td button{padding:8px 14px}}
+
+@media print{
+ #freezer-receipt-print{font-family:"Nirmala UI","Noto Sans Tamil","Latha","Tamil Sangam MN",Arial,sans-serif!important}
+ #freezer-receipt-print td:nth-child(2){line-height:1.65;word-break:normal;overflow-wrap:anywhere}
+ #freezer-receipt-print h1,#freezer-receipt-print h2{break-after:avoid}
+}

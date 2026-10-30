@@ -8,7 +8,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { generateOwnerExecutivePDFReport } from '../../utils/pdfReportGenerator';
+
 import { dashboardBusinessDay, dashboardDateRange, millisecondsToDashboardMidnight, dashboardPeriodSales } from '../../utils/executiveDashboardPeriod';
 
 export const OwnerDashboardOverview = ({ onNavigateTab }) => {
@@ -110,6 +110,7 @@ export const OwnerDashboardOverview = ({ onNavigateTab }) => {
         typeof fetchMissingStockReport === 'function' ? fetchMissingStockReport(dateFilters) : { records: [] }
       ]);
 
+      const {generateOwnerExecutivePDFReport}=await import('../../utils/pdfReportGenerator');
       const filename = await generateOwnerExecutivePDFReport({
         period: selectedPeriod,
         dateRangeText: selectedPeriod.replace('_', ' '),

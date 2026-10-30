@@ -2081,9 +2081,10 @@ async function createSaleAttempt(cid, d, actorUserId) {
     const { employee_id, shop_id, payment_mode, items, cash_paid, gpay_paid, credit_paid } = d;
     if (!items || !Array.isArray(items) || items.length === 0) throw new Error('Sale items array is required');
 
+    const isWholesaleSale = d.sale_type === 'STOREKEEPER_WHOLESALE';
     const isStoreShopSale = d.sale_type === 'STOREKEEPER_SHOP';
     if (isStoreShopSale && !shop_id) throw new Error('Shop selection is required for shop billing.');
-    const isStoreDirectSale = isStoreShopSale || d.is_store_direct_sale === true || d.sale_type === 'STOREKEEPER_DIRECT' || (!employee_id && (!shop_id || d.shop_name === 'AVS AGENCIES') && (!d.employee_name || d.employee_name.toLowerCase().includes('store')));
+    const isStoreDirectSale = isWholesaleSale || isStoreShopSale || d.is_store_direct_sale === true || d.sale_type === 'STOREKEEPER_DIRECT' || (!employee_id && (!shop_id || d.shop_name === 'AVS AGENCIES') && (!d.employee_name || d.employee_name.toLowerCase().includes('store')));
 
     const identity = requestIdentity(d);
     const clientRef = identity.key;
@@ -2260,7 +2261,8 @@ async function createSaleAttempt(cid, d, actorUserId) {
       const qtyInSellingUnits = usesBaseQuantity ? (qty / ppu) : qty;
 
       if (![prod.base_unit, prod.selling_unit].some(unit => String(unit).toLowerCase() === String(itemUnit).toLowerCase())) throw new Error('Invalid sales unit');
-      const configuredRate = usesCataloguePricing ? (usesPiecePricing ? prod.piece_selling_price : prod.unit_selling_price)
+      if (isWholesaleSale && !isBaseUnit) throw new Error('Wholesale billing requires the configured base unit.');
+      const configuredRate = isWholesaleSale ? prod.piece_selling_price : usesCataloguePricing ? (usesPiecePricing ? prod.piece_selling_price : prod.unit_selling_price)
         : isStoreDirectSale && isBaseUnit && Number(prod.direct_sale_rate) > 0 ? prod.direct_sale_rate : isBaseUnit ? prod.piece_selling_price : prod.unit_selling_price;
       const ratePaise = paise(configuredRate);
       if (ratePaise <= 0) throw new Error('Product selling price must be configured');
