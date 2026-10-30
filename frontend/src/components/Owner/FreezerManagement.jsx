@@ -894,16 +894,16 @@ export const FreezerManagement = () => {
                   <div
                     key={vg.id || vg.name}
                     onClick={() => setSelectedVillage(vg)}
-                    className="glass-panel p-5 rounded-3xl bg-white border border-slate-200 hover:border-cyan-400 hover:shadow-lg transition cursor-pointer relative overflow-hidden group flex flex-col justify-between"
+                    className="glass-panel p-4 rounded-2xl bg-white border border-slate-200 hover:border-cyan-400 hover:shadow-lg transition cursor-pointer relative overflow-hidden group flex flex-col justify-between"
                   >
-                    <div className="space-y-3.5">
+                    <div className="space-y-2.5">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-2xl bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-105 transition shadow-sm">
+                          <div className="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-200 flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-105 transition shadow-sm">
                             📍
                           </div>
                           <div>
-                            <h4 className="font-black text-base text-slate-900 group-hover:text-cyan-600 transition">
+                            <h4 className="font-black text-sm text-slate-900 group-hover:text-cyan-600 transition">
                               {vg.name}
                             </h4>
                             {vg.code && (
@@ -935,7 +935,7 @@ export const FreezerManagement = () => {
                         </div>
                       </div>
 
-                      <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200 text-xs space-y-2">
+                      <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-200 text-xs space-y-1.5">
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-bold text-[11px]">Total Shops:</span>
                           <span className="font-black text-slate-900">{totalShops} shops</span>

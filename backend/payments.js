@@ -42,12 +42,31 @@ export async function collectDue(cid, shopId, data, actor) {
       const closed=await client.query('SELECT id FROM settlements WHERE company_id=$1 AND employee_id=$2 AND settlement_date=CURRENT_DATE',[cid,actor.employee_id]);
       if(closed.rows.length)throw new Error('Daily settlement is finalized');
     }
-    if (!shop.ledger_ready) throw new Error('Legacy shop balances require approved reconciliation before collections');
     const received = paise(data.amount);
     const mode = String(data.payment_mode || '').toUpperCase();
     if (!received || !['CASH','GPAY'].includes(mode)) throw new Error('Positive amount and CASH/GPAY payment mode required');
     if (received > paise(shop.current_due)) throw new Error('Collection exceeds outstanding balance');
     const invoices = await client.query("SELECT s.*, COALESCE((SELECT SUM(a.amount) FROM receipt_allocations a WHERE a.sale_id=s.id),0) AS allocated, COALESCE((SELECT SUM(r.amount) FROM payment_reversals r WHERE r.sale_id=s.id),0) AS refunded FROM sales s WHERE s.company_id=$1 AND s.shop_id=$2 AND s.status='ACTIVE' ORDER BY s.sale_date,s.id FOR UPDATE OF s",[cid,shopId]);
+    if (!shop.ledger_ready) {
+      // Only initialize a legacy ledger when recorded history proves the exact balance.
+      // Never infer missing payments from current_due or silently discard a mismatch.
+      const openingPaid = await client.query(
+        'SELECT COALESCE(SUM(a.amount),0)::text AS total FROM receipt_allocations a JOIN receipts r ON r.id=a.receipt_id WHERE r.company_id=$1 AND r.shop_id=$2 AND a.sale_id IS NULL',
+        [cid,shopId]);
+      const openingRemaining = paise(shop.opening_balance)-paise(openingPaid.rows[0].total);
+      const invoiceRemaining = invoices.rows.reduce((sum,sale)=>{
+        const outstanding=paise(sale.credit_paid)-paise(sale.allocated)+paise(sale.refunded);
+        if(outstanding<0)throw new Error('Shop invoice allocations require reconciliation');
+        return sum+outstanding;
+      },0);
+      if(openingRemaining<0 || openingRemaining+invoiceRemaining!==paise(shop.current_due))
+        throw new Error('Shop history does not reconcile with outstanding balance. FIFO collection requires reviewed historical payment allocations.');
+      shop.opening_due_remaining=amount(openingRemaining);
+      await client.query('UPDATE shops SET ledger_ready=TRUE,opening_due_remaining=$1,updated_at=NOW() WHERE id=$2 AND company_id=$3',
+        [shop.opening_due_remaining,shopId,cid]);
+      await client.query("INSERT INTO audit_logs(company_id,actor_user_id,action,entity_type,entity_id) VALUES($1,$2,'SHOP_LEDGER_VERIFIED','shops',$3)",
+        [cid,actor.id,shopId]);
+    }
     const balance = paise(shop.opening_due_remaining) + invoices.rows.reduce((sum,sale)=>sum+paise(sale.credit_paid)-paise(sale.allocated)+paise(sale.refunded),0);
     if (balance !== paise(shop.current_due)) throw new Error('Shop ledger does not reconcile; collection requires review');
     const receipt = (await client.query('INSERT INTO receipts(company_id,shop_id,employee_id,created_by,request_key,request_hash,amount,payment_mode,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp()) RETURNING *',[cid,shopId,actor.employee_id || null,actor.id,identity.key,identity.hash,amount(received),mode,data.reference || null])).rows[0];

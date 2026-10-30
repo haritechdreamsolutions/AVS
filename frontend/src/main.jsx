@@ -60,3 +60,11 @@ createRoot(document.getElementById('root')).render(
     </ErrorBoundary>
   </StrictMode>,
 );
+
+// Optional remote fonts must not block startup on slow/offline connections.
+const optionalFonts=document.querySelector('link[data-optional-fonts]');
+if(optionalFonts){
+ const activate=()=>{optionalFonts.media='all';};
+ if(optionalFonts.sheet)activate();
+ else optionalFonts.addEventListener('load',activate,{once:true});
+}

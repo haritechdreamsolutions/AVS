@@ -82,11 +82,11 @@ export const KeeperDashboard = () => {
 
           <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
             <button
-              onClick={() => setActiveModal('SHOP_BILL')}
+              onClick={() => setActiveModal('WHOLESALE')}
               className="flex-1 md:flex-none px-5 py-3 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-600/30 transition-transform hover:scale-[1.02] active:scale-95 shrink-0 cursor-pointer min-h-[46px]"
             >
               <Store className="w-4 h-4 stroke-[2.5]" />
-              Shop Bill
+              Wholesale Bill
             </button>
 
             <button
@@ -100,9 +100,17 @@ export const KeeperDashboard = () => {
         </div>
 
         {/* Level 2: Operations Quick Toolbar */}
-        <div className="relative z-10 grid grid-cols-2 sm:flex sm:flex-wrap items-stretch gap-2 pt-1 w-full min-w-0">
+        <div className="relative z-10 grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 pt-1 w-full">
           <span className="text-[11px] font-extrabold uppercase text-slate-400 tracking-wider mr-1 hidden sm:inline-block">Quick Actions:</span>
           
+          <button
+            onClick={() => setActiveModal('SHOP_BILL')}
+            className="px-3.5 py-2.5 rounded-xl bg-sky-600/90 hover:bg-sky-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-sky-400/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
+          >
+            <Store className="w-4 h-4" />
+            Shop Bill
+          </button>
+
           <button
             onClick={() => setActiveModal('ADD_SHOP')}
             className="px-3.5 py-2.5 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-purple-400/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
@@ -145,7 +153,7 @@ export const KeeperDashboard = () => {
 
           <button
             onClick={() => setActiveModal('SALES_HISTORY')}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-700/90 hover:bg-slate-600 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-slate-500/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
+            className="col-span-2 sm:col-span-1 px-3.5 py-2.5 rounded-xl bg-slate-700/90 hover:bg-slate-600 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 border border-slate-500/30 shadow-xs transition min-h-[44px] cursor-pointer active:scale-95"
           >
             <FileText className="w-4 h-4" />
             Sales & Receipts
@@ -446,14 +454,14 @@ export const KeeperDashboard = () => {
           }}
         />
       )}
-      {activeModal === 'DIRECT_SALE' && (
-        <StoreDirectBillingModal 
+      {(activeModal === 'DIRECT_SALE' || activeModal === 'WHOLESALE') && (
+        <StoreDirectBillingModal wholesale={activeModal === 'WHOLESALE'} 
           onClose={() => {
             setActiveModal(null);
             setLastBillingModal(null);
           }}
           onBillGenerated={(sale) => {
-            setLastBillingModal('DIRECT_SALE');
+            setLastBillingModal(activeModal);
             setCompletedBill(sale);
           }}
         />

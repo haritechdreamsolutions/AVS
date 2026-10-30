@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import jspdfAutoTable from 'jspdf-autotable';
 
 /**
  * Utility to format currency in Indian Rupee format for PDF rendering
@@ -17,6 +17,11 @@ const containsTamilOrUnicode = (str) => {
   return /[\u0B80-\u0BFF]/.test(String(str));
 };
 
+// All report tables must use the Unicode renderer, including dashboard exports.
+const autoTable = (doc, options) => jspdfAutoTable(doc, {
+ ...unicodeAutoTableHooks(doc),
+ ...options
+});
 const textImageCache = new Map();
 
 /**

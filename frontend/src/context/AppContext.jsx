@@ -362,7 +362,7 @@ export const AppProvider = ({ children }) => {
           }));
         }
 
-        await fetchData();
+        await fetchData(['shops','products','sales','inventory/movements']);
         return { success: true, sale: fullSale, items: fullSale.items };
       } else {
         return { success: false, message: data.message || "Failed to submit sale" };

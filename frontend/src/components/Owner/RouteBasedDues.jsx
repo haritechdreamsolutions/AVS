@@ -100,7 +100,18 @@ export function RouteBasedDues() {
     const pageStyle=document.createElement('style');
     pageStyle.textContent=`@media print {@page route-dues {size:52mm ${Math.max(30,heightMm)}mm;margin:2mm;}}`;
     document.head.appendChild(pageStyle);
-    try {window.print();} finally {pageStyle.remove();}
+    // Desktop Chrome blocks here until its print dialog closes.
+    // afterprint remains the primary signal for browsers with async dialogs.
+    let lostFocus=false;
+    const onBlur=()=>{lostFocus=true;};
+    const onFocus=()=>{if(lostFocus)finish();};
+    window.addEventListener('blur',onBlur,{once:true});
+    window.addEventListener('focus',onFocus,{once:true});
+    window.print();
+    pageStyle.remove();
+    window.removeEventListener('blur',onBlur);
+    window.removeEventListener('focus',onFocus);
+    finish();
    } catch {
     // Keep the verified modal available so the Owner can retry.
     finished=true;cleanup();printing.current=false;setPrintSnapshot(null);

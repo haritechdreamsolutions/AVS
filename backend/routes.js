@@ -1,3 +1,5 @@
+import {freezerReceiptHandler} from './freezer-receipt.js';
+import { shopBalanceHandlers } from './shop-balance-receipt.js';
 import express from 'express';
 import * as db from './db_pg.js';
 import { csrfToken, loginLimiter, authorize, requireAuth, requireRole } from './security.js';
@@ -15,6 +17,12 @@ const getCid = (req) => req.session?.companyId || 1;
 // ====== AUTH ROUTES ======
 router.get('/auth/csrf', csrfToken);
 router.use(authorize);
+router.get('/owner/freezer-receipt/:routeId',requireRole('OWNER'),freezerReceiptHandler(db.query));
+const balanceReceipt=shopBalanceHandlers(db.query);
+router.get('/owner/shop-balance-receipt/routes',requireRole('OWNER'),balanceReceipt.routes);
+router.get('/owner/shop-balance-receipt/routes/:routeId/shops',requireRole('OWNER'),balanceReceipt.shops);
+router.get('/owner/shop-balance-receipt/details',requireRole('OWNER'),balanceReceipt.details);
+
 router.get('/owner/route-dues', requireRole('OWNER'), routeDuesHandler(db.query));
 router.get('/owner/route-dues/:routeId', requireRole('OWNER'), routeDuesHandler(db.query));
 
@@ -889,7 +897,7 @@ router.post('/sales', requireAuth, async (req, res) => {
     const payload = { ...req.body };
 
     if (userRole === 'DRIVER' || userRole === 'EMPLOYEE') {
-      if (payload.sale_type === 'STOREKEEPER_SHOP') return res.status(403).json({success:false,message:'Shop billing requires Owner or Store Keeper access.'});
+      if (['STOREKEEPER_SHOP', 'STOREKEEPER_WHOLESALE'].includes(payload.sale_type)) return res.status(403).json({success:false,message:'Shop billing requires Owner or Store Keeper access.'});
       let resolvedEmpId = req.session.employeeId || payload.employee_id || null;
       let resolvedEmpName = req.session.userName || payload.employee_name || 'Driver POS';
 
@@ -907,13 +915,13 @@ router.post('/sales', requireAuth, async (req, res) => {
       payload.employee_id = req.session?.employeeId || null;
       payload.employee_name = req.body?.employee_name || req.session?.userName || 'Store Keeper';
       payload.is_store_direct_sale = true;
-      payload.sale_type = payload.sale_type === 'STOREKEEPER_SHOP' ? 'STOREKEEPER_SHOP' : 'STOREKEEPER_DIRECT';
+      payload.sale_type = ['STOREKEEPER_SHOP', 'STOREKEEPER_WHOLESALE'].includes(payload.sale_type) ? payload.sale_type : 'STOREKEEPER_DIRECT';
       if (!payload.shop_name) payload.shop_name = 'AVS AGENCIES';
     } else if (payload.is_store_direct_sale || payload.sale_type === 'STOREKEEPER_DIRECT' || payload.sale_type === 'STOREKEEPER_SHOP') {
       payload.employee_id = null;
       payload.employee_name = req.body?.employee_name || req.session?.userName || 'Store Keeper';
       payload.is_store_direct_sale = true;
-      payload.sale_type = payload.sale_type === 'STOREKEEPER_SHOP' ? 'STOREKEEPER_SHOP' : 'STOREKEEPER_DIRECT';
+      payload.sale_type = ['STOREKEEPER_SHOP', 'STOREKEEPER_WHOLESALE'].includes(payload.sale_type) ? payload.sale_type : 'STOREKEEPER_DIRECT';
       if (!payload.shop_name) payload.shop_name = 'AVS AGENCIES';
     } else {
       // OWNER or other role
