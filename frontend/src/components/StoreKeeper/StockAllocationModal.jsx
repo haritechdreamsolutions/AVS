@@ -4,7 +4,7 @@ import { ArrowUpRight, X, Save, User, Truck, ShieldAlert, CheckCircle2, Minus, P
 import { toast } from 'sonner';
 import { ProductImage } from '../common/ProductImage';
 import { resolveProductImageUrl } from '../../utils/productImageHelper';
-import { sortProductsCustom } from '../../utils/productOrderHelper';
+import { sortOwnerProducts } from '../../utils/ownerProductOrder';
 import { getOperationalUnit } from '../../utils/unitHelper';
 
 export const StockAllocationModal = ({ onClose }) => {
@@ -271,9 +271,8 @@ export const StockAllocationModal = ({ onClose }) => {
 
       if (res.success) {
         toast.success(`🎉 Stock allocated to ${selectedDriver.full_name}'s vehicle successfully!`);
-        if (typeof fetchWarehouseStock === 'function') {
-          await fetchWarehouseStock();
-        }
+        // Allocation already schedules the authoritative stock refresh in AppContext.
+        // Do not hold the successful dialog open for a duplicate warehouse request.
         onClose();
       } else {
         toast.error(res.message || 'Failed to allocate stock');
@@ -286,7 +285,7 @@ export const StockAllocationModal = ({ onClose }) => {
   };
 
   // Only products with active status sorted by custom business order
-  const availableProducts = sortProductsCustom((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
+  const availableProducts = sortOwnerProducts((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
 
   // Compute total allocated items for validation and counter
   const totalAllocatedItems = Object.entries(allocations).reduce((acc, [pidStr, alloc]) => {

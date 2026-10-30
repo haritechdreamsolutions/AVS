@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ArrowLeft, ArrowRight, ShoppingBag, AlertTriangle, X, Search, Box } from 'lucide-react';
-import { sortProductsCustom } from '../../utils/productOrderHelper';
+import { sortOwnerProducts } from '../../utils/ownerProductOrder';
 import { driverUnitPrice, getDriverBillingInfo } from '../../utils/driverPricing';
 
 export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) => {
@@ -82,7 +82,7 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
 
   // Filter ONLY products assigned to this driver that have available stock > 0 sorted by custom order
   const availableAssignedProducts = useMemo(() => {
-    return sortProductsCustom((products || []).filter(p => {
+    return sortOwnerProducts((products || []).filter(p => {
       const info = getProductStockInfo(p);
       return !info.isOutOfStock && info.availableStock > 0;
     }));

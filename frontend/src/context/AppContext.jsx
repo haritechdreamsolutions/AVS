@@ -209,7 +209,7 @@ export const AppProvider = ({ children }) => {
         needs('sales') ? apiFetch(`${API_URL}/sales`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(sales),
         needs('expenses') ? apiFetch(`${API_URL}/expenses`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(expenses),
         needs('inventory/movements') ? apiFetch(`${API_URL}/inventory/movements`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(stockMovements),
-        isOwner ? apiFetch(`${API_URL}/users`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve([]),
+        isOwner && needs('users') ? apiFetch(`${API_URL}/users`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(isOwner ? users : []),
         needs('routes') ? apiFetch(`${API_URL}/routes`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(routes),
         needs('employees') ? apiFetch(`${API_URL}/employees`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(employees),
         needs('drivers') ? apiFetch(`${API_URL}/drivers`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(drivers),
@@ -220,20 +220,20 @@ export const AppProvider = ({ children }) => {
 
       if (generation !== refreshGeneration.current) return;
       setRefreshError('');
-      setShops(Array.isArray(shopsRes) ? shopsRes : []);
-      setVillages(Array.isArray(villagesRes) ? villagesRes : []);
-      setProducts(Array.isArray(prodRes) ? sortProductsCustom(prodRes) : []);
-      setCategories(Array.isArray(catRes) ? catRes : []);
+      if (needs('shops'))setShops(Array.isArray(shopsRes) ? shopsRes : []);
+      if (needs('villages'))setVillages(Array.isArray(villagesRes) ? villagesRes : []);
+      if (needs('products')) setProducts(Array.isArray(prodRes) ? sortProductsCustom(prodRes) : []);
+      if (needs('categories'))setCategories(Array.isArray(catRes) ? catRes : []);
       setEmployeeStock(Array.isArray(empStockRes) ? empStockRes : []);
       setSummary(summaryRes);
-      setSales(Array.isArray(salesRes) ? salesRes : []);
-      setExpenses(Array.isArray(expRes) ? expRes : []);
-      setStockMovements(Array.isArray(movRes) ? movRes : []);
-      setUsers(Array.isArray(usersRes) ? usersRes : []);
-      setRoutes(Array.isArray(routesRes) ? routesRes : []);
-      setEmployees(Array.isArray(empRes) ? empRes : []);
-      setDrivers(Array.isArray(driversRes) ? driversRes : []);
-      setFreezerModels(Array.isArray(freezerModelsRes) ? freezerModelsRes : []);
+      if (needs('sales'))setSales(Array.isArray(salesRes) ? salesRes : []);
+      if (needs('expenses'))setExpenses(Array.isArray(expRes) ? expRes : []);
+      if (needs('inventory/movements'))setStockMovements(Array.isArray(movRes) ? movRes : []);
+      if (!isOwner || needs('users')) setUsers(Array.isArray(usersRes) ? usersRes : []);
+      if (needs('routes'))setRoutes(Array.isArray(routesRes) ? routesRes : []);
+      if (needs('employees'))setEmployees(Array.isArray(empRes) ? empRes : []);
+      if (needs('drivers'))setDrivers(Array.isArray(driversRes) ? driversRes : []);
+      if (needs('freezer-models'))setFreezerModels(Array.isArray(freezerModelsRes) ? freezerModelsRes : []);
       
       // Use backend suppliers list as authoritative source of truth, fallback to local cache if empty
       const rawSuppliers = Array.isArray(suppliersRes) ? suppliersRes : (Array.isArray(suppliersRes?.suppliers) ? suppliersRes.suppliers : null);
@@ -280,6 +280,7 @@ export const AppProvider = ({ children }) => {
       });
     } catch (err) {
       console.error("Failed to load initial data:", err);
+      if (generation === refreshGeneration.current) setRefreshError('Latest data could not be refreshed. Please retry before starting the next transaction.');
     } finally {
       setLoading(false);
     }
@@ -362,7 +363,8 @@ export const AppProvider = ({ children }) => {
           }));
         }
 
-        await fetchData(['shops','products','sales','inventory/movements']);
+        // The committed invoice is authoritative; unrelated refreshes must not delay its receipt.
+        void fetchData(['shops','products','sales','inventory/movements']);
         return { success: true, sale: fullSale, items: fullSale.items };
       } else {
         return { success: false, message: data.message || "Failed to submit sale" };
@@ -1154,7 +1156,7 @@ export const AppProvider = ({ children }) => {
       });
       const data = await res.json();
       if (data.success) {
-        fetchData();
+        void fetchData(['products','inventory/movements','routes','employees','drivers']);
         return { success: true, message: data.message };
       } else {
         return { success: false, message: data.message };

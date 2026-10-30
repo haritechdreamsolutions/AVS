@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { formatWarehouseStock } from '../../utils/unitHelper';
 import { getStoreDirectPricing } from '../../utils/storeDirectPricing';
-import { sortProductsCustom } from '../../utils/productOrderHelper';
+import { sortOwnerProducts } from '../../utils/ownerProductOrder';
 import { 
   X, ShoppingBag, Plus, Minus, CheckCircle2, 
   CreditCard, DollarSign, Smartphone, Trash2, ArrowRightLeft, Sparkles,
@@ -65,7 +65,7 @@ export const StoreDirectBillingModal = ({ onClose, onBillGenerated, wholesale = 
   const { products = [], createSale, currentUser } = useApp();
   
   const activeProducts = useMemo(() => {
-    return sortProductsCustom((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
+    return sortOwnerProducts((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
   }, [products]);
 
   const billingRequest = useRef({ key: crypto.randomUUID(), payload: '' });

@@ -1,3 +1,4 @@
+import {sortOwnerProducts} from '../../utils/ownerProductOrder';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '../../context/AppContext';
@@ -1375,7 +1376,7 @@ export const StockReturnModal = ({ onClose }) => {
                 </div>
               ) : (
                 <div className="space-y-3.5 max-h-[420px] overflow-y-auto pr-1">
-                  {manualReturnReview.items.map(p => {
+                  {sortOwnerProducts(manualReturnReview.items.map(p => ({...p,display_name:p.product_name||p.display_name||p.name}))).map(p => {
                     const unit = p.unit;
                     const isBalanced = p.physicalStatus === 'BALANCED';
                     const isMissing = p.physicalStatus === 'MISSING';

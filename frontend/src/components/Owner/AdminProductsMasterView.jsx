@@ -12,7 +12,7 @@ import {
   Sparkles, RefreshCw, Layers3, DollarSign, Barcode, ShieldAlert, Check, Upload, Image as ImageIcon 
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { sortProductsCustom } from '../../utils/productOrderHelper';
+import { sortOwnerProducts } from '../../utils/ownerProductOrder';
 
 const SELLING_UNITS = ['Tray', 'Box', 'Case', 'Pack', 'Crate', 'Bottle'];
 const BASE_UNITS = ['Piece', 'Box', 'Case', 'Bottle', 'Packet', 'Can', 'Pouches'];
@@ -139,7 +139,7 @@ export const AdminProductsMasterView = () => {
 
       return catMatch && statusMatch && nameMatch;
     });
-    return sortProductsCustom(list);
+    return sortOwnerProducts(list);
   }, [products, selectedCategory, statusFilter, searchQuery]);
 
   // Overall Statistics

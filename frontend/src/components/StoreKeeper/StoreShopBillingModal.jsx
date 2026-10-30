@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getStoreShopPricing } from '../../utils/storeShopPricing';
-import { sortProductsCustom } from '../../utils/productOrderHelper';
+import { sortOwnerProducts } from '../../utils/ownerProductOrder';
 import { 
   X, Store, MapPin, Search, ArrowLeft, ArrowRight, CheckCircle2, 
   ShoppingBag, Banknote, Smartphone, CreditCard, Split, 
@@ -143,7 +143,7 @@ export const StoreShopBillingModal = ({ onClose, onBillGenerated }) => {
   // 2. PRODUCT STOCK & OPERATIONAL UNITS FOR WAREHOUSE
   // ---------------------------------------------------------
   const activeProducts = useMemo(() => {
-    return sortProductsCustom((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
+    return sortOwnerProducts((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
   }, [products]);
 
   const categoriesList = useMemo(() => {

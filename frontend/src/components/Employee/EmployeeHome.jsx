@@ -1,3 +1,4 @@
+import {sortOwnerProducts} from '../../utils/ownerProductOrder';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
@@ -459,7 +460,7 @@ export const EmployeeHome = ({ onStartBilling }) => {
           </div>
         ) : (
           <div className="flex flex-col gap-2.5 sm:gap-3">
-            {employeeStock.filter(item => Number(item.qty_units || 0) > 0).map((item, idx) => {
+            {sortOwnerProducts(employeeStock.filter(item => Number(item.qty_units || 0) > 0).map(item=>({...item,name:item.display_name||item.product_name||item.name}))).map((item, idx) => {
               const stockDisplay = formatVehicleStockDisplay(item);
 
               return (

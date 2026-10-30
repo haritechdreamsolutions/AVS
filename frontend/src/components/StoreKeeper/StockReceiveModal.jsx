@@ -4,7 +4,7 @@ import { ArrowDownLeft, X, Save, Building2, Tag, Minus, Plus, AlertCircle } from
 import { toast } from 'sonner';
 import { ProductImage } from '../common/ProductImage';
 import { resolveProductImageUrl } from '../../utils/productImageHelper';
-import { sortProductsCustom } from '../../utils/productOrderHelper';
+import { sortOwnerProducts } from '../../utils/ownerProductOrder';
 import { getOperationalUnit } from '../../utils/unitHelper';
 
 export const StockReceiveModal = ({ onClose }) => {
@@ -39,7 +39,7 @@ export const StockReceiveModal = ({ onClose }) => {
 
   // Inactive products must NOT appear in Stock Receive product selection
   const activeProducts = useMemo(() => {
-    return sortProductsCustom((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
+    return sortOwnerProducts((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
   }, [products]);
 
   // Current selected supplier object
