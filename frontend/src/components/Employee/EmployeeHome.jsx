@@ -276,12 +276,18 @@ export const EmployeeHome = ({ onStartBilling }) => {
 
         {/* Big Gross Sales Total */}
         <div className="flex items-center justify-between py-1">
-          <div>
+          {!isDriver && <div>
             <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Total Sales (Gross)</span>
             <p className="font-mono font-black text-2xl sm:text-3xl text-slate-900 leading-none mt-0.5">
               ₹{totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
-          </div>
+          </div>}
+          {isDriver && <div className="p-2 rounded-xl bg-blue-50/70 border border-blue-100 flex-1 min-w-0 mr-3">
+            <span className="text-[10px] font-extrabold text-blue-800 uppercase tracking-wider block">GPay / UPI</span>
+            <span className="font-mono font-black text-sm text-blue-700 block mt-0.5">
+              {'\u20B9'}{gpayCollected.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>}
           <div className="text-right">
             <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Route Coverage</span>
             <p className="font-mono font-black text-sm text-blue-600 leading-none mt-1">
@@ -291,8 +297,8 @@ export const EmployeeHome = ({ onStartBilling }) => {
         </div>
 
         {/* Payment-Wise Summary Grid */}
-        <div className="grid grid-cols-2 xs:grid-cols-4 gap-2 pt-1 border-t border-slate-100 text-xs">
-          <div className="p-2 rounded-xl bg-emerald-50/70 border border-emerald-100">
+        <div className={`grid grid-cols-2 ${isDriver ? '' : 'xs:grid-cols-4'} gap-2 pt-1 border-t border-slate-100 text-xs`}>
+          {!isDriver && <><div className="p-2 rounded-xl bg-emerald-50/70 border border-emerald-100">
             <span className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider block">Cash</span>
             <span className="font-mono font-black text-xs sm:text-sm text-emerald-700 block mt-0.5">
               ₹{cashCollected.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -301,9 +307,10 @@ export const EmployeeHome = ({ onStartBilling }) => {
           <div className="p-2 rounded-xl bg-blue-50/70 border border-blue-100">
             <span className="text-[10px] font-extrabold text-blue-800 uppercase tracking-wider block">GPay / UPI</span>
             <span className="font-mono font-black text-xs sm:text-sm text-blue-700 block mt-0.5">
-              ₹{gpayCollected.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {'\u20B9'}{gpayCollected.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
+          </>}
           <div className="p-2 rounded-xl bg-purple-50/70 border border-purple-100">
             <span className="text-[10px] font-extrabold text-purple-800 uppercase tracking-wider block">Credit</span>
             <span className="font-mono font-black text-xs sm:text-sm text-purple-700 block mt-0.5">
