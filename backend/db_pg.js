@@ -170,7 +170,7 @@ export async function getUsers(cid) {
     'JOIN roles r ON r.id = ua.role_id ' +
     'LEFT JOIN employees e ON e.id = ua.employee_id ' +
     'LEFT JOIN routes rt ON rt.id = e.route_id ' +
-    'WHERE ua.company_id = $1 ' +
+    'WHERE ua.company_id = $1 AND ua.deleted_at IS NULL ' +
     'ORDER BY ua.created_at DESC',
     [cid]
   );
@@ -227,7 +227,20 @@ export async function addUser(cid, d, actorUserId) {
 }
 
 export async function updateUser(cid, uid, d, actorUserId) {
-  const existingUser = await queryOne('SELECT ua.*, r.role_name FROM user_accounts ua JOIN roles r ON r.id = ua.role_id WHERE ua.id=$1 AND ua.company_id=$2', [uid, cid]);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT id FROM companies WHERE id=$1 FOR UPDATE', [cid]);
+    await client.query('SELECT id FROM user_accounts WHERE id=$1 AND company_id=$2 FOR UPDATE', [uid,cid]);
+    const result = await transactionContext.run(client, () => updateUserInTransaction(cid,uid,d,actorUserId));
+    await client.query('COMMIT');
+    return result;
+  } catch(error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
+
+async function updateUserInTransaction(cid, uid, d, actorUserId) {
+  const existingUser = await queryOne('SELECT ua.*, r.role_name FROM user_accounts ua JOIN roles r ON r.id = ua.role_id WHERE ua.id=$1 AND ua.company_id=$2 AND ua.deleted_at IS NULL', [uid, cid]);
   if (!existingUser) throw new Error('User not found.');
   if (existingUser.is_system_administrator) throw new Error('Administrator account cannot be edited.');
   if (String(d.login_id || '').trim().toLowerCase() === 'administrator') throw new Error('Administrator login is reserved.');
@@ -240,6 +253,7 @@ export async function updateUser(cid, uid, d, actorUserId) {
     if (!r && (roleInput === 'DRIVER' || roleInput === 'EMPLOYEE' || roleInput === 'STORE_KEEPER' || roleInput === 'OWNER')) {
       r = await queryOne('INSERT INTO roles (role_name) VALUES ($1) ON CONFLICT (role_name) DO UPDATE SET role_name=EXCLUDED.role_name RETURNING id, role_name', [roleInput]);
     }
+    if (!r || !['OWNER','STORE_KEEPER','DRIVER','EMPLOYEE'].includes(r.role_name)) throw new Error('Invalid role specified.');
     if (r) {
       roleId = r.id;
       roleName = r.role_name;
@@ -247,23 +261,30 @@ export async function updateUser(cid, uid, d, actorUserId) {
   }
 
   const loginId = d.login_id ? String(d.login_id).trim().toLowerCase() : existingUser.login_id;
-  if (loginId && loginId !== existingUser.login_id) {
+  if (!String(loginId || '').trim()) throw new Error('Login ID is required.');
+  if (loginId && loginId !== String(existingUser.login_id).trim().toLowerCase()) {
     const dupLogin = await queryOne('SELECT id FROM user_accounts WHERE LOWER(login_id)=$1 AND id != $2', [loginId, uid]);
     if (dupLogin) throw new Error('Login ID already taken. Please choose another.');
   }
 
   const displayName = d.name !== undefined ? (d.name ? String(d.name).trim() : null) : existingUser.name;
-  const status = d.status || d.account_status || existingUser.account_status;
+  const status = String(d.status || d.account_status || existingUser.account_status).toUpperCase();
+  if (!['ACTIVE','INACTIVE','SUSPENDED'].includes(status)) throw new Error('Invalid account status.');
+  if (existingUser.role_name === 'OWNER' && existingUser.account_status === 'ACTIVE' && (roleName !== 'OWNER' || status !== 'ACTIVE')) {
+    const owners = await queryOne("SELECT COUNT(*)::int AS count FROM user_accounts ua JOIN roles r ON r.id=ua.role_id WHERE ua.company_id=$1 AND r.role_name='OWNER' AND ua.account_status='ACTIVE' AND ua.deleted_at IS NULL", [cid]);
+    if (owners.count <= 1) throw new Error('Cannot deactivate or change the role of the only active OWNER account.');
+  }
   const targetEmployeeId = d.employee_id === undefined ? existingUser.employee_id
     : d.employee_id === null || d.employee_id === '' ? null : Number(d.employee_id);
   if (targetEmployeeId !== null && (!Number.isSafeInteger(targetEmployeeId) || targetEmployeeId <= 0)) throw new Error('Employee ID must be a positive whole number');
   if (targetEmployeeId && !(await queryOne('SELECT id FROM employees WHERE id=$1 AND company_id=$2',[targetEmployeeId,cid]))) throw new Error('Employee must belong to this company');
 
   const row = await queryOne(
-    'UPDATE user_accounts SET login_id=$1, role_id=$2, name=COALESCE($3, name), account_status=$4, employee_id=$5, updated_at=NOW() WHERE id=$6 AND company_id=$7 RETURNING id,company_id,employee_id,role_id,login_id,name,phone,account_status',
-    [loginId, roleId, displayName, status, targetEmployeeId, uid, cid]
+    'UPDATE user_accounts SET login_id=$1, role_id=$2, name=COALESCE($3, name), account_status=$4, employee_id=$5, phone=$8, updated_at=NOW() WHERE id=$6 AND company_id=$7 AND deleted_at IS NULL RETURNING id,company_id,employee_id,role_id,login_id,name,phone,account_status',
+    [loginId, roleId, displayName, status, targetEmployeeId, uid, cid, d.phone === undefined ? existingUser.phone : d.phone || null]
   );
 
+  if (!row) throw new Error('User not found.');
   const activeEmpId = targetEmployeeId;
   let updatedRouteId = undefined;
   if (activeEmpId) {
@@ -282,8 +303,11 @@ export async function updateUser(cid, uid, d, actorUserId) {
 
     if (d.route_id !== undefined || d.routeId !== undefined) {
       const rawRoute = d.route_id !== undefined ? d.route_id : d.routeId;
-      updatedRouteId = (rawRoute === null || rawRoute === '' || rawRoute === 0 || rawRoute === '0') ? null : parseInt(rawRoute, 10);
-      if (isNaN(updatedRouteId)) updatedRouteId = null;
+      updatedRouteId = (rawRoute === null || rawRoute === '' || rawRoute === 0 || rawRoute === '0') ? null : Number(rawRoute);
+      if (updatedRouteId !== null && (!Number.isSafeInteger(updatedRouteId) || updatedRouteId <= 0)) throw new Error('Invalid route selected.');
+      if (updatedRouteId && !(await queryOne('SELECT id FROM routes WHERE id=$1 AND company_id=$2', [updatedRouteId,cid]))) throw new Error('Route must belong to this company.');
+      const currentEmployee = await queryOne('SELECT route_id FROM employees WHERE id=$1 AND company_id=$2', [activeEmpId,cid]);
+      if (String(currentEmployee.route_id || '') !== String(updatedRouteId || '')) {
 
       await query('UPDATE employees SET route_id=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3', [updatedRouteId, activeEmpId, cid]);
 
@@ -297,7 +321,8 @@ export async function updateUser(cid, uid, d, actorUserId) {
           [updatedRouteId, activeEmpId, empRec?.vehicle_number || null, today, 'ASSIGNED', new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})]
         );
       } else {
-        await query('DELETE FROM route_assignments WHERE employee_id=$1', [activeEmpId]);
+        await query("DELETE FROM route_assignments WHERE employee_id=$1 AND assigned_date=$2 AND status='ASSIGNED'", [activeEmpId,businessDate()]);
+      }
       }
     }
   }
@@ -315,41 +340,35 @@ export async function updateUser(cid, uid, d, actorUserId) {
 }
 
 export async function deleteUser(cid, uid, actorUserId) {
-  const user = await queryOne('SELECT ua.*, r.role_name FROM user_accounts ua JOIN roles r ON r.id = ua.role_id WHERE ua.id=$1 AND ua.company_id=$2', [uid, cid]);
-  if (!user) throw new Error('User not found.');
-  if (user.is_system_administrator) throw new Error('Administrator account cannot be deleted.');
-
-  if (user.role_name === 'OWNER') {
-    const ownerCount = await queryOne(
-      'SELECT COUNT(*)::int as count FROM user_accounts ua JOIN roles r ON r.id = ua.role_id WHERE r.role_name = \'OWNER\' AND ua.company_id = $1 AND ua.account_status = \'ACTIVE\'',
-      [cid]
-    );
-    if (ownerCount && parseInt(ownerCount.count, 10) <= 1) {
-      throw new Error('Cannot delete the primary/only active OWNER account.');
+  if (String(uid) === String(actorUserId)) throw new Error('Cannot delete your own account.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Serialize owner deletion decisions within this company.
+    await client.query('SELECT id FROM companies WHERE id=$1 FOR UPDATE', [cid]);
+    const user = (await client.query('SELECT ua.*, r.role_name FROM user_accounts ua JOIN roles r ON r.id=ua.role_id WHERE ua.id=$1 AND ua.company_id=$2 FOR UPDATE OF ua', [uid,cid])).rows[0];
+    if (!user) throw new Error('User not found.');
+    if (user.is_system_administrator) throw new Error('Administrator account cannot be deleted.');
+    if (!user.deleted_at) {
+      if (user.role_name === 'OWNER' && user.account_status === 'ACTIVE') {
+        const owners = await client.query("SELECT COUNT(*)::int AS count FROM user_accounts ua JOIN roles r ON r.id=ua.role_id WHERE ua.company_id=$1 AND r.role_name='OWNER' AND ua.account_status='ACTIVE' AND ua.deleted_at IS NULL", [cid]);
+        if (owners.rows[0].count <= 1) throw new Error('Cannot delete the only active OWNER account.');
+      }
+      // Retain foreign keys and historical names; remove the login from User Master.
+      await client.query("UPDATE user_accounts SET account_status='INACTIVE', deleted_at=NOW(), updated_at=NOW() WHERE id=$1 AND company_id=$2", [uid,cid]);
+      if (user.employee_id) await client.query('UPDATE employees SET is_active=FALSE, updated_at=NOW() WHERE id=$1 AND company_id=$2', [user.employee_id,cid]);
+      await client.query("INSERT INTO audit_logs(company_id,actor_user_id,action,entity_type,entity_id) VALUES($1,$2,'USER_DELETED','user_accounts',$3)", [cid,actorUserId||null,uid]);
     }
-  }
-
-  // Check if user has sales or stock transaction records
-  const salesCount = await queryOne('SELECT COUNT(*)::int as count FROM sales WHERE employee_id=$1', [user.employee_id || 0]);
-  if (salesCount && parseInt(salesCount.count, 10) > 0) {
-    await query('UPDATE user_accounts SET account_status=\'INACTIVE\', updated_at=NOW() WHERE id=$1 AND company_id=$2', [uid, cid]);
-    if (user.employee_id) {
-      await query('UPDATE employees SET is_active=FALSE, updated_at=NOW() WHERE id=$1 AND company_id=$2', [user.employee_id, cid]);
-    }
-    return { success: true, message: `User "${user.login_id}" has sales records and has been deactivated.`, user: { id: user.id, login_id: user.login_id } };
-  }
-
-  await query('DELETE FROM user_accounts WHERE id=$1 AND company_id=$2', [uid, cid]);
-  if (user.employee_id) {
-    await query('UPDATE employees SET is_active=FALSE WHERE id=$1 AND company_id=$2', [user.employee_id, cid]);
-  }
-
-  await auditLog({ companyId: cid, actorUserId, action: 'USER_DELETED', entityType: 'user_accounts', entityId: uid });
-  return { success: true, message: `User "${user.login_id}" deleted successfully.`, user: { id: user.id, login_id: user.login_id } };
+    await client.query('COMMIT');
+    return {success:true,message:`User "${user.login_id}" removed. Previous bills and reports are preserved.`,user:{id:user.id,login_id:user.login_id}};
+  } catch(error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
 }
 
 export async function resetPin(cid, uid, newPin, actorUserId) {
-  const account = await queryOne('SELECT r.role_name,u.is_system_administrator FROM user_accounts u JOIN roles r ON r.id=u.role_id WHERE u.id=$1 AND u.company_id=$2', [uid,cid]);
+  const account = await queryOne('SELECT r.role_name,u.is_system_administrator FROM user_accounts u JOIN roles r ON r.id=u.role_id WHERE u.id=$1 AND u.company_id=$2 AND u.deleted_at IS NULL', [uid,cid]);
   if (!account) throw new Error('User not found');
   if (account.is_system_administrator) throw new Error('Administrator password cannot be reset through user management.');
   const pinStr = credential(newPin, account.role_name);
@@ -370,7 +389,7 @@ export async function resetUserPin(cid, uid, newPin, actorUserId) {
 export async function toggleUserStatus(cid,uid,status,actorUserId) {
   const s = status==='ACTIVE'?'ACTIVE':'SUSPENDED';
   const row = await queryOne(
-    'UPDATE user_accounts SET account_status=$1,updated_at=NOW() WHERE id=$2 AND company_id=$3 RETURNING id,account_status',
+    'UPDATE user_accounts SET account_status=$1,updated_at=NOW() WHERE id=$2 AND company_id=$3 AND deleted_at IS NULL RETURNING id,account_status',
     [s,uid,cid]
   );
   if(!row) throw new Error('User not found.');

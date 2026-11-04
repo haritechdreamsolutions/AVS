@@ -541,8 +541,7 @@ router.post('/users', requireAuth, requireRole('OWNER'), async (req, res) => {
 
 router.put('/users/:id', requireAuth, requireRole('OWNER'), async (req, res) => {
   try {
-    const result = await db.updateUser(getCid(req), req.params.id, req.body);
-    await db.auditLog({ companyId: getCid(req), actorUserId: req.session.userId, action: 'USER_UPDATE', entityType: 'user_accounts', entityId: req.params.id });
+    const result = await db.updateUser(getCid(req), req.params.id, req.body, req.session.userId);
     res.json(result);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });

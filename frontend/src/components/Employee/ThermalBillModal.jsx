@@ -79,9 +79,11 @@ export const ThermalBillModal = ({
   }, [shops, bill]);
 
   const oldCreditPaid = Number(bill.old_credit_paid || 0);
+  const receiptBillOnly = storekeeperPrint && oldCreditPaid === 0;
   const thisBillCredit = paymentMode === 'CREDIT' ? totalAmount : (paymentMode === 'SPLIT' ? creditPaid : 0);
 
   const previousDue = useMemo(() => {
+    if(receiptBillOnly)return 0;
     if (bill.previous_due !== undefined && bill.previous_due !== null && !isNaN(Number(bill.previous_due))) {
       return Number(bill.previous_due);
     }
@@ -93,9 +95,9 @@ export const ThermalBillModal = ({
       return Math.max(0, currentShopDue - thisBillCredit + oldCreditPaid);
     }
     return Number(bill.shop_due ?? 0);
-  }, [bill, matchedShop, thisBillCredit, oldCreditPaid]);
+  }, [bill, matchedShop, thisBillCredit, oldCreditPaid, receiptBillOnly]);
 
-  const totalShopDue = bill.shop_current_due !== undefined && bill.shop_current_due !== null && !isNaN(Number(bill.shop_current_due))
+  const totalShopDue = receiptBillOnly ? thisBillCredit : bill.shop_current_due !== undefined && bill.shop_current_due !== null && !isNaN(Number(bill.shop_current_due))
     ? Number(bill.shop_current_due)
     : Math.max(0, previousDue - oldCreditPaid) + thisBillCredit;
 
@@ -160,7 +162,10 @@ export const ThermalBillModal = ({
         company_phone: companyPhone,
         items: items,
         total_quantity: totalQty,
+        receipt_bill_only: receiptBillOnly,
         previous_due: previousDue,
+        shop_previous_due: previousDue,
+        shop_due: previousDue,
         old_credit_paid: oldCreditPaid,
         shop_current_due: totalShopDue
       };
@@ -445,7 +450,7 @@ export const ThermalBillModal = ({
             {/* Total Shop Due Balance */}
             <div className={`flex justify-between items-center font-black ${is80mm ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'} pt-2 pb-1.5 px-1 border-t-2 border-dashed border-slate-400`}>
               <span className={totalShopDue > 0 ? 'text-amber-900 font-black' : 'text-emerald-800 font-black'}>
-                SHOP BALANCE (கடை பாக்கி):
+                {receiptBillOnly ? "BILL BALANCE:" : "SHOP BALANCE (\u0b95\u0b9f\u0bc8 \u0baa\u0bbe\u0b95\u0bcd\u0b95\u0bbf):"}
               </span>
               <span className={`font-mono ${is80mm ? 'text-base sm:text-lg' : 'text-sm sm:text-base'} font-black ${totalShopDue > 0 ? 'text-amber-900' : 'text-emerald-800'}`}>
                 ₹{totalShopDue.toFixed(2)}
