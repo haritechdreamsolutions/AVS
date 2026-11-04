@@ -1,3 +1,5 @@
+import {companyProductActive} from '../shared/supplierProducts.js';
+import {purchaseUnit} from '../shared/purchaseUnits.js';
 import bcrypt from 'bcrypt';
 import { driverPerformance, routePerformance } from './performance-reports.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -1298,16 +1300,29 @@ async function receiveStockAttempt(cid, data, actorUserId) {
     await client.query('BEGIN');
     const items = data.items || [{ product_id: data.product_id, quantity: data.quantity, unit: data.unit }];
     const supplier_id = data.supplier_id ? Number(data.supplier_id) : null;
+    if(data.supplier_id&&(!Number.isSafeInteger(supplier_id)||supplier_id<=0))throw new Error('Valid purchase company is required');
     let supplier_name = data.supplier_name || data.dealer_name || null;
 
-    if (supplier_id && !supplier_name) {
-      const sRes = await client.query('SELECT name FROM suppliers WHERE id=$1 AND (company_id=$2)', [supplier_id, cid]);
-      if (sRes.rows.length > 0) supplier_name = sRes.rows[0].name;
+    let supplier=null;
+    if(supplier_id){
+      supplier=(await client.query('SELECT * FROM suppliers WHERE id=$1 AND company_id=$2 AND is_active=TRUE FOR SHARE',[supplier_id,cid])).rows[0];
+      if(!supplier)throw new Error('Purchase company not found or inactive');
+      supplier_name=supplier.name;
     }
-
+    let receiveIdentity=null;
+    if(data.idempotency_key){
+      receiveIdentity=requestIdentity(data);
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['receive:'+cid+':'+receiveIdentity.key]);
+      const saved=(await client.query("SELECT request_hash,result FROM operation_requests WHERE company_id=$1 AND operation='receive-stock' AND request_key=$2",[cid,receiveIdentity.key])).rows[0];
+      if(saved){
+        if(saved.request_hash!==receiveIdentity.hash)throw new Error('Receipt request already used with different details');
+        await client.query('COMMIT');return {...saved.result,isDuplicate:true};
+      }
+    }
     const reference = data.reference || supplier_name || data.dealer_name || null;
     const received_by = data.received_by || 'Store Keeper';
     const notes = data.notes || (supplier_name ? `Supplier: ${supplier_name}` : null);
+    if(!Array.isArray(items)||!items.length)throw new Error('Select at least one product to receive');
     const results = [];
     for (const item of [...items].sort((first,second)=>Number(first.product_id)-Number(second.product_id))) {
       let qty = Number(item.quantity || item.qty_units);
@@ -1317,7 +1332,7 @@ async function receiveStockAttempt(cid, data, actorUserId) {
       const pRes = await client.query('SELECT p.*, c.name AS category_name, c.operational_unit AS category_operational_unit FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.id=$1 AND p.company_id=$2 AND p.deleted_at IS NULL FOR UPDATE OF p', [pid, cid]);
       if (pRes.rows.length === 0) throw new Error('Product not found');
       const prod = pRes.rows[0];
-      const operational = getOperationalUnit(prod);
+      const operational = purchaseUnit(prod);
       if (item.unit && String(item.unit).toLowerCase() !== String(prod.selling_unit).toLowerCase()) throw new Error('Stock quantities must use the configured selling unit');
       const ppu = Number(prod.pieces_per_unit);
       let wholePieces = null;
@@ -1343,11 +1358,26 @@ async function receiveStockAttempt(cid, data, actorUserId) {
       if (prod.is_active === false || prod.is_active === 0) {
         throw new Error('Cannot receive stock for an inactive product.');
       }
-      const itemRate = (item.rate !== undefined && item.rate !== null && !isNaN(Number(item.rate))) ? Number(item.rate) : Number(prod.purchase_price || 0);
-      if (supplier_id && itemRate <= 0) {
-        throw new Error(`Buy Rate is not configured for "${prod.display_name}". Please set product buy rate in Owner Login first.`);
+      let itemRate=Number(item.rate??prod.purchase_price??0),pieceRate=null;
+      if(supplier){
+        const rates=supplier.product_rates||{};
+        if(!companyProductActive(rates,pid))throw new Error('Product is not assigned to the selected company.');
+        const configured=rates[pid];
+        itemRate=Number(typeof configured==='object'?(configured.tray_rate??configured.rate):configured);
+        pieceRate=typeof configured==='object'&&configured.piece_rate!==undefined?Number(configured.piece_rate):Number((itemRate/ppu).toFixed(2));
+        if(item.rate!==undefined&&paise(item.rate)!==paise(itemRate))throw new Error('Company rate changed. Reopen Receive Stock to load the latest rates.');
+        if(operational.isPieceBased&&item.piece_rate!==undefined&&paise(item.piece_rate)!==paise(pieceRate))throw new Error('Company piece rate changed. Reopen Receive Stock.');
       }
-      const itemTotal = itemRate * qty;
+      if(!Number.isFinite(itemRate)||itemRate<0||(supplier_id&&itemRate<=0))throw new Error('A positive company purchase rate is required.');
+      let itemTotal;
+      if(supplier&&operational.isPieceBased){
+        const trays=item.inward_trays===undefined?Math.floor(wholePieces/ppu):Number(item.inward_trays);
+        const pieces=item.inward_pieces===undefined?wholePieces-trays*ppu:Number(item.inward_pieces);
+        if(!Number.isSafeInteger(trays)||trays<0||!Number.isSafeInteger(pieces)||pieces<0||trays*ppu+pieces!==wholePieces)throw new Error('Invalid received tray/piece quantities');
+        if(pieces>0&&pieceRate<=0)throw new Error('A positive company piece rate is required for loose pieces');
+        itemTotal=Number(amount(trays*paise(itemRate)+pieces*paise(pieceRate)));
+      }else itemTotal=Number(amount(Math.round(paise(itemRate)*qty)));
+      if(item.total_amount!==undefined&&paise(item.total_amount)!==paise(itemTotal))throw new Error('Purchase total changed. Please review the company rates and quantities.');
       const uRes = operational.isPieceBased
         ? await client.query('UPDATE products SET warehouse_stock_units=(ROUND(warehouse_stock_units*$2)+$3)/$2, updated_at=NOW() WHERE id=$1 RETURNING *', [pid,ppu,wholePieces])
         : await client.query('UPDATE products SET warehouse_stock_units=warehouse_stock_units+$1, updated_at=NOW() WHERE id=$2 RETURNING *', [qty, pid]);
@@ -1360,8 +1390,10 @@ async function receiveStockAttempt(cid, data, actorUserId) {
       results.push({ product: uRes.rows[0], movement: movRes.rows[0] });
     }
     await auditLog({ companyId: cid, actorUserId, action: 'STOCK_RECEIVED', entityType: 'inventory_movements', metadata: { itemsCount: items.length, supplier_id, supplier_name, reference } });
+    const result={success:true,message:'Stock received successfully',results};
+    if(receiveIdentity)await client.query("INSERT INTO operation_requests(company_id,operation,request_key,request_hash,result) VALUES($1,'receive-stock',$2,$3,$4)",[cid,receiveIdentity.key,receiveIdentity.hash,JSON.stringify(result)]);
     await client.query('COMMIT');
-    return { success: true, message: 'Stock received successfully', results };
+    return result;
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -7503,13 +7535,23 @@ export async function deleteSupplier(cid, id, actorUserId) {
 
 export async function getSupplierInwardStockReport(cid, filters = {}) {
   const companyId = cid || 1;
-  let where = ["(im.company_id = $1)", "im.movement_type = 'INWARD'"];
+  let where = ["(im.company_id = $1)", "im.movement_type = 'INWARD'", "(im.supplier_id IS NOT NULL OR im.supplier_name IS NOT NULL)"];
   const params = [companyId];
 
   if (filters.supplier_id && filters.supplier_id !== 'ALL') {
     params.push(Number(filters.supplier_id));
-    where.push(`(im.supplier_id = $${params.length} OR im.supplier_name = (SELECT name FROM suppliers WHERE id = $${params.length} LIMIT 1))`);
+    where.push(`im.supplier_id = $${params.length}`);
   }
+
+  if(filters.active_products_only==='true'||filters.active_products_only===true){
+    where.push(`p.is_active=TRUE AND p.deleted_at IS NULL AND EXISTS(
+      SELECT 1 FROM suppliers active_supplier WHERE active_supplier.company_id=$1
+      AND active_supplier.id=im.supplier_id AND active_supplier.is_active=TRUE
+      AND active_supplier.product_rates ? im.product_id::text
+      AND COALESCE((active_supplier.product_rates->im.product_id::text->>'is_active')::boolean,TRUE))`);
+  }
+  if(filters.product_id&&filters.product_id!=='ALL'){params.push(Number(filters.product_id));where.push(`im.product_id=$${params.length}`);}
+  if(filters.start_date&&filters.end_date&&filters.start_date>filters.end_date)throw new Error('From date must be on or before To date');
 
   if (filters.supplier_name && filters.supplier_name !== 'ALL') {
     params.push(`%${filters.supplier_name.trim()}%`);
@@ -7565,16 +7607,16 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
        im.movement_no,
        im.product_id,
        COALESCE(im.product_name, p.display_name, p.name, 'Stock Item') as product_name,
-       COALESCE(p.selling_unit, im.unit, 'Tray') as unit,
-       COALESCE(p.selling_unit, im.unit, 'Tray') as selling_unit,
+       COALESCE(im.unit, p.selling_unit, 'Tray') as unit,
+       COALESCE(im.unit, p.selling_unit, 'Tray') as selling_unit,
        COALESCE(p.pieces_per_unit, 20) as pieces_per_unit,
        im.supplier_id,
        COALESCE(im.supplier_name, s.name, im.reference, 'Direct Supplier') as supplier_name,
        COALESCE(im.qty_units, 0) as qty_units,
        COALESCE(im.qty_units, 0) as quantity,
        COALESCE(im.qty_units, 0) as quantity_change,
-       COALESCE(im.rate, (SELECT spr.buy_rate FROM supplier_product_rates spr WHERE spr.supplier_id = im.supplier_id AND spr.product_id = im.product_id LIMIT 1), p.purchase_price, 0) as rate,
-       COALESCE(im.total_amount, (COALESCE(im.qty_units, 0) * COALESCE(im.rate, (SELECT spr.buy_rate FROM supplier_product_rates spr WHERE spr.supplier_id = im.supplier_id AND spr.product_id = im.product_id LIMIT 1), p.purchase_price, 0)), 0) as total_amount,
+       COALESCE(im.rate,0) as rate,
+       COALESCE(im.total_amount,0) as total_amount,
        COALESCE(im.received_by, 'Store Keeper') as received_by,
        COALESCE(im.received_by, 'Store Keeper') as created_by_name,
        im.reference,
@@ -7583,8 +7625,8 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
        to_char(im.created_at, 'HH24:MI:SS') as movement_time,
        im.created_at
      FROM inventory_movements im
-     LEFT JOIN products p ON p.id = im.product_id
-     LEFT JOIN suppliers s ON s.id = im.supplier_id
+     LEFT JOIN products p ON p.id = im.product_id AND p.company_id=im.company_id
+     LEFT JOIN suppliers s ON s.id = im.supplier_id AND s.company_id=im.company_id
      WHERE ${whereClause}
      ORDER BY im.created_at DESC`,
     params
@@ -7601,7 +7643,7 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
   records.forEach(r => {
     const qty = Number(r.qty_units || 0);
     const ppu = Number(r.pieces_per_unit || 1);
-    const pcs = qty * ppu;
+    const pcs = Math.round(qty * ppu);
     const amount = Number(r.total_amount || 0);
 
     totalUnits += qty;
@@ -7647,8 +7689,9 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
   const supplierMap = new Map();
   records.forEach(r => {
     const sName = r.supplier_name || 'Direct Supplier';
-    if (!supplierMap.has(sName)) {
-      supplierMap.set(sName, {
+    const supplierKey=r.supplier_id?`id:${r.supplier_id}`:`name:${sName}`;
+    if (!supplierMap.has(supplierKey)) {
+      supplierMap.set(supplierKey, {
         supplier_id: r.supplier_id,
         supplier_name: sName,
         total_units: 0,
@@ -7657,11 +7700,11 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
         receipts_count: 0
       });
     }
-    const sEntry = supplierMap.get(sName);
+    const sEntry = supplierMap.get(supplierKey);
     const qty = Number(r.qty_units || 0);
     const ppu = Number(r.pieces_per_unit || 1);
     sEntry.total_units += qty;
-    sEntry.total_pieces += qty * ppu;
+    sEntry.total_pieces += Math.round(qty * ppu);
     sEntry.total_amount += Number(r.total_amount || 0);
     sEntry.receipts_count += 1;
   });

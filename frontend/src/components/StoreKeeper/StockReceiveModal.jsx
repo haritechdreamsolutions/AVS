@@ -1,56 +1,61 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ArrowDownLeft, X, Save, Building2, Tag, Minus, Plus, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { ProductImage } from '../common/ProductImage';
 import { resolveProductImageUrl } from '../../utils/productImageHelper';
 import { sortOwnerProducts } from '../../utils/ownerProductOrder';
-import { getOperationalUnit } from '../../utils/unitHelper';
+import { purchaseUnit } from '../../../../shared/purchaseUnits.js';
 
 export const StockReceiveModal = ({ onClose }) => {
-  const { products = [], suppliers = [], fetchSuppliers, receiveDealerStock } = useApp();
+  const { receiveDealerStock, apiFetch, API_URL } = useApp();
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
-  const [customSupplierName, setCustomSupplierName] = useState('');
+  const [companyList,setCompanyList]=useState([]),[companiesLoading,setCompaniesLoading]=useState(true),[companyError,setCompanyError]=useState('');
   const [allocations, setAllocations] = useState({}); // { [prodId]: { trays: number|'', pieces: number|'', qty: number|'' } }
-  const [customRates, setCustomRates] = useState({});
+  const [catalog,setCatalog]=useState(null),[catalogLoading,setCatalogLoading]=useState(false),[catalogError,setCatalogError]=useState('');
+  const savingLock=useRef(false);
+  const receiveRequest=useRef({fingerprint:'',key:''});
   const [saving, setSaving] = useState(false);
 
   // Active suppliers from database
   const activeSuppliers = useMemo(() => {
-    return (suppliers || []).filter(s => s.is_active !== false && s.is_active !== 0);
-  }, [suppliers]);
+    return (companyList || []).filter(s => s.is_active !== false && s.is_active !== 0);
+  }, [companyList]);
 
-  // Load fresh suppliers from database when modal opens
-  React.useEffect(() => {
-    if (fetchSuppliers) {
-      fetchSuppliers();
-    }
-  }, []);
+  React.useEffect(()=>{
+    let live=true;const controller=new AbortController();setCompaniesLoading(true);setCompanyError('');
+    apiFetch(`${API_URL}/suppliers`,{signal:controller.signal}).then(async response=>{
+      const data=await response.json();if(!response.ok||!Array.isArray(data))throw new Error(data.message||'Unable to load purchase companies');return data;
+    }).then(data=>{if(live)setCompanyList(data);}).catch(e=>{if(live&&e.name!=='AbortError'){setCompanyList([]);setCompanyError(e.message);}}).finally(()=>{if(live)setCompaniesLoading(false);});
+    return()=>{live=false;controller.abort();};
+  },[API_URL]);
 
   // Set default selected supplier if activeSuppliers exist and not set
   React.useEffect(() => {
     if (activeSuppliers.length > 0) {
       const exists = activeSuppliers.some(s => String(s.id) === String(selectedSupplierId));
-      if (!selectedSupplierId || (!exists && selectedSupplierId !== 'CUSTOM')) {
+      if (!selectedSupplierId || !exists) {
         setSelectedSupplierId(String(activeSuppliers[0].id));
       }
     }
   }, [activeSuppliers, selectedSupplierId]);
 
-  // Inactive products must NOT appear in Stock Receive product selection
-  const activeProducts = useMemo(() => {
-    return sortOwnerProducts((products || []).filter(p => p.is_active !== false && p.is_active !== 0));
-  }, [products]);
-
-  // Current selected supplier object
-  const currentSupplier = useMemo(() => {
-    if (selectedSupplierId === 'CUSTOM' || selectedSupplierId === 'OTHER') return null;
-    return activeSuppliers.find(s => String(s.id) === String(selectedSupplierId));
-  }, [activeSuppliers, selectedSupplierId]);
+  React.useEffect(()=>{
+    let live=true;const controller=new AbortController();
+    setAllocations({});setCatalog(null);setCatalogError('');
+    if(!selectedSupplierId){setCatalogLoading(false);return;}
+    setCatalogLoading(true);
+    apiFetch(`${API_URL}/suppliers/${selectedSupplierId}/products`,{signal:controller.signal}).then(async response=>{
+      const data=await response.json();if(!response.ok)throw new Error(data.message||'Unable to load company products');return data;
+    }).then(data=>{if(live)setCatalog(data);}).catch(e=>{if(live&&e.name!=='AbortError')setCatalogError(e.message);}).finally(()=>{if(live)setCatalogLoading(false);});
+    return()=>{live=false;controller.abort();};
+  },[selectedSupplierId,API_URL]);
+  const activeProducts=useMemo(()=>sortOwnerProducts(catalog?.products||[]),[catalog]);
+  const currentSupplier=catalog?.supplier;
 
   // Helper: Format warehouse stock into Tray & Loose Pieces or Standard Units based on dynamic pieces_per_unit
   const formatWarehouseStock = (prod) => {
-    const opUnit = getOperationalUnit(prod);
+    const opUnit = purchaseUnit(prod);
     const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
     const totalPieces = Math.round(Number(prod.warehouse_stock_units || 0) * ppu);
     
@@ -94,13 +99,7 @@ export const StockReceiveModal = ({ onClose }) => {
   const getProductBuyRates = (prod) => {
     if (!prod) return { trayRate: 0, pieceRate: 0 };
     const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
-    const opUnit = getOperationalUnit(prod);
-
-    if (customRates[prod.id] !== undefined && customRates[prod.id] !== '') {
-      const num = Number(customRates[prod.id]);
-      const p = num > 0 && opUnit.isPieceBased ? parseFloat((num / ppu).toFixed(2)) : 0;
-      return { trayRate: num, pieceRate: p };
-    }
+    const opUnit = purchaseUnit(prod);
 
     if (currentSupplier) {
       const companyRates = currentSupplier.product_rates || {};
@@ -208,7 +207,7 @@ export const StockReceiveModal = ({ onClose }) => {
     let missing = false;
 
     activeProducts.forEach(prod => {
-      const opUnit = getOperationalUnit(prod);
+      const opUnit = purchaseUnit(prod);
       const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
       const alloc = allocations[prod.id] || {};
       const { trayRate, pieceRate } = getProductBuyRates(prod);
@@ -222,7 +221,7 @@ export const StockReceiveModal = ({ onClose }) => {
           count += qtyInSellingUnits;
           if (t > 0 && trayRate <= 0) missing = true;
           if (p > 0 && pieceRate <= 0) missing = true;
-          amount += (t * trayRate) + (p * pieceRate);
+          amount += (t * Math.round(trayRate*100) + p * Math.round(pieceRate*100))/100;
         }
       } else {
         const q = Number(alloc.qty || 0);
@@ -235,29 +234,18 @@ export const StockReceiveModal = ({ onClose }) => {
     });
 
     return { totalItemsCount: count, totalPurchaseAmount: amount, hasMissingRates: missing };
-  }, [activeProducts, allocations, currentSupplier, customRates]);
+  }, [activeProducts, allocations, currentSupplier]);
 
   const handleSave = async () => {
-    let resolvedSupplierName = '';
-    let resolvedSupplierId = null;
-
-    if (selectedSupplierId === 'CUSTOM' || selectedSupplierId === 'OTHER') {
-      resolvedSupplierName = customSupplierName.trim() || 'Direct Supplier';
-    } else {
-      if (currentSupplier) {
-        resolvedSupplierId = currentSupplier.id;
-        resolvedSupplierName = currentSupplier.name;
-      } else {
-        resolvedSupplierName = customSupplierName.trim() || 'Direct Supplier';
-      }
-    }
-
+    if(savingLock.current)return;
+    if(!currentSupplier||catalogLoading){toast.error('Select a company and wait for its products to load.');return;}
+    const resolvedSupplierId=currentSupplier.id,resolvedSupplierName=currentSupplier.name;
     const items = [];
     for (const [pidStr, alloc] of Object.entries(allocations)) {
       const pid = Number(pidStr);
-      const prod = activeProducts.find(p => p.id === pid) || products.find(p => p.id === pid);
+      const prod = activeProducts.find(p => p.id === pid);
       if (!prod) continue;
-      const opUnit = getOperationalUnit(prod);
+      const opUnit = purchaseUnit(prod);
       const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
       const { trayRate, pieceRate } = getProductBuyRates(prod);
 
@@ -268,7 +256,7 @@ export const StockReceiveModal = ({ onClose }) => {
         if (totalPcs > 0) {
           // Preserve whole-piece precision; rounding here rejects valid loose pieces.
           const qtyInSellingUnits = totalPcs / ppu;
-          const itemTotal = (numTrays * trayRate) + (numPieces * pieceRate);
+          const itemTotal = (numTrays*Math.round(trayRate*100)+numPieces*Math.round(pieceRate*100))/100;
           items.push({
             product_id: pid,
             product_name: prod.display_name,
@@ -292,7 +280,7 @@ export const StockReceiveModal = ({ onClose }) => {
             unit: prod.selling_unit || 'Case',
             rate: trayRate,
             piece_rate: 0,
-            total_amount: qty * trayRate,
+            total_amount: qty * Math.round(trayRate*100)/100,
             inward_trays: 0,
             inward_pieces: qty * ppu,
             total_pieces: qty * ppu
@@ -314,14 +302,14 @@ export const StockReceiveModal = ({ onClose }) => {
       return;
     }
 
-    setSaving(true);
-    const res = await receiveDealerStock({
-      supplier_id: resolvedSupplierId,
-      supplier_name: resolvedSupplierName,
-      dealer_name: resolvedSupplierName,
-      items
-    });
-    setSaving(false);
+    savingLock.current=true;setSaving(true);
+    const payload={supplier_id:resolvedSupplierId,supplier_name:resolvedSupplierName,items};
+    const fingerprint=JSON.stringify(payload);
+    if(receiveRequest.current.fingerprint!==fingerprint)receiveRequest.current={fingerprint,key:crypto.randomUUID()};
+    let res;
+    try{res=await receiveDealerStock({...payload,idempotency_key:receiveRequest.current.key});}
+    catch(e){res={success:false,message:e.message||'Unable to receive stock. Please retry.'};}
+    finally{savingLock.current=false;setSaving(false);}
 
     if (res.success) {
       toast.success(`🎉 Stock received successfully from ${resolvedSupplierName}! (Total: ₹${totalPurchaseAmount.toFixed(2)})`);
@@ -369,30 +357,20 @@ export const StockReceiveModal = ({ onClose }) => {
           </label>
           <select
             value={selectedSupplierId}
-            onChange={(e) => setSelectedSupplierId(e.target.value)}
+            disabled={saving||companiesLoading}
+            onChange={(e) => {setCatalog(null);setAllocations({});setSelectedSupplierId(e.target.value);}}
             className="w-full bg-white border-2 border-sky-200 hover:border-sky-400 focus:border-sky-600 rounded-2xl px-4 py-3 text-sm sm:text-base font-black text-slate-900 focus:outline-none transition-all shadow-xs cursor-pointer"
           >
+            <option value="">{companiesLoading?'Loading companies...':'Select purchase company'}</option>
             {activeSuppliers.map(s => (
               <option key={s.id} value={s.id}>
-                🏭 {s.name} {s.code ? `(${s.code})` : ''}
+                {s.name}
               </option>
             ))}
-            <option value="CUSTOM">+ Enter Custom / Other Supplier Name</option>
+
           </select>
 
-          {/* Conditional Custom Name Input if 'CUSTOM' selected */}
-          {selectedSupplierId === 'CUSTOM' && (
-            <div className="pt-2">
-              <input
-                type="text"
-                placeholder="Enter Company / Supplier Name..."
-                value={customSupplierName}
-                onChange={(e) => setCustomSupplierName(e.target.value)}
-                className="w-full bg-white border-2 border-sky-300 focus:border-sky-600 rounded-2xl px-4 py-2.5 text-sm sm:text-base font-black text-slate-900 focus:outline-none shadow-xs"
-                autoFocus
-              />
-            </div>
-          )}
+
         </div>
 
         {/* Quantities & Price Calculation Table */}
@@ -407,13 +385,16 @@ export const StockReceiveModal = ({ onClose }) => {
             </span>
           </div>
           
+          {catalogLoading&&<p role="status" className="text-sm text-sky-700">Loading company products...</p>}
+          {companyError&&<p role="alert" className="text-sm text-red-700">{companyError}</p>}
+          {catalogError&&<p role="alert" className="text-sm text-red-700">{catalogError}</p>}
           <div className="space-y-3 max-h-72 sm:max-h-96 lg:max-h-[420px] overflow-y-auto pr-1 sm:pr-2">
             {activeProducts.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-8">No active products available to receive.</p>
+              <p className="text-sm text-slate-400 text-center py-8">No active products for this company. Ask the owner to activate existing products in Companies & Inward.</p>
             ) : (
               activeProducts.map(prod => {
-                const opUnit = getOperationalUnit(prod);
-                const isTrayBased = opUnit.isPieceBased; // Milk, Curd, Butter Milk
+                const opUnit = purchaseUnit(prod);
+                const isTrayBased = opUnit.isPieceBased; // Only the configured Tray purchase unit.
                 const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
                 const whStock = formatWarehouseStock(prod);
                 const { trayRate, pieceRate } = getProductBuyRates(prod);
@@ -524,13 +505,13 @@ export const StockReceiveModal = ({ onClose }) => {
                             </span>
                             <button
                               type="button"
-                              disabled={!currentTrays || Number(currentTrays) <= 0}
+                              disabled={saving || !currentTrays || Number(currentTrays) <= 0}
                               onClick={() => handleTrayChange(prod, (Number(currentTrays) || 0) - 1)}
                               className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white hover:bg-sky-100 text-slate-800 flex items-center justify-center font-black text-sm transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                             >
                               <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
                             </button>
-                            <input
+                            <input disabled={saving}
                               type="number"
                               min="0"
                               value={currentTrays}
@@ -547,6 +528,7 @@ export const StockReceiveModal = ({ onClose }) => {
                             />
                             <button
                               type="button"
+                              disabled={saving}
                               onClick={() => handleTrayChange(prod, (Number(currentTrays) || 0) + 1)}
                               className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-sky-600 hover:bg-sky-700 text-white flex items-center justify-center font-black text-sm transition cursor-pointer shadow-xs"
                             >
@@ -561,13 +543,13 @@ export const StockReceiveModal = ({ onClose }) => {
                             </span>
                             <button
                               type="button"
-                              disabled={!currentPieces || Number(currentPieces) <= 0}
+                              disabled={saving || !currentPieces || Number(currentPieces) <= 0}
                               onClick={() => handlePieceChange(prod, (Number(currentPieces) || 0) - 1)}
                               className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white hover:bg-indigo-100 text-slate-800 flex items-center justify-center font-black text-sm transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                             >
                               <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
                             </button>
-                            <input
+                            <input disabled={saving}
                               type="number"
                               min="0"
                               value={currentPieces}
@@ -584,6 +566,7 @@ export const StockReceiveModal = ({ onClose }) => {
                             />
                             <button
                               type="button"
+                              disabled={saving}
                               onClick={() => handlePieceChange(prod, (Number(currentPieces) || 0) + 1)}
                               className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center font-black text-sm transition cursor-pointer shadow-xs"
                             >
@@ -600,13 +583,13 @@ export const StockReceiveModal = ({ onClose }) => {
                           </span>
                           <button
                             type="button"
-                            disabled={!currentQty || Number(currentQty) <= 0}
+                            disabled={saving || !currentQty || Number(currentQty) <= 0}
                             onClick={() => handleSingleQtyChange(prod, (Number(currentQty) || 0) - 1)}
                             className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-white hover:bg-sky-100 text-slate-800 flex items-center justify-center font-black text-sm transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                           >
                             <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
                           </button>
-                          <input
+                          <input disabled={saving}
                             type="number"
                             min="0"
                             value={currentQty}
@@ -623,6 +606,7 @@ export const StockReceiveModal = ({ onClose }) => {
                           />
                           <button
                             type="button"
+                            disabled={saving}
                             onClick={() => handleSingleQtyChange(prod, (Number(currentQty) || 0) + 1)}
                             className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-sky-600 hover:bg-sky-700 text-white flex items-center justify-center font-black text-sm transition cursor-pointer shadow-xs"
                           >
@@ -671,7 +655,7 @@ export const StockReceiveModal = ({ onClose }) => {
         {/* Submit Button */}
         <button
           onClick={handleSave}
-          disabled={saving || activeProducts.length === 0 || totalItemsCount === 0 || hasMissingRates}
+          disabled={saving || catalogLoading || !currentSupplier || activeProducts.length === 0 || totalItemsCount === 0 || hasMissingRates}
           className="touch-btn touch-btn-primary w-full text-sm sm:text-base font-black flex items-center justify-center gap-2 uppercase tracking-wider disabled:opacity-50 shadow-lg shadow-sky-300/60 py-3.5 sm:py-4 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white transition-all cursor-pointer"
         >
           {saving ? (

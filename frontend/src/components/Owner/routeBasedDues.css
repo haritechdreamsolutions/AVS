@@ -144,6 +144,100 @@
  .dues-modal-actions button {flex:1;}
 }
 #route-dues-receipt {display:none;}
+.dues-printer-controls {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px;font-size:12px;color:#53677d;flex-wrap:wrap;}
+.dues-printer-controls select {padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:white;color:#15352f;}
+.dues-receipt-preview {max-width:480px;margin:0 auto 16px;padding:18px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;color:#111;font:13px/1.5 Arial,sans-serif;}
+.dues-receipt-preview.dues-narrow {max-width:320px;}
+.dues-receipt-preview header {text-align:center;}
+.dues-receipt-preview h3 {font-size:15px;margin:6px 0 12px;}
+.dues-receipt-preview p {overflow-wrap:anywhere;margin:6px 0;}
+.dues-receipt-preview table {table-layout:fixed;}
+.dues-receipt-preview th:nth-child(2) {width:47%;}
+.dues-receipt-preview th:last-child {width:38%;text-align:right;}
+.dues-receipt-preview td {overflow-wrap:anywhere;}
+.dues-receipt-preview .dues-money {white-space:normal;}
+.dues-receipt-preview .dues-preview-total {text-align:right;border-top:1px dashed #64748b;padding-top:12px;font-weight:bold;}
+.dues-print-error {color:#b91c1c;font-size:13px;margin:0 0 12px;}
+.dues-modal-actions {flex-wrap:wrap;}
+/* Receipt workspace: decoration stays outside the printable report. */
+.dues-modal {max-width:720px;max-height:92dvh;border:1px solid #ffffff65;box-shadow:0 32px 100px #02061755;font-family:inherit;}
+.dues-modal-heading {padding:22px 26px 18px;background:linear-gradient(120deg,#103d3d,#0e625b);border-bottom:0;}
+.dues-heading-top {display:flex;align-items:center;gap:14px;}
+.dues-heading-icon {display:grid;place-items:center;width:50px;height:50px;flex-shrink:0;border:1px solid #ffffff30;border-radius:15px;background:#ffffff10;color:#9bf1df;}
+.dues-heading-copy {flex:1;min-width:0;}
+.dues-modal .dues-eyebrow {text-align:left;color:#9fe4d5;letter-spacing:1.8px;font-size:9px;}
+.dues-modal h2 {text-align:left;margin:4px 0;font-size:25px;color:white;}
+.dues-heading-copy p {margin:0;color:#c3dfda;font-size:11px;}
+.dues-icon-close {display:grid;place-items:center;width:34px;height:34px;flex-shrink:0;align-self:flex-start;background:#ffffff12;color:#d8efea;border:1px solid #ffffff20;border-radius:50%;cursor:pointer;}
+.dues-icon-close:hover {background:#ffffff25;}
+.dues-icon-close:focus-visible {outline:3px solid #5eead4;outline-offset:3px;}
+.dues-route-details {gap:12px;margin-top:20px;}
+.dues-route-details>div {padding:11px 14px;border:1px solid #ffffff1c;background:#ffffff09;border-radius:11px;}
+.dues-route-details span {display:flex;gap:5px;align-items:center;font-size:9px;letter-spacing:1px;color:#a6cfc7;}
+.dues-route-details strong {font-size:13px;color:#f0fdfa;line-height:1.5;}
+.dues-driver {text-align:left;}
+.dues-printer-controls {padding:13px 26px;border-bottom:1px solid #e5edeb;background:#fff;flex-shrink:0;}
+.dues-printer-controls label {display:flex;align-items:center;gap:10px;font-weight:600;color:#45665d;}
+.dues-printer-controls label>span {display:flex;align-items:center;gap:6px;font-size:11px;}
+.dues-printer-controls select {font:inherit;font-size:12px;padding:8px 11px;border-color:#d4e3df;background:#f8fbfa;cursor:pointer;}
+.dues-preview-badge {display:flex;gap:6px;align-items:center;font-size:10px;color:#648079;}
+.dues-preview-badge>span {width:6px;height:6px;background:#10b981;border-radius:50%;}
+.dues-preview-badge b {padding:4px 6px;background:#eaf5f0;border-radius:5px;color:#0f766e;font-size:9px;}
+.dues-modal-body {padding:24px 28px 26px;background-color:#f1f5f4;background-image:radial-gradient(#cddcd7 .7px,transparent .7px);background-size:12px 12px;scrollbar-width:thin;scrollbar-color:#a8bdb5 transparent;overscroll-behavior:contain;}
+.dues-receipt-preview {position:relative;width:100%;max-width:440px;margin:0 auto;padding:24px 22px 22px;border:1px solid #e0e7e4;border-radius:3px 3px 0 0;box-shadow:0 5px 18px #16332f0c;font-size:12px;}
+.dues-receipt-preview::after {content:'';position:absolute;left:-1px;right:-1px;height:9px;bottom:-9px;background:linear-gradient(135deg,white 5px,transparent 0) 0 0/12px 12px,linear-gradient(225deg,white 5px,transparent 0) 0 0/12px 12px;}
+.dues-receipt-preview header {display:flex;flex-direction:column;align-items:center;padding-bottom:16px;margin-bottom:13px;border-bottom:1px dashed #b8c7c1;}
+.dues-paper-icon {display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:#eff7f3;color:#267a63;margin-bottom:8px;}
+.dues-receipt-preview header strong {font-size:17px;letter-spacing:.3px;}
+.dues-receipt-preview h3 {font-size:11px;letter-spacing:1.1px;margin:5px 0 2px;}
+.dues-paper-caption {font-size:8px;letter-spacing:1px;color:#7e8c86;}
+.dues-receipt-preview p {font-size:11px;color:#53645d;}
+.dues-receipt-preview table {margin-top:15px;}
+.dues-receipt-preview .dues-shop-table th {position:static;padding:10px 4px;font-size:10px;color:#5e7067;background:#f5f8f6;border-bottom:1px solid #dce6e0;}
+.dues-receipt-preview .dues-shop-table td {padding:12px 4px;font-size:12px;vertical-align:top;}
+.dues-receipt-preview .dues-shop-table td:first-child {font-size:10px;}
+.dues-receipt-preview .dues-shop-table tbody tr:nth-child(even) {background:#fafcfb;}
+.dues-receipt-preview .dues-preview-total {margin-top:13px;padding-top:14px;font-size:13px;color:#16332f;}
+.dues-modal-footer {padding:18px 26px 22px;background:#fff;border-top:1px solid #e3ebe7;}
+.dues-total {padding:14px 16px;background:linear-gradient(110deg,#f1faf6,#e8f7f0);border:1px solid #d4eade;border-radius:12px;}
+.dues-total-label {display:flex;align-items:center;gap:11px;min-width:0;}
+.dues-total .dues-total-icon {display:grid;place-items:center;width:38px;height:38px;flex-shrink:0;border-radius:11px;background:#fff;border:1px solid #deeee4;color:#168164;}
+.dues-total-label>div>span {display:block;color:#325b4a;font-size:11px;font-weight:700;}
+.dues-total-label small {display:flex;align-items:center;gap:4px;color:#729083;font-size:10px;margin-top:5px;}
+.dues-total strong {font-size:26px;letter-spacing:-.5px;color:#106448;}
+.dues-modal-actions {margin-top:15px;gap:9px;}
+.dues-modal-actions button {display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:43px;padding:10px 18px;font-size:12px;border-radius:10px;}
+.dues-modal-actions .dues-close:first-child {margin-right:auto;}
+.dues-system-print {background:#f8faf9;}
+.dues-modal-actions .dues-print {background:linear-gradient(110deg,#0f766e,#0d9488);border-color:#0f766e;box-shadow:0 4px 10px #0f766e26;}
+.dues-modal-actions .dues-print:hover {background:#115e59;}
+@media(max-width:480px) {
+ .dues-modal {max-height:95dvh;}
+ .dues-modal-heading {padding:18px 16px 14px;}
+ .dues-heading-top {gap:10px;}
+ .dues-heading-icon {width:42px;height:42px;border-radius:12px;}
+ .dues-modal h2 {font-size:21px;}
+ .dues-heading-copy p {font-size:10px;}
+ .dues-route-details {gap:8px;margin-top:14px;}
+ .dues-route-details>div {padding:9px 10px;}
+ .dues-route-details strong {font-size:12px;}
+ .dues-printer-controls {padding:11px 16px;gap:8px;}
+ .dues-printer-controls label {gap:6px;}
+ .dues-printer-controls label>span {font-size:10px;}
+ .dues-printer-controls select {max-width:168px;font-size:11px;}
+ .dues-preview-badge {font-size:9px;}
+ .dues-preview-badge b {display:none;}
+ .dues-modal-body {padding:18px 14px 24px;}
+ .dues-receipt-preview {padding:18px 13px;}
+ .dues-modal-footer {padding:13px 14px 16px;}
+ .dues-total {padding:12px;gap:8px;}
+ .dues-total strong {font-size:22px;}
+ .dues-total-icon {display:none!important;}
+ .dues-total-label small {font-size:9px;}
+ .dues-modal-actions {gap:7px;margin-top:12px;}
+ .dues-modal-actions button {padding:10px;font-size:11px;flex:1 1 auto;}
+ .dues-modal-actions .dues-close:first-child {flex:0 0 auto;}
+}
 @media print {
  @page route-dues {size:52mm 200mm;margin:2mm;}
  body:has(> #route-dues-receipt) > :not(#route-dues-receipt) {display:none!important;}

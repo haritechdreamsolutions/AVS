@@ -1,3 +1,4 @@
+import {loadPrintSettings,normalizePrintSettings,printSettingsKey} from '../../utils/printSettings';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Printer, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
@@ -17,7 +18,13 @@ export const ThermalBillModal = ({
 
   // 80mm / 82mm 3-Inch Mode strictly for StoreKeeper login
   const storekeeperPrint = isStoreKeeper || ['STORE_KEEPER', 'STOREKEEPER'].includes(currentUser?.role);
-  const is80mm = paperSize === '80mm' || storekeeperPrint;
+  const [printerSettings,setPrinterSettings]=useState(()=>loadPrintSettings(currentUser,paperSize));
+  const [settingsError,setSettingsError]=useState('');
+  const is80mm = printerSettings.paperWidth >= 80;
+  const updatePrinter=patch=>{
+    try{const next=normalizePrintSettings({...printerSettings,...patch});localStorage.setItem(printSettingsKey(currentUser),JSON.stringify(next));setPrinterSettings(next);setSettingsError('');}
+    catch(e){setSettingsError(e.message);}
+  };
   const [bill, setBill] = useState(initialBill || {});
   const [items, setItems] = useState(initialBill?.items || []);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -159,7 +166,9 @@ export const ThermalBillModal = ({
       };
 
       toast.info(`Connecting to ${is80mm ? '80mm Thermal Printer' : 'EX58C Bluetooth Printer'}...`);
-      await printThermalReceipt(receiptPayload, is80mm ? '80mm' : '58mm');
+      if(printerSettings.transport==='system'){window.print();return;}
+      if(![58,80].includes(printerSettings.paperWidth))throw Error('Direct Bluetooth currently supports 58mm or 80mm. Use System Print for this width.');
+      await printThermalReceipt(receiptPayload, printerSettings.paperWidth===80 ? '80mm' : '58mm');
 
       setPrintSuccess(true);
       toast.success(is80mm ? "Receipt printed successfully on 80mm Printer!" : "Receipt printed successfully on EX58C!");
@@ -190,9 +199,14 @@ export const ThermalBillModal = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <style>{`@media print {
+       @page {size:${printerSettings.paperWidth}mm auto;margin:0}
+       .printable-thermal,.printable-thermal-80mm {width:${printerSettings.paperWidth}mm!important;max-width:${printerSettings.paperWidth}mm!important;padding:2mm!important;font-size:${printerSettings.fontSize}px!important;font-weight:700!important}
+       .printable-thermal td,.printable-thermal-80mm td {font-size:${printerSettings.fontSize}px!important;overflow-wrap:anywhere}
+      }`}</style>
       {is80mm && <style>{`
         @media print {
-          @page { size: 80mm auto; margin: 0; }
+          @page { size: ${printerSettings.paperWidth}mm auto; margin: 0; }
           body :has(.printable-thermal-80mm) {
             position: static !important;
             overflow: visible !important;
@@ -249,6 +263,15 @@ export const ThermalBillModal = ({
           </div>
         )}
 
+        <div className="no-print flex flex-wrap gap-2 items-center text-xs">
+          <label>Paper <select value={printerSettings.paperWidth} onChange={e=>updatePrinter({paperWidth:Number(e.target.value),printableWidth:undefined})}>
+            {[...new Set([58,80,110,printerSettings.paperWidth])].map(width=><option key={width} value={width}>{width}mm</option>)}
+          </select></label>
+          <label>Custom mm <input type="number" min="40" max="120" defaultValue={printerSettings.paperWidth} className="w-16" onBlur={e=>updatePrinter({paperWidth:Number(e.target.value),printableWidth:undefined})}/></label>
+          <label>Font <select value={printerSettings.fontSize} onChange={e=>updatePrinter({fontSize:Number(e.target.value)})}>{[10,12,14,16].map(n=><option key={n}>{n}</option>)}</select></label>
+          <label>Connection <select value={printerSettings.transport} onChange={e=>updatePrinter({transport:e.target.value})}><option value="system">System Print</option><option value="bluetooth">Bluetooth</option></select></label>
+          {settingsError&&<span role="alert">{settingsError}</span>}
+        </div>
         {/* Thermal Bill Scrollable Container (58mm or 80mm/82mm) */}
         <div className={`${is80mm ? 'printable-thermal-80mm text-xs sm:text-[13px] max-w-[440px] p-4 sm:p-5' : 'printable-thermal-receipt printable-thermal text-[10.5px] sm:text-[11px] p-3 sm:p-4'} bg-white font-mono border border-slate-300 rounded-2xl space-y-2 sm:space-y-2.5 text-slate-900 leading-tight overflow-y-auto flex-1 w-full mx-auto`}>
           

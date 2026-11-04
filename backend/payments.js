@@ -1,5 +1,6 @@
 import { pool } from './database/pg_pool.js';
 import { paise, amount, requestIdentity, businessDate, retryTransaction } from './financial.js';
+import {collectionLedger} from './collection-ledger.js';
 
 function transaction(work) { return retryTransaction(()=>transactionAttempt(work)); }
 async function transactionAttempt(work) {
@@ -54,12 +55,7 @@ export async function collectDue(cid, shopId, data, actor) {
         'SELECT COALESCE(SUM(a.amount),0)::text AS total FROM receipt_allocations a JOIN receipts r ON r.id=a.receipt_id WHERE r.company_id=$1 AND r.shop_id=$2 AND a.sale_id IS NULL',
         [cid,shopId]);
       const openingRemaining = paise(shop.opening_balance)-paise(openingPaid.rows[0].total);
-      const invoiceRemaining = invoices.rows.reduce((sum,sale)=>{
-        const outstanding=paise(sale.credit_paid)-paise(sale.allocated)+paise(sale.refunded);
-        if(outstanding<0)throw new Error('Shop invoice allocations require reconciliation');
-        return sum+outstanding;
-      },0);
-      if(openingRemaining<0 || openingRemaining+invoiceRemaining!==paise(shop.current_due))
+      if(openingRemaining<0 || collectionLedger(amount(openingRemaining),invoices.rows).balance!==paise(shop.current_due))
         throw new Error('Shop history does not reconcile with outstanding balance. FIFO collection requires reviewed historical payment allocations.');
       shop.opening_due_remaining=amount(openingRemaining);
       await client.query('UPDATE shops SET ledger_ready=TRUE,opening_due_remaining=$1,updated_at=NOW() WHERE id=$2 AND company_id=$3',
@@ -67,18 +63,18 @@ export async function collectDue(cid, shopId, data, actor) {
       await client.query("INSERT INTO audit_logs(company_id,actor_user_id,action,entity_type,entity_id) VALUES($1,$2,'SHOP_LEDGER_VERIFIED','shops',$3)",
         [cid,actor.id,shopId]);
     }
-    const balance = paise(shop.opening_due_remaining) + invoices.rows.reduce((sum,sale)=>sum+paise(sale.credit_paid)-paise(sale.allocated)+paise(sale.refunded),0);
-    if (balance !== paise(shop.current_due)) throw new Error('Shop ledger does not reconcile; collection requires review');
+    const ledger = collectionLedger(shop.opening_due_remaining,invoices.rows);
+    if (ledger.balance !== paise(shop.current_due)) throw new Error('Shop ledger does not reconcile; collection requires review');
     const receipt = (await client.query('INSERT INTO receipts(company_id,shop_id,employee_id,created_by,request_key,request_hash,amount,payment_mode,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp()) RETURNING *',[cid,shopId,actor.employee_id || null,actor.id,identity.key,identity.hash,amount(received),mode,data.reference || null])).rows[0];
     let remaining = received;
-    const opening = Math.min(remaining,paise(shop.opening_due_remaining));
+    const opening = Math.min(remaining,ledger.opening);
     if (opening) {
       await client.query('INSERT INTO receipt_allocations(receipt_id,amount) VALUES($1,$2)',[receipt.id,amount(opening)]);
       await client.query('UPDATE shops SET opening_due_remaining=opening_due_remaining-$1 WHERE id=$2',[amount(opening),shopId]);
       remaining -= opening;
     }
-    for (const sale of invoices.rows) {
-      const outstanding = paise(sale.credit_paid)-paise(sale.allocated)+paise(sale.refunded);
+    for (const sale of ledger.invoices) {
+      const outstanding = sale.outstanding;
       const allocation = Math.min(remaining,outstanding);
       if (allocation > 0) {
         await client.query('INSERT INTO receipt_allocations(receipt_id,sale_id,amount) VALUES($1,$2,$3)',[receipt.id,sale.id,amount(allocation)]);

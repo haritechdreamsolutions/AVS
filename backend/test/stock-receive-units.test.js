@@ -58,4 +58,15 @@ test('supplier receipt supports whole Box/Case and exact loose Tray pieces atomi
     await assert.rejects(receiveStock(2,{items:[{product_id:2,quantity:1,unit:'Box'}]},null),/not found/);
     await assert.rejects(receiveStock(1,{items:[{product_id:2,quantity:1,unit:'Tray'}]},null),/configured selling unit/);
   });
+  await t.test('Box/Case never use loose-piece entry even with milk names or Tray category',async()=>{
+    await client.query("UPDATE products SET name='Milk Box',display_name='Milk Box',base_unit='Piece',pieces_per_unit=24,category_id=1 WHERE id=2");
+    await client.query("UPDATE products SET name='Curd Case',display_name='Curd Case',base_unit='Piece',pieces_per_unit=24,category_id=1 WHERE id=3");
+    for(const [id,unit] of [[2,'Box'],[3,'Case']]){
+      const before=await stock(id);
+      await assert.rejects(receiveStock(1,{items:[{product_id:id,quantity:0.5,unit,rate:100}]},null),/whole number/);
+      await receiveStock(1,{items:[{product_id:id,quantity:2,unit,rate:100}]},null);
+      assert.equal(await stock(id),before+2);
+    }
+  });
+
 });

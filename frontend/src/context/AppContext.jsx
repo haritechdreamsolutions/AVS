@@ -235,26 +235,9 @@ export const AppProvider = ({ children }) => {
       if (needs('drivers'))setDrivers(Array.isArray(driversRes) ? driversRes : []);
       if (needs('freezer-models'))setFreezerModels(Array.isArray(freezerModelsRes) ? freezerModelsRes : []);
       
-      // Use backend suppliers list as authoritative source of truth, fallback to local cache if empty
       const rawSuppliers = Array.isArray(suppliersRes) ? suppliersRes : (Array.isArray(suppliersRes?.suppliers) ? suppliersRes.suppliers : null);
-      if (rawSuppliers && rawSuppliers.length > 0) {
-        setSuppliers(rawSuppliers);
-        try { localStorage.setItem('avs_suppliers_cache', JSON.stringify(rawSuppliers)); } catch (e) {}
-      } else if (rawSuppliers && rawSuppliers.length === 0) {
-        setSuppliers(prev => {
-          if (prev && prev.length > 0) return prev;
-          try {
-            const cached = localStorage.getItem('avs_suppliers_cache');
-            if (cached) {
-              const parsed = JSON.parse(cached);
-              if (Array.isArray(parsed)) return parsed;
-            }
-          } catch (e) {}
-      if (generation === refreshGeneration.current) setRefreshError('Unable to refresh application data. Your previous data is still displayed.');
-          return [];
-        });
-      }
-      
+      if(rawSuppliers){setSuppliers(rawSuppliers);try{localStorage.setItem('avs_suppliers_cache',JSON.stringify(rawSuppliers));}catch{}}
+
       // Merge remote freezers with local freezers safely
       setFreezers(prev => {
         const remote = Array.isArray(freezersRes) ? freezersRes : [];
@@ -969,7 +952,7 @@ export const AppProvider = ({ children }) => {
       if (contentType.includes('application/json')) {
         const data = await res.json();
         const list = Array.isArray(data) ? data : (Array.isArray(data?.suppliers) ? data.suppliers : []);
-        if (list.length > 0) {
+        if (res.ok) {
           setSuppliers(list);
           return list;
         }

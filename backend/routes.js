@@ -5,6 +5,7 @@ import * as db from './db_pg.js';
 import { csrfToken, loginLimiter, authorize, requireAuth, requireRole } from './security.js';
 import { salesReport } from './reports.js';
 import { refundSale } from './payments.js';
+import * as catalog from './supplier-catalog.js';
 import { routeDuesHandler } from './route-dues.js';
 
 const router = express.Router();
@@ -114,6 +115,7 @@ router.get('/inventory/movements', requireAuth, async (req, res) => {
 
 router.post(['/sk/receive-stock', '/inventory/receive', '/inventory/inward'], requireAuth, requireRole('STORE_KEEPER', 'OWNER'), async (req, res) => {
   try {
+    if(!req.body.supplier_id)throw new Error('Select a registered purchase company.');
     const result = await db.receiveStock(getCid(req), req.body, req.session.userId);
     res.json(result);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
@@ -127,28 +129,43 @@ router.get(['/suppliers', '/suppliers/list'], async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-router.post(['/suppliers', '/suppliers/create'], async (req, res) => {
+router.post(['/suppliers', '/suppliers/create'], requireRole('OWNER'), async (req, res) => {
   try {
-    const result = await db.createSupplier(getCid(req), req.body, req.session?.userId || 1);
+    const result = await catalog.saveCompany(getCid(req), null, req.body, req.session.userId);
     res.json(result);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
-router.put(['/suppliers/:id', '/suppliers/:id/update'], async (req, res) => {
+router.put(['/suppliers/:id', '/suppliers/:id/update'], requireRole('OWNER'), async (req, res) => {
   try {
-    const result = await db.updateSupplier(getCid(req), req.params.id, req.body, req.session?.userId || 1);
+    const result = await catalog.saveCompany(getCid(req), req.params.id, req.body, req.session.userId);
     res.json(result);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
-router.delete(['/suppliers/:id', '/suppliers/:id/delete'], async (req, res) => {
+router.delete(['/suppliers/:id', '/suppliers/:id/delete'], requireRole('OWNER'), async (req, res) => {
   try {
-    const result = await db.deleteSupplier(getCid(req), req.params.id, req.session?.userId || 1);
+    const result = await catalog.removeCompany(getCid(req), req.params.id, req.session.userId);
     res.json(result);
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 
-router.get('/suppliers/inward-report', async (req, res) => {
+router.get('/suppliers/report-products',requireRole('OWNER'),async(req,res)=>{
+ try{res.json(await catalog.purchaseReportProducts(getCid(req),req.query.supplier_id));}catch(e){res.status(400).json({success:false,message:e.message});}
+});
+router.get('/suppliers/:id/products', requireRole('OWNER','STORE_KEEPER'), async(req,res)=>{
+ try{res.json(await catalog.companyProducts(getCid(req),req.params.id));}catch(e){res.status(400).json({success:false,message:e.message});}
+});
+router.post('/suppliers/:id/products',requireRole('OWNER'),async(req,res)=>{
+ try{res.json(await catalog.saveCompanyProduct(getCid(req),req.params.id,null,req.body,req.session.userId));}catch(e){res.status(400).json({success:false,message:e.message});}
+});
+router.put('/suppliers/:id/products/:productId',requireRole('OWNER'),async(req,res)=>{
+ try{res.json(await catalog.saveCompanyProduct(getCid(req),req.params.id,req.params.productId,req.body,req.session.userId));}catch(e){res.status(400).json({success:false,message:e.message});}
+});
+router.delete('/suppliers/:id/products/:productId',requireRole('OWNER'),async(req,res)=>{
+ try{res.json(await catalog.removeCompanyProduct(getCid(req),req.params.id,req.params.productId,req.session.userId));}catch(e){res.status(400).json({success:false,message:e.message});}
+});
+router.get('/suppliers/inward-report', requireRole('OWNER'), async (req, res) => {
   try {
     const report = await db.getSupplierInwardStockReport(getCid(req), req.query);
     res.json(report);
