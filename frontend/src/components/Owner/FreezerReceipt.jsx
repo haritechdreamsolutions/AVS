@@ -2,6 +2,7 @@
 import {createPortal} from 'react-dom';
 import {apiFetch} from '../../context/AppContext';
 import './freezerReceipt.css';
+import {Snowflake,MapPin,Store,ArrowUpRight,Printer,PackageCheck} from 'lucide-react';
 async function get(url,signal){const response=await apiFetch(url,{signal});const data=await response.json();if(!response.ok)throw Error(data.message||'Unable to load freezer assignments');return data;}
 function Table({rows}){return <table><thead><tr>{['S.No','Shop Name','Freezer ID','Freezer Type / Model','Contact'].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={r.shop_id+':'+(r.assignment_id||'legacy')}><td>{i+1}</td><td>{r.shop_name}</td><td>{r.freezer_id||'-'}</td><td>{r.freezer_type||'-'}</td><td>{r.contact||'-'}</td></tr>)}</tbody></table>;}
 export function FreezerReceipt(){
@@ -30,14 +31,16 @@ export function FreezerReceipt(){
   },150);
   return()=>{cancelled=true;clearTimeout(timer);window.removeEventListener('afterprint',finish);media.removeEventListener('change',changed);};
  },[snapshot]);
- return <section className="fr-page"><header><span>OWNER ASSET REPORT</span><h1>Freezer Receipt</h1><p>Route-wise assigned shop freezer details</p></header>
-  <div className="fr-results fr-route-list"><div className="fr-result-heading"><h2>Route overview</h2><span>{routes.length} routes</span></div>
-   <table><thead><tr><th>S.No</th><th>Route Name</th><th>Action</th></tr></thead><tbody>{routes.map((r,i)=><tr key={r.id}><td>{String(i+1).padStart(2,'0')}</td><td>{r.name}</td><td><button disabled={busy||!!snapshot} onClick={()=>{setRoute(String(r.id));view(r.id);}}>View</button></td></tr>)}</tbody></table>
+ return <section className="fr-page"><header className="fr-hero"><div className="fr-hero-content"><div className="fr-hero-icon"><Snowflake size={32}/></div><div><span>OWNER ASSET REPORT</span><h1>Freezer Receipt</h1><p>Route-wise assigned shop freezer details</p></div></div><div className="fr-hero-tag"><PackageCheck size={17}/> Asset overview</div></header>
+  <div className="fr-stats"><div className="fr-stat fr-stat-blue"><div><span>Total routes</span><strong>{routes.length}</strong><small>Your distribution network</small></div><span className="fr-stat-icon"><MapPin size={22}/></span></div><div className="fr-stat fr-stat-cyan"><div><span>Freezer assignments</span><strong>{data?data.rows.length:'--'}</strong><small>{data?'In the selected route':'Select a route to view'}</small></div><span className="fr-stat-icon"><Snowflake size={22}/></span></div><div className="fr-stat fr-stat-teal"><div><span>Assigned shops</span><strong>{data?new Set(data.rows.map(r=>r.shop_id)).size:'--'}</strong><small>{data?'Shops in the selected route':'Route-wise asset coverage'}</small></div><span className="fr-stat-icon"><Store size={22}/></span></div></div>
+  <div className="fr-results fr-route-list"><div className="fr-result-heading"><div className="fr-section-title"><span className="fr-section-icon"><MapPin size={20}/></span><div><h2>Route overview</h2><p>Select a route to view its freezer assignments.</p></div></div><span className="fr-count-badge">{routes.length} routes</span></div>
+   <table><thead><tr><th>S.No</th><th>Route Name</th><th>Action</th></tr></thead><tbody>{routes.map((r,i)=><tr key={r.id} className={route===String(r.id)?'fr-selected-route':''}><td><span className="fr-row-number">{String(i+1).padStart(2,'0')}</span></td><td><span className="fr-route-name"><MapPin size={16}/>{r.name}</span></td><td><button disabled={busy||!!snapshot} onClick={()=>{setRoute(String(r.id));view(r.id);}}>View <ArrowUpRight size={15}/></button></td></tr>)}</tbody></table>
   </div>
   {!routes.length&&!error&&<p>No eligible routes available.</p>}
+  {busy&&<p role="status" className="fr-loading">Loading freezer assignments...</p>}
   {error&&<p role="alert" className="fr-error">{error}</p>}
-  {data&&<article className="fr-results" ref={el=>{if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}}><div className="fr-result-heading"><h2>{data.route.name}</h2><span>{data.rows.length} freezer assignments</span></div>
-   {data.rows.length?<><div className="fr-scroll"><Table rows={data.rows}/></div><button onClick={()=>setSnapshot({...data,rows:data.rows.map(r=>({...r})),printedAt:new Date().toLocaleDateString('en-GB',{timeZone:'Asia/Kolkata'})})} disabled={!!snapshot}>Print A4</button></>:<p>No freezer-assigned shops in this route.</p>}</article>}
+  {data&&<article className="fr-results" ref={el=>{if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}}><div className="fr-result-heading"><div className="fr-section-title"><span className="fr-section-icon fr-section-freezer"><Snowflake size={21}/></span><div><h2>{data.route.name}</h2><p>Assigned shop assets and contact details</p></div></div><span className="fr-count-badge">{data.rows.length} freezer assignments</span></div>
+   {data.rows.length?<><div className="fr-scroll"><Table rows={data.rows}/></div><button onClick={()=>setSnapshot({...data,rows:data.rows.map(r=>({...r})),printedAt:new Date().toLocaleDateString('en-GB',{timeZone:'Asia/Kolkata'})})} disabled={!!snapshot}><Printer size={17}/> Print A4</button></>:<p>No freezer-assigned shops in this route.</p>}</article>}
   {snapshot&&createPortal(<article id="freezer-receipt-print"><h1>AVS AGENCIES</h1><h2>Freezer Receipt</h2><div className="fr-print-meta"><strong>Route: {snapshot.route.name}</strong><span>Date: {snapshot.printedAt}</span></div><Table rows={snapshot.rows}/><p>Total freezer assignments: {snapshot.rows.length}</p></article>,document.body)}
  </section>;
 }

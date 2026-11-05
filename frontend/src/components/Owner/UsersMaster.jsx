@@ -337,7 +337,7 @@ export const UsersMaster = () => {
     if (u.id === currentUser?.id) {
       return showToast('Cannot delete your own account', 'error');
     }
-    if (!window.confirm(`Are you sure you want to permanently delete user "${u.login_id}" (${u.name || u.employee_name})?`)) return;
+    if (!window.confirm(`Remove this user? Previous bills and reports will be preserved. User: "${u.login_id}" (${u.name || u.employee_name})?`)) return;
 
     try {
       const res = await apiFetch(API_URL + '/users/' + u.id, {

@@ -200,7 +200,11 @@ export const AppProvider = ({ children }) => {
       const backOffice = ['OWNER','STORE_KEEPER'].includes(currentUser?.role);
       const isOwner = (currentUser?.role || '').toUpperCase() === 'OWNER' || (activeRole || '').toUpperCase() === 'OWNER';
       const [shopsRes, villagesRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes, empRes, driversRes, freezerModelsRes, freezersRes, suppliersRes] = await Promise.all([
-        needs('shops') ? apiFetch(`${API_URL}/shops`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(shops),
+        needs('shops') ? apiFetch(`${API_URL}/shops`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }).then(rows => {
+          // Shop dues are authoritative even when an unrelated stock/master refresh fails.
+          if (generation === refreshGeneration.current && Array.isArray(rows)) setShops(rows);
+          return rows;
+        }) : Promise.resolve(shops),
         needs('villages') ? apiFetch(`${API_URL}/villages`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(villages),
         needs('products') ? apiFetch(`${API_URL}/products`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(products),
         needs('categories') ? apiFetch(`${API_URL}/categories`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(categories),
@@ -235,26 +239,9 @@ export const AppProvider = ({ children }) => {
       if (needs('drivers'))setDrivers(Array.isArray(driversRes) ? driversRes : []);
       if (needs('freezer-models'))setFreezerModels(Array.isArray(freezerModelsRes) ? freezerModelsRes : []);
       
-      // Use backend suppliers list as authoritative source of truth, fallback to local cache if empty
       const rawSuppliers = Array.isArray(suppliersRes) ? suppliersRes : (Array.isArray(suppliersRes?.suppliers) ? suppliersRes.suppliers : null);
-      if (rawSuppliers && rawSuppliers.length > 0) {
-        setSuppliers(rawSuppliers);
-        try { localStorage.setItem('avs_suppliers_cache', JSON.stringify(rawSuppliers)); } catch (e) {}
-      } else if (rawSuppliers && rawSuppliers.length === 0) {
-        setSuppliers(prev => {
-          if (prev && prev.length > 0) return prev;
-          try {
-            const cached = localStorage.getItem('avs_suppliers_cache');
-            if (cached) {
-              const parsed = JSON.parse(cached);
-              if (Array.isArray(parsed)) return parsed;
-            }
-          } catch (e) {}
-      if (generation === refreshGeneration.current) setRefreshError('Unable to refresh application data. Your previous data is still displayed.');
-          return [];
-        });
-      }
-      
+      if(rawSuppliers){setSuppliers(rawSuppliers);try{localStorage.setItem('avs_suppliers_cache',JSON.stringify(rawSuppliers));}catch{}}
+
       // Merge remote freezers with local freezers safely
       setFreezers(prev => {
         const remote = Array.isArray(freezersRes) ? freezersRes : [];
@@ -345,6 +332,11 @@ export const AppProvider = ({ children }) => {
       if (data.success) {
         const fullSale = { ...data.sale, items: data.sale?.items || data.items || [] };
         setActiveBill(fullSale);
+        // A saved bill must immediately count as billed, even if a later data refresh fails.
+        setSales(previous => [fullSale, ...previous.filter(sale =>
+          fullSale.id != null ? String(sale.id) !== String(fullSale.id)
+            : !(fullSale.bill_no && sale.bill_no === fullSale.bill_no)
+        )]);
 
         // Update local shops state immediately
         const targetShopId = saleData.shop_id || fullSale.shop_id;
@@ -969,7 +961,7 @@ export const AppProvider = ({ children }) => {
       if (contentType.includes('application/json')) {
         const data = await res.json();
         const list = Array.isArray(data) ? data : (Array.isArray(data?.suppliers) ? data.suppliers : []);
-        if (list.length > 0) {
+        if (res.ok) {
           setSuppliers(list);
           return list;
         }
@@ -1547,12 +1539,12 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const collectShopDue = async (shopId, { amount, mode, idempotency_key }) => {
+  const collectShopDue = async (shopId, { amount, mode, cash_amount, gpay_amount, idempotency_key }) => {
     try {
       const res = await apiFetch(`${API_URL}/shops/${shopId}/collect-due`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, payment_mode: mode, idempotency_key: idempotency_key || crypto.randomUUID() })
+        body: JSON.stringify({ amount, payment_mode: mode, ...(mode === 'SPLIT' ? {cash_amount,gpay_amount} : {}), idempotency_key: idempotency_key || crypto.randomUUID() })
       });
       const data = await res.json();
       if (data.success) {

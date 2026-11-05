@@ -204,7 +204,7 @@ export const generateEscPos58mmBuffer = (bill) => {
     addTwoColumnRow('Credit Amount:', `Rs. ${totalAmount.toFixed(2)}`, false);
   }
 
-  addTwoColumnRow('SHOP BALANCE:', `Rs. ${shopBalance.toFixed(2)}`, true);
+  addTwoColumnRow(bill.receipt_bill_only ? 'BILL BALANCE:' : 'SHOP BALANCE:', `Rs. ${shopBalance.toFixed(2)}`, true);
   addDashedLine();
 
   // 7. Footer
@@ -431,7 +431,7 @@ export const generateEscPos58mmRasterBuffer = (bill) => {
   y += 22;
   ctx.textAlign = 'left';
   ctx.font = `bold 15px ${fontTamilStack}`;
-  ctx.fillText('SHOP BALANCE (கடை பாக்கி):', 10, y);
+  ctx.fillText(bill.receipt_bill_only ? 'BILL BALANCE:' : 'SHOP BALANCE (கடை பாக்கி):', 10, y);
   ctx.textAlign = 'right';
   ctx.font = `bold 16px ${fontMonoStack}`;
   ctx.fillText(`Rs. ${shopBalance.toFixed(2)}`, width - 10, y);
@@ -660,7 +660,7 @@ export const generateEscPos80mmBuffer = (bill) => {
     addTwoColumnRow('Credit Amount:', `Rs. ${totalAmount.toFixed(2)}`, false);
   }
 
-  addTwoColumnRow('SHOP BALANCE:', `Rs. ${shopBalance.toFixed(2)}`, true);
+  addTwoColumnRow(bill.receipt_bill_only ? 'BILL BALANCE:' : 'SHOP BALANCE:', `Rs. ${shopBalance.toFixed(2)}`, true);
   addDashedLine();
 
   addText('Thank You! Visit Again', 'CENTER', true);
@@ -881,7 +881,7 @@ export const generateEscPos80mmRasterBuffer = (bill) => {
   y += 26;
   ctx.textAlign = 'left';
   ctx.font = `bold 18px ${fontTamilStack}`;
-  ctx.fillText('SHOP BALANCE (கடை பாக்கி):', 12, y);
+  ctx.fillText(bill.receipt_bill_only ? 'BILL BALANCE:' : 'SHOP BALANCE (கடை பாக்கி):', 12, y);
   ctx.textAlign = 'right';
   ctx.font = `bold 19px ${fontMonoStack}`;
   ctx.fillText(`Rs. ${shopBalance.toFixed(2)}`, width - 12, y);

@@ -1,3 +1,5 @@
+import {companyProductActive} from '../shared/supplierProducts.js';
+import {purchaseUnit} from '../shared/purchaseUnits.js';
 import bcrypt from 'bcrypt';
 import { driverPerformance, routePerformance } from './performance-reports.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -168,7 +170,7 @@ export async function getUsers(cid) {
     'JOIN roles r ON r.id = ua.role_id ' +
     'LEFT JOIN employees e ON e.id = ua.employee_id ' +
     'LEFT JOIN routes rt ON rt.id = e.route_id ' +
-    'WHERE ua.company_id = $1 ' +
+    'WHERE ua.company_id = $1 AND ua.deleted_at IS NULL ' +
     'ORDER BY ua.created_at DESC',
     [cid]
   );
@@ -225,7 +227,20 @@ export async function addUser(cid, d, actorUserId) {
 }
 
 export async function updateUser(cid, uid, d, actorUserId) {
-  const existingUser = await queryOne('SELECT ua.*, r.role_name FROM user_accounts ua JOIN roles r ON r.id = ua.role_id WHERE ua.id=$1 AND ua.company_id=$2', [uid, cid]);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT id FROM companies WHERE id=$1 FOR UPDATE', [cid]);
+    await client.query('SELECT id FROM user_accounts WHERE id=$1 AND company_id=$2 FOR UPDATE', [uid,cid]);
+    const result = await transactionContext.run(client, () => updateUserInTransaction(cid,uid,d,actorUserId));
+    await client.query('COMMIT');
+    return result;
+  } catch(error) { await client.query('ROLLBACK'); throw error; }
+  finally { client.release(); }
+}
+
+async function updateUserInTransaction(cid, uid, d, actorUserId) {
+  const existingUser = await queryOne('SELECT ua.*, r.role_name FROM user_accounts ua JOIN roles r ON r.id = ua.role_id WHERE ua.id=$1 AND ua.company_id=$2 AND ua.deleted_at IS NULL', [uid, cid]);
   if (!existingUser) throw new Error('User not found.');
   if (existingUser.is_system_administrator) throw new Error('Administrator account cannot be edited.');
   if (String(d.login_id || '').trim().toLowerCase() === 'administrator') throw new Error('Administrator login is reserved.');
@@ -238,6 +253,7 @@ export async function updateUser(cid, uid, d, actorUserId) {
     if (!r && (roleInput === 'DRIVER' || roleInput === 'EMPLOYEE' || roleInput === 'STORE_KEEPER' || roleInput === 'OWNER')) {
       r = await queryOne('INSERT INTO roles (role_name) VALUES ($1) ON CONFLICT (role_name) DO UPDATE SET role_name=EXCLUDED.role_name RETURNING id, role_name', [roleInput]);
     }
+    if (!r || !['OWNER','STORE_KEEPER','DRIVER','EMPLOYEE'].includes(r.role_name)) throw new Error('Invalid role specified.');
     if (r) {
       roleId = r.id;
       roleName = r.role_name;
@@ -245,23 +261,30 @@ export async function updateUser(cid, uid, d, actorUserId) {
   }
 
   const loginId = d.login_id ? String(d.login_id).trim().toLowerCase() : existingUser.login_id;
-  if (loginId && loginId !== existingUser.login_id) {
+  if (!String(loginId || '').trim()) throw new Error('Login ID is required.');
+  if (loginId && loginId !== String(existingUser.login_id).trim().toLowerCase()) {
     const dupLogin = await queryOne('SELECT id FROM user_accounts WHERE LOWER(login_id)=$1 AND id != $2', [loginId, uid]);
     if (dupLogin) throw new Error('Login ID already taken. Please choose another.');
   }
 
   const displayName = d.name !== undefined ? (d.name ? String(d.name).trim() : null) : existingUser.name;
-  const status = d.status || d.account_status || existingUser.account_status;
+  const status = String(d.status || d.account_status || existingUser.account_status).toUpperCase();
+  if (!['ACTIVE','INACTIVE','SUSPENDED'].includes(status)) throw new Error('Invalid account status.');
+  if (existingUser.role_name === 'OWNER' && existingUser.account_status === 'ACTIVE' && (roleName !== 'OWNER' || status !== 'ACTIVE')) {
+    const owners = await queryOne("SELECT COUNT(*)::int AS count FROM user_accounts ua JOIN roles r ON r.id=ua.role_id WHERE ua.company_id=$1 AND r.role_name='OWNER' AND ua.account_status='ACTIVE' AND ua.deleted_at IS NULL", [cid]);
+    if (owners.count <= 1) throw new Error('Cannot deactivate or change the role of the only active OWNER account.');
+  }
   const targetEmployeeId = d.employee_id === undefined ? existingUser.employee_id
     : d.employee_id === null || d.employee_id === '' ? null : Number(d.employee_id);
   if (targetEmployeeId !== null && (!Number.isSafeInteger(targetEmployeeId) || targetEmployeeId <= 0)) throw new Error('Employee ID must be a positive whole number');
   if (targetEmployeeId && !(await queryOne('SELECT id FROM employees WHERE id=$1 AND company_id=$2',[targetEmployeeId,cid]))) throw new Error('Employee must belong to this company');
 
   const row = await queryOne(
-    'UPDATE user_accounts SET login_id=$1, role_id=$2, name=COALESCE($3, name), account_status=$4, employee_id=$5, updated_at=NOW() WHERE id=$6 AND company_id=$7 RETURNING id,company_id,employee_id,role_id,login_id,name,phone,account_status',
-    [loginId, roleId, displayName, status, targetEmployeeId, uid, cid]
+    'UPDATE user_accounts SET login_id=$1, role_id=$2, name=COALESCE($3, name), account_status=$4, employee_id=$5, phone=$8, updated_at=NOW() WHERE id=$6 AND company_id=$7 AND deleted_at IS NULL RETURNING id,company_id,employee_id,role_id,login_id,name,phone,account_status',
+    [loginId, roleId, displayName, status, targetEmployeeId, uid, cid, d.phone === undefined ? existingUser.phone : d.phone || null]
   );
 
+  if (!row) throw new Error('User not found.');
   const activeEmpId = targetEmployeeId;
   let updatedRouteId = undefined;
   if (activeEmpId) {
@@ -280,8 +303,11 @@ export async function updateUser(cid, uid, d, actorUserId) {
 
     if (d.route_id !== undefined || d.routeId !== undefined) {
       const rawRoute = d.route_id !== undefined ? d.route_id : d.routeId;
-      updatedRouteId = (rawRoute === null || rawRoute === '' || rawRoute === 0 || rawRoute === '0') ? null : parseInt(rawRoute, 10);
-      if (isNaN(updatedRouteId)) updatedRouteId = null;
+      updatedRouteId = (rawRoute === null || rawRoute === '' || rawRoute === 0 || rawRoute === '0') ? null : Number(rawRoute);
+      if (updatedRouteId !== null && (!Number.isSafeInteger(updatedRouteId) || updatedRouteId <= 0)) throw new Error('Invalid route selected.');
+      if (updatedRouteId && !(await queryOne('SELECT id FROM routes WHERE id=$1 AND company_id=$2', [updatedRouteId,cid]))) throw new Error('Route must belong to this company.');
+      const currentEmployee = await queryOne('SELECT route_id FROM employees WHERE id=$1 AND company_id=$2', [activeEmpId,cid]);
+      if (String(currentEmployee.route_id || '') !== String(updatedRouteId || '')) {
 
       await query('UPDATE employees SET route_id=$1, updated_at=NOW() WHERE id=$2 AND company_id=$3', [updatedRouteId, activeEmpId, cid]);
 
@@ -295,7 +321,8 @@ export async function updateUser(cid, uid, d, actorUserId) {
           [updatedRouteId, activeEmpId, empRec?.vehicle_number || null, today, 'ASSIGNED', new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})]
         );
       } else {
-        await query('DELETE FROM route_assignments WHERE employee_id=$1', [activeEmpId]);
+        await query("DELETE FROM route_assignments WHERE employee_id=$1 AND assigned_date=$2 AND status='ASSIGNED'", [activeEmpId,businessDate()]);
+      }
       }
     }
   }
@@ -313,41 +340,35 @@ export async function updateUser(cid, uid, d, actorUserId) {
 }
 
 export async function deleteUser(cid, uid, actorUserId) {
-  const user = await queryOne('SELECT ua.*, r.role_name FROM user_accounts ua JOIN roles r ON r.id = ua.role_id WHERE ua.id=$1 AND ua.company_id=$2', [uid, cid]);
-  if (!user) throw new Error('User not found.');
-  if (user.is_system_administrator) throw new Error('Administrator account cannot be deleted.');
-
-  if (user.role_name === 'OWNER') {
-    const ownerCount = await queryOne(
-      'SELECT COUNT(*)::int as count FROM user_accounts ua JOIN roles r ON r.id = ua.role_id WHERE r.role_name = \'OWNER\' AND ua.company_id = $1 AND ua.account_status = \'ACTIVE\'',
-      [cid]
-    );
-    if (ownerCount && parseInt(ownerCount.count, 10) <= 1) {
-      throw new Error('Cannot delete the primary/only active OWNER account.');
+  if (String(uid) === String(actorUserId)) throw new Error('Cannot delete your own account.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Serialize owner deletion decisions within this company.
+    await client.query('SELECT id FROM companies WHERE id=$1 FOR UPDATE', [cid]);
+    const user = (await client.query('SELECT ua.*, r.role_name FROM user_accounts ua JOIN roles r ON r.id=ua.role_id WHERE ua.id=$1 AND ua.company_id=$2 FOR UPDATE OF ua', [uid,cid])).rows[0];
+    if (!user) throw new Error('User not found.');
+    if (user.is_system_administrator) throw new Error('Administrator account cannot be deleted.');
+    if (!user.deleted_at) {
+      if (user.role_name === 'OWNER' && user.account_status === 'ACTIVE') {
+        const owners = await client.query("SELECT COUNT(*)::int AS count FROM user_accounts ua JOIN roles r ON r.id=ua.role_id WHERE ua.company_id=$1 AND r.role_name='OWNER' AND ua.account_status='ACTIVE' AND ua.deleted_at IS NULL", [cid]);
+        if (owners.rows[0].count <= 1) throw new Error('Cannot delete the only active OWNER account.');
+      }
+      // Retain foreign keys and historical names; remove the login from User Master.
+      await client.query("UPDATE user_accounts SET account_status='INACTIVE', deleted_at=NOW(), updated_at=NOW() WHERE id=$1 AND company_id=$2", [uid,cid]);
+      if (user.employee_id) await client.query('UPDATE employees SET is_active=FALSE, updated_at=NOW() WHERE id=$1 AND company_id=$2', [user.employee_id,cid]);
+      await client.query("INSERT INTO audit_logs(company_id,actor_user_id,action,entity_type,entity_id) VALUES($1,$2,'USER_DELETED','user_accounts',$3)", [cid,actorUserId||null,uid]);
     }
-  }
-
-  // Check if user has sales or stock transaction records
-  const salesCount = await queryOne('SELECT COUNT(*)::int as count FROM sales WHERE employee_id=$1', [user.employee_id || 0]);
-  if (salesCount && parseInt(salesCount.count, 10) > 0) {
-    await query('UPDATE user_accounts SET account_status=\'INACTIVE\', updated_at=NOW() WHERE id=$1 AND company_id=$2', [uid, cid]);
-    if (user.employee_id) {
-      await query('UPDATE employees SET is_active=FALSE, updated_at=NOW() WHERE id=$1 AND company_id=$2', [user.employee_id, cid]);
-    }
-    return { success: true, message: `User "${user.login_id}" has sales records and has been deactivated.`, user: { id: user.id, login_id: user.login_id } };
-  }
-
-  await query('DELETE FROM user_accounts WHERE id=$1 AND company_id=$2', [uid, cid]);
-  if (user.employee_id) {
-    await query('UPDATE employees SET is_active=FALSE WHERE id=$1 AND company_id=$2', [user.employee_id, cid]);
-  }
-
-  await auditLog({ companyId: cid, actorUserId, action: 'USER_DELETED', entityType: 'user_accounts', entityId: uid });
-  return { success: true, message: `User "${user.login_id}" deleted successfully.`, user: { id: user.id, login_id: user.login_id } };
+    await client.query('COMMIT');
+    return {success:true,message:`User "${user.login_id}" removed. Previous bills and reports are preserved.`,user:{id:user.id,login_id:user.login_id}};
+  } catch(error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
 }
 
 export async function resetPin(cid, uid, newPin, actorUserId) {
-  const account = await queryOne('SELECT r.role_name,u.is_system_administrator FROM user_accounts u JOIN roles r ON r.id=u.role_id WHERE u.id=$1 AND u.company_id=$2', [uid,cid]);
+  const account = await queryOne('SELECT r.role_name,u.is_system_administrator FROM user_accounts u JOIN roles r ON r.id=u.role_id WHERE u.id=$1 AND u.company_id=$2 AND u.deleted_at IS NULL', [uid,cid]);
   if (!account) throw new Error('User not found');
   if (account.is_system_administrator) throw new Error('Administrator password cannot be reset through user management.');
   const pinStr = credential(newPin, account.role_name);
@@ -368,7 +389,7 @@ export async function resetUserPin(cid, uid, newPin, actorUserId) {
 export async function toggleUserStatus(cid,uid,status,actorUserId) {
   const s = status==='ACTIVE'?'ACTIVE':'SUSPENDED';
   const row = await queryOne(
-    'UPDATE user_accounts SET account_status=$1,updated_at=NOW() WHERE id=$2 AND company_id=$3 RETURNING id,account_status',
+    'UPDATE user_accounts SET account_status=$1,updated_at=NOW() WHERE id=$2 AND company_id=$3 AND deleted_at IS NULL RETURNING id,account_status',
     [s,uid,cid]
   );
   if(!row) throw new Error('User not found.');
@@ -1298,16 +1319,29 @@ async function receiveStockAttempt(cid, data, actorUserId) {
     await client.query('BEGIN');
     const items = data.items || [{ product_id: data.product_id, quantity: data.quantity, unit: data.unit }];
     const supplier_id = data.supplier_id ? Number(data.supplier_id) : null;
+    if(data.supplier_id&&(!Number.isSafeInteger(supplier_id)||supplier_id<=0))throw new Error('Valid purchase company is required');
     let supplier_name = data.supplier_name || data.dealer_name || null;
 
-    if (supplier_id && !supplier_name) {
-      const sRes = await client.query('SELECT name FROM suppliers WHERE id=$1 AND (company_id=$2)', [supplier_id, cid]);
-      if (sRes.rows.length > 0) supplier_name = sRes.rows[0].name;
+    let supplier=null;
+    if(supplier_id){
+      supplier=(await client.query('SELECT * FROM suppliers WHERE id=$1 AND company_id=$2 AND is_active=TRUE FOR SHARE',[supplier_id,cid])).rows[0];
+      if(!supplier)throw new Error('Purchase company not found or inactive');
+      supplier_name=supplier.name;
     }
-
+    let receiveIdentity=null;
+    if(data.idempotency_key){
+      receiveIdentity=requestIdentity(data);
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['receive:'+cid+':'+receiveIdentity.key]);
+      const saved=(await client.query("SELECT request_hash,result FROM operation_requests WHERE company_id=$1 AND operation='receive-stock' AND request_key=$2",[cid,receiveIdentity.key])).rows[0];
+      if(saved){
+        if(saved.request_hash!==receiveIdentity.hash)throw new Error('Receipt request already used with different details');
+        await client.query('COMMIT');return {...saved.result,isDuplicate:true};
+      }
+    }
     const reference = data.reference || supplier_name || data.dealer_name || null;
     const received_by = data.received_by || 'Store Keeper';
     const notes = data.notes || (supplier_name ? `Supplier: ${supplier_name}` : null);
+    if(!Array.isArray(items)||!items.length)throw new Error('Select at least one product to receive');
     const results = [];
     for (const item of [...items].sort((first,second)=>Number(first.product_id)-Number(second.product_id))) {
       let qty = Number(item.quantity || item.qty_units);
@@ -1317,7 +1351,7 @@ async function receiveStockAttempt(cid, data, actorUserId) {
       const pRes = await client.query('SELECT p.*, c.name AS category_name, c.operational_unit AS category_operational_unit FROM products p LEFT JOIN categories c ON c.id=p.category_id WHERE p.id=$1 AND p.company_id=$2 AND p.deleted_at IS NULL FOR UPDATE OF p', [pid, cid]);
       if (pRes.rows.length === 0) throw new Error('Product not found');
       const prod = pRes.rows[0];
-      const operational = getOperationalUnit(prod);
+      const operational = purchaseUnit(prod);
       if (item.unit && String(item.unit).toLowerCase() !== String(prod.selling_unit).toLowerCase()) throw new Error('Stock quantities must use the configured selling unit');
       const ppu = Number(prod.pieces_per_unit);
       let wholePieces = null;
@@ -1343,11 +1377,26 @@ async function receiveStockAttempt(cid, data, actorUserId) {
       if (prod.is_active === false || prod.is_active === 0) {
         throw new Error('Cannot receive stock for an inactive product.');
       }
-      const itemRate = (item.rate !== undefined && item.rate !== null && !isNaN(Number(item.rate))) ? Number(item.rate) : Number(prod.purchase_price || 0);
-      if (supplier_id && itemRate <= 0) {
-        throw new Error(`Buy Rate is not configured for "${prod.display_name}". Please set product buy rate in Owner Login first.`);
+      let itemRate=Number(item.rate??prod.purchase_price??0),pieceRate=null;
+      if(supplier){
+        const rates=supplier.product_rates||{};
+        if(!companyProductActive(rates,pid))throw new Error('Product is not assigned to the selected company.');
+        const configured=rates[pid];
+        itemRate=Number(typeof configured==='object'?(configured.tray_rate??configured.rate):configured);
+        pieceRate=typeof configured==='object'&&configured.piece_rate!==undefined?Number(configured.piece_rate):Number((itemRate/ppu).toFixed(2));
+        if(item.rate!==undefined&&paise(item.rate)!==paise(itemRate))throw new Error('Company rate changed. Reopen Receive Stock to load the latest rates.');
+        if(operational.isPieceBased&&item.piece_rate!==undefined&&paise(item.piece_rate)!==paise(pieceRate))throw new Error('Company piece rate changed. Reopen Receive Stock.');
       }
-      const itemTotal = itemRate * qty;
+      if(!Number.isFinite(itemRate)||itemRate<0||(supplier_id&&itemRate<=0))throw new Error('A positive company purchase rate is required.');
+      let itemTotal;
+      if(supplier&&operational.isPieceBased){
+        const trays=item.inward_trays===undefined?Math.floor(wholePieces/ppu):Number(item.inward_trays);
+        const pieces=item.inward_pieces===undefined?wholePieces-trays*ppu:Number(item.inward_pieces);
+        if(!Number.isSafeInteger(trays)||trays<0||!Number.isSafeInteger(pieces)||pieces<0||trays*ppu+pieces!==wholePieces)throw new Error('Invalid received tray/piece quantities');
+        if(pieces>0&&pieceRate<=0)throw new Error('A positive company piece rate is required for loose pieces');
+        itemTotal=Number(amount(trays*paise(itemRate)+pieces*paise(pieceRate)));
+      }else itemTotal=Number(amount(Math.round(paise(itemRate)*qty)));
+      if(item.total_amount!==undefined&&paise(item.total_amount)!==paise(itemTotal))throw new Error('Purchase total changed. Please review the company rates and quantities.');
       const uRes = operational.isPieceBased
         ? await client.query('UPDATE products SET warehouse_stock_units=(ROUND(warehouse_stock_units*$2)+$3)/$2, updated_at=NOW() WHERE id=$1 RETURNING *', [pid,ppu,wholePieces])
         : await client.query('UPDATE products SET warehouse_stock_units=warehouse_stock_units+$1, updated_at=NOW() WHERE id=$2 RETURNING *', [qty, pid]);
@@ -1360,8 +1409,10 @@ async function receiveStockAttempt(cid, data, actorUserId) {
       results.push({ product: uRes.rows[0], movement: movRes.rows[0] });
     }
     await auditLog({ companyId: cid, actorUserId, action: 'STOCK_RECEIVED', entityType: 'inventory_movements', metadata: { itemsCount: items.length, supplier_id, supplier_name, reference } });
+    const result={success:true,message:'Stock received successfully',results};
+    if(receiveIdentity)await client.query("INSERT INTO operation_requests(company_id,operation,request_key,request_hash,result) VALUES($1,'receive-stock',$2,$3,$4)",[cid,receiveIdentity.key,receiveIdentity.hash,JSON.stringify(result)]);
     await client.query('COMMIT');
-    return { success: true, message: 'Stock received successfully', results };
+    return result;
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -3850,7 +3901,7 @@ export async function addStockMovement(cid,d) {
 }
 
 export async function getEmployeeStock(cid,eid) {
-  return await queryAll('SELECT es.*,p.name as product_name,p.display_name,c.name as category_name,c.operational_unit as category_operational_unit,p.selling_unit,p.base_unit,p.pieces_per_unit,p.unit_selling_price,p.piece_selling_price,p.image_url,p.icon FROM employee_stock es JOIN products p ON p.id=es.product_id LEFT JOIN categories c ON c.id=p.category_id WHERE es.company_id=$1 AND es.employee_id=$2 AND es.qty_units > 0',[cid,eid]);
+  return await queryAll('SELECT es.*,p.name as product_name,p.display_name,p.pack_size,c.name as category_name,c.operational_unit as category_operational_unit,p.selling_unit,p.base_unit,p.pieces_per_unit,p.unit_selling_price,p.piece_selling_price,p.image_url,p.icon FROM employee_stock es JOIN products p ON p.id=es.product_id LEFT JOIN categories c ON c.id=p.category_id WHERE es.company_id=$1 AND es.employee_id=$2 AND es.qty_units > 0',[cid,eid]);
 }
 
 // ====== DASHBOARD SUMMARY & PHASE 4 EXECUTIVE MANAGEMENT ======
@@ -7503,13 +7554,23 @@ export async function deleteSupplier(cid, id, actorUserId) {
 
 export async function getSupplierInwardStockReport(cid, filters = {}) {
   const companyId = cid || 1;
-  let where = ["(im.company_id = $1)", "im.movement_type = 'INWARD'"];
+  let where = ["(im.company_id = $1)", "im.movement_type = 'INWARD'", "(im.supplier_id IS NOT NULL OR im.supplier_name IS NOT NULL)"];
   const params = [companyId];
 
   if (filters.supplier_id && filters.supplier_id !== 'ALL') {
     params.push(Number(filters.supplier_id));
-    where.push(`(im.supplier_id = $${params.length} OR im.supplier_name = (SELECT name FROM suppliers WHERE id = $${params.length} LIMIT 1))`);
+    where.push(`im.supplier_id = $${params.length}`);
   }
+
+  if(filters.active_products_only==='true'||filters.active_products_only===true){
+    where.push(`p.is_active=TRUE AND p.deleted_at IS NULL AND EXISTS(
+      SELECT 1 FROM suppliers active_supplier WHERE active_supplier.company_id=$1
+      AND active_supplier.id=im.supplier_id AND active_supplier.is_active=TRUE
+      AND active_supplier.product_rates ? im.product_id::text
+      AND COALESCE((active_supplier.product_rates->im.product_id::text->>'is_active')::boolean,TRUE))`);
+  }
+  if(filters.product_id&&filters.product_id!=='ALL'){params.push(Number(filters.product_id));where.push(`im.product_id=$${params.length}`);}
+  if(filters.start_date&&filters.end_date&&filters.start_date>filters.end_date)throw new Error('From date must be on or before To date');
 
   if (filters.supplier_name && filters.supplier_name !== 'ALL') {
     params.push(`%${filters.supplier_name.trim()}%`);
@@ -7565,16 +7626,18 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
        im.movement_no,
        im.product_id,
        COALESCE(im.product_name, p.display_name, p.name, 'Stock Item') as product_name,
-       COALESCE(p.selling_unit, im.unit, 'Tray') as unit,
-       COALESCE(p.selling_unit, im.unit, 'Tray') as selling_unit,
+       p.pack_size,
+       (SELECT c.name FROM categories c WHERE c.id=p.category_id AND c.company_id=p.company_id) as category_name,
+       COALESCE(im.unit, p.selling_unit, 'Tray') as unit,
+       COALESCE(im.unit, p.selling_unit, 'Tray') as selling_unit,
        COALESCE(p.pieces_per_unit, 20) as pieces_per_unit,
        im.supplier_id,
        COALESCE(im.supplier_name, s.name, im.reference, 'Direct Supplier') as supplier_name,
        COALESCE(im.qty_units, 0) as qty_units,
        COALESCE(im.qty_units, 0) as quantity,
        COALESCE(im.qty_units, 0) as quantity_change,
-       COALESCE(im.rate, (SELECT spr.buy_rate FROM supplier_product_rates spr WHERE spr.supplier_id = im.supplier_id AND spr.product_id = im.product_id LIMIT 1), p.purchase_price, 0) as rate,
-       COALESCE(im.total_amount, (COALESCE(im.qty_units, 0) * COALESCE(im.rate, (SELECT spr.buy_rate FROM supplier_product_rates spr WHERE spr.supplier_id = im.supplier_id AND spr.product_id = im.product_id LIMIT 1), p.purchase_price, 0)), 0) as total_amount,
+       COALESCE(im.rate,0) as rate,
+       COALESCE(im.total_amount,0) as total_amount,
        COALESCE(im.received_by, 'Store Keeper') as received_by,
        COALESCE(im.received_by, 'Store Keeper') as created_by_name,
        im.reference,
@@ -7583,8 +7646,8 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
        to_char(im.created_at, 'HH24:MI:SS') as movement_time,
        im.created_at
      FROM inventory_movements im
-     LEFT JOIN products p ON p.id = im.product_id
-     LEFT JOIN suppliers s ON s.id = im.supplier_id
+     LEFT JOIN products p ON p.id = im.product_id AND p.company_id=im.company_id
+     LEFT JOIN suppliers s ON s.id = im.supplier_id AND s.company_id=im.company_id
      WHERE ${whereClause}
      ORDER BY im.created_at DESC`,
     params
@@ -7601,7 +7664,7 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
   records.forEach(r => {
     const qty = Number(r.qty_units || 0);
     const ppu = Number(r.pieces_per_unit || 1);
-    const pcs = qty * ppu;
+    const pcs = Math.round(qty * ppu);
     const amount = Number(r.total_amount || 0);
 
     totalUnits += qty;
@@ -7647,8 +7710,9 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
   const supplierMap = new Map();
   records.forEach(r => {
     const sName = r.supplier_name || 'Direct Supplier';
-    if (!supplierMap.has(sName)) {
-      supplierMap.set(sName, {
+    const supplierKey=r.supplier_id?`id:${r.supplier_id}`:`name:${sName}`;
+    if (!supplierMap.has(supplierKey)) {
+      supplierMap.set(supplierKey, {
         supplier_id: r.supplier_id,
         supplier_name: sName,
         total_units: 0,
@@ -7657,11 +7721,11 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
         receipts_count: 0
       });
     }
-    const sEntry = supplierMap.get(sName);
+    const sEntry = supplierMap.get(supplierKey);
     const qty = Number(r.qty_units || 0);
     const ppu = Number(r.pieces_per_unit || 1);
     sEntry.total_units += qty;
-    sEntry.total_pieces += qty * ppu;
+    sEntry.total_pieces += Math.round(qty * ppu);
     sEntry.total_amount += Number(r.total_amount || 0);
     sEntry.receipts_count += 1;
   });

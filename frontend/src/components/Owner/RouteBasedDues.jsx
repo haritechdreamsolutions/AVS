@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
-import { MapPin, ArrowUpRight, Wallet, CircleCheck, UserRound } from 'lucide-react';
+import { MapPin, ArrowUpRight, Wallet, CircleCheck, UserRound, Printer, Bluetooth, ReceiptText, Store, X } from 'lucide-react';
 import { apiFetch } from '../../context/AppContext';
+import { printRouteDues, routeDuesBuffer } from '../../services/routeDuesPrinter';
 import './routeBasedDues.css';
 
 // Format PostgreSQL decimal strings without converting money to floating point.
@@ -22,7 +23,9 @@ function ShopRows({shops}) {
 export function RouteBasedDues() {
  const [routes,setRoutes]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
  const [selected,setSelected]=useState(null),[busy,setBusy]=useState(false),[printSnapshot,setPrintSnapshot]=useState(null);
+ const preparedReceipt=useRef(null);
  const locked=useRef(false),printing=useRef(false),alive=useRef(true);
+ const [paper,setPaper]=useState('80mm'),[bluetoothBusy,setBluetoothBusy]=useState(false),[printError,setPrintError]=useState('');
  async function refresh() {
   setLoading(true);setError('');
   try { const data=await load(endpoint);if(alive.current)setRoutes(data); }
@@ -38,7 +41,7 @@ export function RouteBasedDues() {
    if(!alive.current)return;
    setRoutes(old=>old.map(row=>row.id===detail.id?detail:row));
    if(!detail.shops.length) {toast.info('No pending due shops');return;}
-   setSelected(detail);
+   setPrintError('');setSelected(detail);
   } catch(e) {if(alive.current)toast.error(e.message);}
   finally {locked.current=false;if(alive.current)setBusy(false);}
  }
@@ -54,7 +57,7 @@ export function RouteBasedDues() {
   const finish=()=>{
    if(finished || !started)return;
    finished=true;cleanup();printing.current=false;
-   setPrintSnapshot(null);setSelected(null);refresh();
+   setPrintSnapshot(null);
   };
   const before=()=>{enteredPrint=true;};
   const mediaChanged=event=>{
@@ -70,19 +73,21 @@ export function RouteBasedDues() {
     const receipt=document.getElementById('route-dues-receipt');
     // Measure with the actual thermal print styles before opening the dialog.
     const frame=document.createElement('iframe');
-    frame.style.cssText='position:fixed;left:-10000px;width:52mm;height:1px;border:0';
+    const paperWidth=paper==='58mm'?58:80;
+    const contentWidth=paperWidth-6;
+    frame.style.cssText=`position:fixed;left:-10000px;width:${paperWidth}mm;height:1px;border:0`;
     document.body.appendChild(frame);
     const doc=frame.contentDocument;
     doc.open();
     doc.write('<!doctype html><html><head></head><body></body></html>');
     doc.close();
-    document.querySelectorAll('style,link[rel="stylesheet"]').forEach(node=>doc.head.appendChild(node.cloneNode(true)));
+    // Reuse print rules without downloading the app styles again.
     const copy=receipt.cloneNode(true);
     doc.body.appendChild(copy);
     const measureStyle=doc.createElement('style');
     measureStyle.textContent=`
      body {margin:0;padding:0;}
-     #route-dues-receipt {display:block!important;width:48mm!important;font:11px/1.45 Arial,sans-serif;}
+     #route-dues-receipt {display:block!important;width:${contentWidth}mm!important;font:12px/1.45 Arial,sans-serif;}
     `;
     // Apply print rules to the measuring document as screen rules.
     for(const sheet of document.styleSheets) {
@@ -98,7 +103,7 @@ export function RouteBasedDues() {
     const heightMm=Math.ceil(copy.getBoundingClientRect().height*25.4/96)+8;
     frame.remove();
     const pageStyle=document.createElement('style');
-    pageStyle.textContent=`@media print {@page route-dues {size:52mm ${Math.max(30,heightMm)}mm;margin:2mm;}}`;
+    pageStyle.textContent=`@media print {@page route-dues {size:${paperWidth}mm ${Math.max(30,heightMm)}mm;margin:3mm;} #route-dues-receipt {width:${contentWidth}mm!important;font-size:12px!important;}}`;
     document.head.appendChild(pageStyle);
     // Desktop Chrome blocks here until its print dialog closes.
     // afterprint remains the primary signal for browsers with async dialogs.
@@ -117,12 +122,38 @@ export function RouteBasedDues() {
     finished=true;cleanup();printing.current=false;setPrintSnapshot(null);
     toast.error('Unable to open print dialog. Please retry.');
    }
-  },100);
+  },0);
   return()=>{clearTimeout(timer);cleanup();};
  },[printSnapshot]);
+ useEffect(()=>{
+  preparedReceipt.current=null;
+  if(!selected)return;
+  let cancelled=false;
+  const prepare=()=>{
+   if(cancelled)return;
+   try {
+    const report={...selected,printedAt:new Date().toLocaleString('en-IN')};
+    preparedReceipt.current={selected,paper,report,bytes:routeDuesBuffer(report,paper)};
+   } catch { /* Printing can retry preparation and show a useful error. */ }
+  };
+  const timer=setTimeout(()=>{(document.fonts?.ready||Promise.resolve()).then(prepare);},0);
+  return()=>{cancelled=true;clearTimeout(timer);};
+ },[selected,paper]);
+ async function bluetoothPrint() {
+  if(printing.current||!selected?.shops.length)return;
+  printing.current=true;setBluetoothBusy(true);setPrintError('');
+  try {
+   const cached=preparedReceipt.current;
+   const ready=cached?.selected===selected&&cached.paper===paper;
+   await printRouteDues(ready?cached.report:{...selected,printedAt:new Date().toLocaleString('en-IN')},paper,ready?cached.bytes:null);
+   toast.success('Receipt sent to thermal printer.');
+   if(alive.current){setSelected(null);refresh();}
+  } catch(e) {if(e.name==='NotFoundError')setPrintError('Printer selection cancelled. Select your printer and try again.');else setPrintError(e.message||'Unable to print. Please retry or use System Print.');}
+  finally {printing.current=false;if(alive.current)setBluetoothBusy(false);}
+ }
  function print() {
   if(printing.current || !selected?.shops.length)return;
-  printing.current=true;
+  printing.current=true;setPrintError('');
   setPrintSnapshot({...selected,shops:selected.shops.map(s=>({...s})),printedAt:new Date().toLocaleString('en-IN')});
  }
  return <section className="route-balance-page">
@@ -135,9 +166,10 @@ export function RouteBasedDues() {
 
   {error?<div role="alert" className="route-balance-error"><p>{error}</p><button onClick={refresh}>Try again</button></div>:loading?<p role="status" className="route-balance-loading">Loading route balances...</p>:<div className="route-balance-panel"><div className="route-balance-panel-title"><div><h2>Route overview</h2><p>Shop balances and assigned drivers, in one place.</p></div><span>{routes.length} routes</span></div><table className="dues-table route-balance-table"><thead><tr>{['S.No','Route Name','Driver Name','Total Balance','Action'].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{routes.map((r,i)=><tr key={r.id}><td data-label="S.No"><span className="route-row-number">{String(i+1).padStart(2,'0')}</span></td><td data-label="Route Name" className="route-name-cell"><span className="route-name-wrap"><span className="route-name-icon"><MapPin size={15}/></span><span>{r.name}</span></span></td><td data-label="Driver Name">{r.driver_name?<span className="route-driver-chip"><UserRound size={14}/><span>{r.driver_name}</span></span>:<span className="route-driver-unassigned">-</span>}</td><td data-label="Total Balance" className="dues-money"><span className={/[1-9]/.test(r.total)?'route-amount has-dues':'route-amount'}>{duesCurrency(r.total)}</span></td><td data-label="Action"><button disabled={busy} onClick={()=>view(r.id)} className="route-view-button">View <ArrowUpRight size={15} aria-hidden="true"/></button></td></tr>)}</tbody></table>{!routes.length&&<p className="route-balance-empty">No routes found.</p>}</div>}
   {selected&&<div className="dues-overlay"><div role="dialog" aria-modal="true" aria-labelledby="dues-title" className="dues-modal">
-   <div className="dues-modal-heading"><span className="dues-eyebrow">ROUTE BASED DUES</span><h2 id="dues-title">Shop Balance</h2><div className="dues-route-details"><div><span>Route</span><strong>{selected.name}</strong></div><div className="dues-driver"><span>Driver</span><strong>{selected.driver_name||'-'}</strong></div></div></div>
-   <div className="dues-modal-body"><table className="dues-table dues-shop-table"><thead><tr><th className="dues-serial-heading"><span>S.No</span></th><th>Shop Name</th><th>Balance Amount</th></tr></thead><tbody><ShopRows shops={selected.shops}/></tbody></table></div>
-   <div className="dues-modal-footer"><div className="dues-total"><span>Total Outstanding</span><strong>{duesCurrency(selected.total)}</strong></div><div className="dues-modal-actions"><button disabled={!!printSnapshot} onClick={()=>setSelected(null)} className="dues-close">Close</button><button disabled={!!printSnapshot} onClick={print} className="dues-print">Print</button></div></div>
+   <div className="dues-modal-heading"><div className="dues-heading-top"><div className="dues-heading-icon"><ReceiptText size={25}/></div><div className="dues-heading-copy"><span className="dues-eyebrow">ROUTE BASED DUES</span><h2 id="dues-title">Shop Balance</h2><p>Your collection list, ready to print.</p></div><button className="dues-icon-close" aria-label="Close receipt" disabled={!!printSnapshot||bluetoothBusy} onClick={()=>setSelected(null)}><X size={20}/></button></div><div className="dues-route-details"><div><span><MapPin size={13}/> Route</span><strong>{selected.name}</strong></div><div className="dues-driver"><span><UserRound size={13}/> Driver</span><strong>{selected.driver_name||'-'}</strong></div></div></div>
+   <div className="dues-printer-controls"><label><span><Printer size={14}/> Paper size</span><select aria-label="Receipt paper" value={paper} disabled={bluetoothBusy||!!printSnapshot} onChange={e=>setPaper(e.target.value)}><option value="58mm">58mm</option><option value="80mm">80mm / 82mm (3-inch)</option></select></label><span className="dues-preview-badge"><span/> Live preview <b>{paper}</b></span></div>
+   <div className="dues-modal-body"><div className={`dues-receipt-preview ${paper==='58mm'?'dues-narrow':''}`}><header><span className="dues-paper-icon"><ReceiptText size={22}/></span><strong>AVS Billing</strong><h3>ROUTE BASED DUES</h3><span className="dues-paper-caption">SHOP COLLECTION RECEIPT</span></header><p>Route: {selected.name}</p><p>Driver: {selected.driver_name||'-'}</p><table className="dues-table dues-shop-table"><thead><tr><th className="dues-serial-heading"><span>S.No</span></th><th>Shop Name</th><th>Balance</th></tr></thead><tbody><ShopRows shops={selected.shops}/></tbody></table><p className="dues-preview-total">Grand Total: {duesCurrency(selected.total)}</p></div></div>
+   <div className="dues-modal-footer">{printError&&<p role="alert" className="dues-print-error">{printError}</p>}<div className="dues-total"><div className="dues-total-label"><span className="dues-total-icon"><Wallet size={21}/></span><div><span>Total outstanding</span><small><Store size={12}/> {selected.shops.length} {selected.shops.length===1?'shop':'shops'} with pending dues</small></div></div><strong>{duesCurrency(selected.total)}</strong></div><div className="dues-modal-actions"><button disabled={!!printSnapshot||bluetoothBusy} onClick={()=>setSelected(null)} className="dues-close">Close</button><button disabled={!!printSnapshot||bluetoothBusy} onClick={print} className="dues-close dues-system-print"><Printer size={16}/> System Print</button><button disabled={!!printSnapshot||bluetoothBusy} onClick={bluetoothPrint} className="dues-print" title="Print directly to your connected thermal printer"><Bluetooth size={17}/>{bluetoothBusy?'Printing...':'Print'}</button></div></div>
   </div></div>}
   {printSnapshot&&createPortal(<article id="route-dues-receipt"><header><strong>AVS Billing</strong><h2>ROUTE BASED DUES</h2></header><div className="dues-print-meta"><p><strong>Route:</strong> {printSnapshot.name.replace(/\s+route\s*$/i,'').trim()}</p><p><strong>Driver:</strong> {printSnapshot.driver_name||'-'}</p></div><p className="dues-print-date">{printSnapshot.printedAt}</p><table><thead><tr><th className="dues-serial-heading"><span>S.No</span></th><th>Shop Name</th><th>Credit Balance</th></tr></thead><tbody><ShopRows shops={printSnapshot.shops}/></tbody></table><p className="dues-grand">Grand Total: {duesCurrency(printSnapshot.total)}</p></article>,document.body)}
  </section>;

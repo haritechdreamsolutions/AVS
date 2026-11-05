@@ -1,3 +1,4 @@
+import {loadPrintSettings,normalizePrintSettings,printSettingsKey} from '../../utils/printSettings';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Printer, X, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
@@ -17,7 +18,13 @@ export const ThermalBillModal = ({
 
   // 80mm / 82mm 3-Inch Mode strictly for StoreKeeper login
   const storekeeperPrint = isStoreKeeper || ['STORE_KEEPER', 'STOREKEEPER'].includes(currentUser?.role);
-  const is80mm = paperSize === '80mm' || storekeeperPrint;
+  const [printerSettings,setPrinterSettings]=useState(()=>loadPrintSettings(currentUser,paperSize));
+  const [settingsError,setSettingsError]=useState('');
+  const is80mm = printerSettings.paperWidth >= 80;
+  const updatePrinter=patch=>{
+    try{const next=normalizePrintSettings({...printerSettings,...patch});localStorage.setItem(printSettingsKey(currentUser),JSON.stringify(next));setPrinterSettings(next);setSettingsError('');}
+    catch(e){setSettingsError(e.message);}
+  };
   const [bill, setBill] = useState(initialBill || {});
   const [items, setItems] = useState(initialBill?.items || []);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -72,9 +79,11 @@ export const ThermalBillModal = ({
   }, [shops, bill]);
 
   const oldCreditPaid = Number(bill.old_credit_paid || 0);
+  const receiptBillOnly = storekeeperPrint && oldCreditPaid === 0;
   const thisBillCredit = paymentMode === 'CREDIT' ? totalAmount : (paymentMode === 'SPLIT' ? creditPaid : 0);
 
   const previousDue = useMemo(() => {
+    if(receiptBillOnly)return 0;
     if (bill.previous_due !== undefined && bill.previous_due !== null && !isNaN(Number(bill.previous_due))) {
       return Number(bill.previous_due);
     }
@@ -86,9 +95,9 @@ export const ThermalBillModal = ({
       return Math.max(0, currentShopDue - thisBillCredit + oldCreditPaid);
     }
     return Number(bill.shop_due ?? 0);
-  }, [bill, matchedShop, thisBillCredit, oldCreditPaid]);
+  }, [bill, matchedShop, thisBillCredit, oldCreditPaid, receiptBillOnly]);
 
-  const totalShopDue = bill.shop_current_due !== undefined && bill.shop_current_due !== null && !isNaN(Number(bill.shop_current_due))
+  const totalShopDue = receiptBillOnly ? thisBillCredit : bill.shop_current_due !== undefined && bill.shop_current_due !== null && !isNaN(Number(bill.shop_current_due))
     ? Number(bill.shop_current_due)
     : Math.max(0, previousDue - oldCreditPaid) + thisBillCredit;
 
@@ -153,13 +162,18 @@ export const ThermalBillModal = ({
         company_phone: companyPhone,
         items: items,
         total_quantity: totalQty,
+        receipt_bill_only: receiptBillOnly,
         previous_due: previousDue,
+        shop_previous_due: previousDue,
+        shop_due: previousDue,
         old_credit_paid: oldCreditPaid,
         shop_current_due: totalShopDue
       };
 
       toast.info(`Connecting to ${is80mm ? '80mm Thermal Printer' : 'EX58C Bluetooth Printer'}...`);
-      await printThermalReceipt(receiptPayload, is80mm ? '80mm' : '58mm');
+      if(printerSettings.transport==='system'){window.print();return;}
+      if(![58,80].includes(printerSettings.paperWidth))throw Error('Direct Bluetooth currently supports 58mm or 80mm. Use System Print for this width.');
+      await printThermalReceipt(receiptPayload, printerSettings.paperWidth===80 ? '80mm' : '58mm');
 
       setPrintSuccess(true);
       toast.success(is80mm ? "Receipt printed successfully on 80mm Printer!" : "Receipt printed successfully on EX58C!");
@@ -190,9 +204,14 @@ export const ThermalBillModal = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <style>{`@media print {
+       @page {size:${printerSettings.paperWidth}mm auto;margin:0}
+       .printable-thermal,.printable-thermal-80mm {width:${printerSettings.paperWidth}mm!important;max-width:${printerSettings.paperWidth}mm!important;padding:2mm!important;font-size:${printerSettings.fontSize}px!important;font-weight:700!important}
+       .printable-thermal td,.printable-thermal-80mm td {font-size:${printerSettings.fontSize}px!important;overflow-wrap:anywhere}
+      }`}</style>
       {is80mm && <style>{`
         @media print {
-          @page { size: 80mm auto; margin: 0; }
+          @page { size: ${printerSettings.paperWidth}mm auto; margin: 0; }
           body :has(.printable-thermal-80mm) {
             position: static !important;
             overflow: visible !important;
@@ -249,6 +268,15 @@ export const ThermalBillModal = ({
           </div>
         )}
 
+        <div className="no-print flex flex-wrap gap-2 items-center text-xs">
+          <label>Paper <select value={printerSettings.paperWidth} onChange={e=>updatePrinter({paperWidth:Number(e.target.value),printableWidth:undefined})}>
+            {[...new Set([58,80,110,printerSettings.paperWidth])].map(width=><option key={width} value={width}>{width}mm</option>)}
+          </select></label>
+          <label>Custom mm <input type="number" min="40" max="120" defaultValue={printerSettings.paperWidth} className="w-16" onBlur={e=>updatePrinter({paperWidth:Number(e.target.value),printableWidth:undefined})}/></label>
+          <label>Font <select value={printerSettings.fontSize} onChange={e=>updatePrinter({fontSize:Number(e.target.value)})}>{[10,12,14,16].map(n=><option key={n}>{n}</option>)}</select></label>
+          <label>Connection <select value={printerSettings.transport} onChange={e=>updatePrinter({transport:e.target.value})}><option value="system">System Print</option><option value="bluetooth">Bluetooth</option></select></label>
+          {settingsError&&<span role="alert">{settingsError}</span>}
+        </div>
         {/* Thermal Bill Scrollable Container (58mm or 80mm/82mm) */}
         <div className={`${is80mm ? 'printable-thermal-80mm text-xs sm:text-[13px] max-w-[440px] p-4 sm:p-5' : 'printable-thermal-receipt printable-thermal text-[10.5px] sm:text-[11px] p-3 sm:p-4'} bg-white font-mono border border-slate-300 rounded-2xl space-y-2 sm:space-y-2.5 text-slate-900 leading-tight overflow-y-auto flex-1 w-full mx-auto`}>
           
@@ -422,7 +450,7 @@ export const ThermalBillModal = ({
             {/* Total Shop Due Balance */}
             <div className={`flex justify-between items-center font-black ${is80mm ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'} pt-2 pb-1.5 px-1 border-t-2 border-dashed border-slate-400`}>
               <span className={totalShopDue > 0 ? 'text-amber-900 font-black' : 'text-emerald-800 font-black'}>
-                SHOP BALANCE (கடை பாக்கி):
+                {receiptBillOnly ? "BILL BALANCE:" : "SHOP BALANCE (\u0b95\u0b9f\u0bc8 \u0baa\u0bbe\u0b95\u0bcd\u0b95\u0bbf):"}
               </span>
               <span className={`font-mono ${is80mm ? 'text-base sm:text-lg' : 'text-sm sm:text-base'} font-black ${totalShopDue > 0 ? 'text-amber-900' : 'text-emerald-800'}`}>
                 ₹{totalShopDue.toFixed(2)}

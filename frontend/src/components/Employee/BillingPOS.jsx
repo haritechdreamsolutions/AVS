@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { ArrowLeft, ArrowRight, ShoppingBag, AlertTriangle, X, Search, Box } from 'lucide-react';
 import { sortOwnerProducts } from '../../utils/ownerProductOrder';
 import { driverUnitPrice, getDriverBillingInfo } from '../../utils/driverPricing';
+import { getStockLitres, formatLitres } from '../../utils/productVolume';
 
 export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) => {
   const { products, employeeStock, shops } = useApp();
@@ -284,6 +285,7 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
             const rawQty = isOutOfStock ? '' : (quantities[prod.id] ?? '');
             const qtyNum = isOutOfStock ? 0 : (Number(rawQty) || 0);
             const lineTotal = isOutOfStock ? 0 : Number((qtyNum * info.rate).toFixed(2));
+            const availableLitres = info.opUnit?.isPieceBased ? getStockLitres(prod, 0, info.availableStock) : null;
 
             return (
               <div
@@ -329,6 +331,7 @@ export const BillingPOS = ({ shop: initialShop, onProceedToPayment, onBack }) =>
                         </span>
                       )}
                     </span>
+                    {availableLitres !== null && <span className="w-full text-[11px] font-mono font-extrabold text-cyan-700 whitespace-nowrap">{formatLitres(availableLitres)} L</span>}
                     <span className="text-[10.5px] font-semibold text-slate-400">
                       • ₹{info.rate.toFixed(2)}/{info.shortUnit}
                     </span>

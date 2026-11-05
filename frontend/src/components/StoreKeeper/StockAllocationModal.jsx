@@ -6,6 +6,7 @@ import { ProductImage } from '../common/ProductImage';
 import { resolveProductImageUrl } from '../../utils/productImageHelper';
 import { sortOwnerProducts } from '../../utils/ownerProductOrder';
 import { getOperationalUnit } from '../../utils/unitHelper';
+import { getStockLitres, formatLitres } from '../../utils/productVolume';
 
 export const StockAllocationModal = ({ onClose }) => {
   const { products = [], employees = [], drivers: contextDrivers = [], allocateStock, fetchWarehouseStock } = useApp();
@@ -412,6 +413,7 @@ export const StockAllocationModal = ({ onClose }) => {
                   const currentTrays = alloc.trays !== undefined ? alloc.trays : '';
                   const currentPieces = alloc.pieces !== undefined ? alloc.pieces : '';
                   const currentQty = alloc.qty !== undefined ? alloc.qty : '';
+                  const allocatedLitres = isTrayBased ? getStockLitres(prod, currentTrays, currentPieces) : null;
 
                   const isAllocated = isTrayBased 
                     ? (Number(currentTrays || 0) > 0 || Number(currentPieces || 0) > 0)
@@ -447,7 +449,7 @@ export const StockAllocationModal = ({ onClose }) => {
                       </div>
 
                       {/* Right: Allocation Input Controls */}
-                      <div className="flex items-center justify-end gap-2.5 shrink-0">
+                      <div className="flex flex-col items-end justify-end gap-2.5 shrink-0">
                         {isTrayBased ? (
                           /* DUAL INPUT CONTROLS: 1st Box = Tray, 2nd Box = Pieces */
                           <div className="flex items-center gap-2 sm:gap-3.5 flex-wrap sm:flex-nowrap w-full sm:w-auto justify-end">
@@ -573,6 +575,13 @@ export const StockAllocationModal = ({ onClose }) => {
                               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                             </button>
                             <span className="text-slate-800 font-black text-xs sm:text-sm min-w-10 px-1">{prod.selling_unit || 'Case'}</span>
+                          </div>
+                        )}
+                        {allocatedLitres !== null && (
+                          <div className="flex flex-wrap justify-end gap-1.5 text-[10px] sm:text-[11px] font-mono font-black" aria-live="polite">
+                            <span className="px-1.5 py-0.5 rounded-md border text-sky-900 bg-sky-100/90 border-sky-300">Tray: {formatLitres(getStockLitres(prod, currentTrays))} L</span>
+                            <span className="px-1.5 py-0.5 rounded-md border text-indigo-900 bg-indigo-100/90 border-indigo-300">Pcs: {formatLitres(getStockLitres(prod, 0, currentPieces))} L</span>
+                            <span className="px-1.5 py-0.5 rounded-md border text-emerald-900 bg-emerald-50 border-emerald-300">Assigning: {formatLitres(allocatedLitres)} L</span>
                           </div>
                         )}
                       </div>

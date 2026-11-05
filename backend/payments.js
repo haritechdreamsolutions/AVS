@@ -1,5 +1,6 @@
 import { pool } from './database/pg_pool.js';
 import { paise, amount, requestIdentity, businessDate, retryTransaction } from './financial.js';
+import {collectionLedger} from './collection-ledger.js';
 
 function transaction(work) { return retryTransaction(()=>transactionAttempt(work)); }
 async function transactionAttempt(work) {
@@ -33,8 +34,9 @@ export async function collectDue(cid, shopId, data, actor) {
     const existing = await client.query('SELECT * FROM receipts WHERE company_id=$1 AND request_key=$2',[cid,identity.key]);
     if (existing.rows.length) {
       if (existing.rows[0].request_hash !== identity.hash || Number(existing.rows[0].shop_id) !== Number(shopId)) throw new Error('Idempotency key already used for a different request');
-      await authorizedShop(client,cid,shopId,actor);
-      return {success:true, receipt:existing.rows[0], isDuplicate:true};
+      const currentShop = await authorizedShop(client,cid,shopId,actor);
+      const receipts = (await client.query('SELECT * FROM receipts WHERE company_id=$1 AND request_hash=$2 AND (request_key=$3 OR request_key=$4) ORDER BY id',[cid,identity.hash,identity.key,identity.key+':gpay'])).rows;
+      return {success:true, receipt:existing.rows[0], receipts, remainingDue:Number(currentShop.current_due), isDuplicate:true};
     }
     const shop = await authorizedShop(client,cid,shopId,actor);
     if (['DRIVER','EMPLOYEE'].includes(actor.role)) {
@@ -44,7 +46,11 @@ export async function collectDue(cid, shopId, data, actor) {
     }
     const received = paise(data.amount);
     const mode = String(data.payment_mode || '').toUpperCase();
-    if (!received || !['CASH','GPAY'].includes(mode)) throw new Error('Positive amount and CASH/GPAY payment mode required');
+    if (!received || !['CASH','GPAY','SPLIT'].includes(mode)) throw new Error('Positive amount and CASH/GPAY/SPLIT payment mode required');
+    const parts = mode === 'SPLIT'
+      ? [{mode:'CASH',value:paise(data.cash_amount || 0)},{mode:'GPAY',value:paise(data.gpay_amount || 0)}].filter(part=>part.value>0)
+      : [{mode,value:received}];
+    if (parts.reduce((sum,part)=>sum+part.value,0) !== received) throw new Error('Cash and GPay amounts must equal the collected amount');
     if (received > paise(shop.current_due)) throw new Error('Collection exceeds outstanding balance');
     const invoices = await client.query("SELECT s.*, COALESCE((SELECT SUM(a.amount) FROM receipt_allocations a WHERE a.sale_id=s.id),0) AS allocated, COALESCE((SELECT SUM(r.amount) FROM payment_reversals r WHERE r.sale_id=s.id),0) AS refunded FROM sales s WHERE s.company_id=$1 AND s.shop_id=$2 AND s.status='ACTIVE' ORDER BY s.sale_date,s.id FOR UPDATE OF s",[cid,shopId]);
     if (!shop.ledger_ready) {
@@ -54,12 +60,7 @@ export async function collectDue(cid, shopId, data, actor) {
         'SELECT COALESCE(SUM(a.amount),0)::text AS total FROM receipt_allocations a JOIN receipts r ON r.id=a.receipt_id WHERE r.company_id=$1 AND r.shop_id=$2 AND a.sale_id IS NULL',
         [cid,shopId]);
       const openingRemaining = paise(shop.opening_balance)-paise(openingPaid.rows[0].total);
-      const invoiceRemaining = invoices.rows.reduce((sum,sale)=>{
-        const outstanding=paise(sale.credit_paid)-paise(sale.allocated)+paise(sale.refunded);
-        if(outstanding<0)throw new Error('Shop invoice allocations require reconciliation');
-        return sum+outstanding;
-      },0);
-      if(openingRemaining<0 || openingRemaining+invoiceRemaining!==paise(shop.current_due))
+      if(openingRemaining<0 || collectionLedger(amount(openingRemaining),invoices.rows).balance!==paise(shop.current_due))
         throw new Error('Shop history does not reconcile with outstanding balance. FIFO collection requires reviewed historical payment allocations.');
       shop.opening_due_remaining=amount(openingRemaining);
       await client.query('UPDATE shops SET ledger_ready=TRUE,opening_due_remaining=$1,updated_at=NOW() WHERE id=$2 AND company_id=$3',
@@ -67,29 +68,34 @@ export async function collectDue(cid, shopId, data, actor) {
       await client.query("INSERT INTO audit_logs(company_id,actor_user_id,action,entity_type,entity_id) VALUES($1,$2,'SHOP_LEDGER_VERIFIED','shops',$3)",
         [cid,actor.id,shopId]);
     }
-    const balance = paise(shop.opening_due_remaining) + invoices.rows.reduce((sum,sale)=>sum+paise(sale.credit_paid)-paise(sale.allocated)+paise(sale.refunded),0);
-    if (balance !== paise(shop.current_due)) throw new Error('Shop ledger does not reconcile; collection requires review');
-    const receipt = (await client.query('INSERT INTO receipts(company_id,shop_id,employee_id,created_by,request_key,request_hash,amount,payment_mode,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp()) RETURNING *',[cid,shopId,actor.employee_id || null,actor.id,identity.key,identity.hash,amount(received),mode,data.reference || null])).rows[0];
-    let remaining = received;
-    const opening = Math.min(remaining,paise(shop.opening_due_remaining));
-    if (opening) {
-      await client.query('INSERT INTO receipt_allocations(receipt_id,amount) VALUES($1,$2)',[receipt.id,amount(opening)]);
-      await client.query('UPDATE shops SET opening_due_remaining=opening_due_remaining-$1 WHERE id=$2',[amount(opening),shopId]);
-      remaining -= opening;
-    }
-    for (const sale of invoices.rows) {
-      const outstanding = paise(sale.credit_paid)-paise(sale.allocated)+paise(sale.refunded);
-      const allocation = Math.min(remaining,outstanding);
-      if (allocation > 0) {
-        await client.query('INSERT INTO receipt_allocations(receipt_id,sale_id,amount) VALUES($1,$2,$3)',[receipt.id,sale.id,amount(allocation)]);
-        remaining -= allocation;
+    const ledger = collectionLedger(shop.opening_due_remaining,invoices.rows);
+    if (ledger.balance !== paise(shop.current_due)) throw new Error('Shop ledger does not reconcile; collection requires review');
+    const receipts=[];
+    for (const [index,part] of parts.entries()) {
+      const receipt = (await client.query('INSERT INTO receipts(company_id,shop_id,employee_id,created_by,request_key,request_hash,amount,payment_mode,reference,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp()) RETURNING *',[cid,shopId,actor.employee_id || null,actor.id,index===0?identity.key:identity.key+':gpay',identity.hash,amount(part.value),part.mode,data.reference || null])).rows[0];
+      receipts.push(receipt);
+      let remaining = part.value;
+      const opening = Math.min(remaining,ledger.opening);
+      if (opening) {
+        await client.query('INSERT INTO receipt_allocations(receipt_id,amount) VALUES($1,$2)',[receipt.id,amount(opening)]);
+        await client.query('UPDATE shops SET opening_due_remaining=opening_due_remaining-$1 WHERE id=$2',[amount(opening),shopId]);
+        ledger.opening -= opening;
+        remaining -= opening;
       }
-      if (!remaining) break;
+      for (const sale of ledger.invoices) {
+        const allocation = Math.min(remaining,sale.outstanding);
+        if (allocation > 0) {
+          await client.query('INSERT INTO receipt_allocations(receipt_id,sale_id,amount) VALUES($1,$2,$3)',[receipt.id,sale.id,amount(allocation)]);
+          sale.outstanding -= allocation;
+          remaining -= allocation;
+        }
+        if (!remaining) break;
+      }
+      if (remaining) throw new Error('Collection allocation could not be reconciled');
+      await client.query("INSERT INTO audit_logs(company_id,actor_user_id,action,entity_type,entity_id) VALUES($1,$2,'PAYMENT_RECEIVED','receipts',$3)",[cid,actor.id,receipt.id]);
     }
-    if (remaining) throw new Error('Collection allocation could not be reconciled');
     const updated = (await client.query('UPDATE shops SET current_due=current_due-$1,updated_at=NOW() WHERE id=$2 RETURNING current_due',[amount(received),shopId])).rows[0];
-    await client.query("INSERT INTO audit_logs(company_id,actor_user_id,action,entity_type,entity_id) VALUES($1,$2,'PAYMENT_RECEIVED','receipts',$3)",[cid,actor.id,receipt.id]);
-    return {success:true,receipt,remainingDue:Number(updated.current_due)};
+    return {success:true,receipt:receipts[0],receipts,remainingDue:Number(updated.current_due)};
   });
 }
 export async function refundSale(cid, saleId, data, actor) {

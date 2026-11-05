@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {buildRouteSales,routeSalesSQL,routeSalesHandler} from '../route-sales.js';
+const line={route_id:1,date:'2026-11-05',shop_id:9,shop_name:'தமிழ் Shop',product_id:1,category_name:'Tray',pack_size:'200ml',pieces_per_unit:72,conversion_to_base:72,unit_type:'Piece',qty:10,stock_qty_units:10/72};
+const rows=buildRouteSales([line,{...line,qty:5},{...line,product_id:2,pack_size:'500ml',qty:4},{...line,product_id:3,category_name:'Case',unit_type:'Case',qty:5},{...line,shop_id:10,qty:2}]);
+assert.equal(rows.length,2);assert.equal(rows[0].litres,5);assert.equal(rows[0].products[1].qty,15);assert.equal(rows[1].litres,.4);
+assert.equal(buildRouteSales([{...line,unit_type:'Tray',qty:2,stock_qty_units:2,conversion_to_base:24,pieces_per_unit:72}])[0].litres,9.6);
+// Two submitted trips on the same date accumulate even if the shop was renamed.
+const trips=buildRouteSales([{...line,session_id:101,qty:10},{...line,session_id:102,shop_name:'Updated shop name',qty:20}]);
+assert.equal(trips.length,1);assert.equal(trips[0].products[1].litres,6);assert.equal(trips[0].litres,6);
+assert.equal(buildRouteSales([line,{...line,date:'2026-11-06'}]).length,2);
+assert.equal(buildRouteSales([line,{...line,route_id:2}]).length,2);
+assert.match(routeSalesSQL,/dr.checked_at IS NOT NULL AND dr.checked_by IS NOT NULL/);
+assert.match(routeSalesSQL,/EXISTS/);assert.match(routeSalesSQL,/VERIFIED','ACCEPTED/);assert.match(routeSalesSQL,/CANCELLED/);
+let routeQuery='';
+await routeSalesHandler(async(sql)=>{if(!routeQuery)routeQuery=sql;return {rows:[]};})({session:{companyId:7},params:{}},{set(){},json(){}},e=>{throw e;});
+assert.match(routeQuery,/company_id=\$1 AND is_active=TRUE/);
+let queries=0;const query=async(sql,params)=>{assert.equal(params[0],7);queries++;return {rows:queries===1?[{id:1,name:'Route One'}]:queries===2?[line]:[{id:1,name:'Milk 200ml'}]};};
+let result;const res={set(){},json(data){result=data;},status(code){this.code=code;return this;}};
+await routeSalesHandler(query)({session:{companyId:7},params:{routeId:'1'}},res,e=>{throw e;});
+assert.equal(result.rows[0].litres,2);assert.equal(result.route.name,'Route One');
+await routeSalesHandler(()=>{throw new Error('Must not query');})({session:{companyId:7},params:{routeId:'bad'}},res,e=>{throw e;});assert.equal(res.code,400);
+console.log('Route sales aggregation, company isolation and validation checks passed');

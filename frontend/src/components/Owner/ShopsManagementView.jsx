@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Store, Search, Snowflake, DollarSign, MapPin, Phone, 
@@ -11,7 +11,8 @@ import { AddShopModal } from '../common/AddShopModal';
 import { ThermalBillModal } from '../Employee/ThermalBillModal';
 
 export const ShopsManagementView = ({ onNavigateVillages }) => {
-  const { shops, setShops, villages = [], routes = [], sales = [], collectShopDue, addShop, updateShop, deleteShop } = useApp();
+  const { shops, setShops, villages = [], routes = [], sales = [], collectShopDue, addShop, updateShop, deleteShop, refreshData } = useApp();
+  useEffect(() => { void refreshData?.(['shops']); }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('ALL'); // ALL, DUES, OVERDUE, FREEZER
   const [selectedVillageFilter, setSelectedVillageFilter] = useState('ALL');
@@ -20,6 +21,15 @@ export const ShopsManagementView = ({ onNavigateVillages }) => {
   const [selectedShopForPayment, setSelectedShopForPayment] = useState(null);
   const [paymentAmountInput, setPaymentAmountInput] = useState('');
   const [paymentModeInput, setPaymentModeInput] = useState('CASH');
+  const [splitCash, setSplitCash] = useState('');
+  const [splitGpay, setSplitGpay] = useState('');
+  const [collecting, setCollecting] = useState(false);
+  const collectingRef = useRef(false);
+  const paymentReference = useRef(null);
+  const splitReceived = Math.round(((Number(splitCash) || 0) + (Number(splitGpay) || 0)) * 100) / 100;
+  const receivedNow = paymentModeInput === 'SPLIT' ? splitReceived : Number(paymentAmountInput || 0);
+  const remainingCredit = Math.max(0, Math.round((Number(selectedShopForPayment?.current_due || 0) - receivedNow) * 100) / 100);
+
   const [selectedShopForStatement, setSelectedShopForStatement] = useState(null);
   const [selectedInvoiceForModal, setSelectedInvoiceForModal] = useState(null);
   const [printThermalBill, setPrintThermalBill] = useState(null);
@@ -174,8 +184,13 @@ export const ShopsManagementView = ({ onNavigateVillages }) => {
   }, [shops]);
 
   const handleCollectDue = async () => {
-    if (!selectedShopForPayment) return;
-    const payVal = Number(paymentAmountInput || 0);
+    if (!selectedShopForPayment || collectingRef.current) return;
+    const validMoney = value => /^\d+(?:\.\d{1,2})?$/.test(String(value || '0'));
+    if (paymentModeInput === 'SPLIT' ? !validMoney(splitCash) || !validMoney(splitGpay) : !validMoney(paymentAmountInput)) {
+      toast.error('Enter valid amounts with at most two decimal places.');
+      return;
+    }
+    const payVal = receivedNow;
 
     if (payVal <= 0) {
       toast.error("Please enter a valid payment amount!");
@@ -188,7 +203,15 @@ export const ShopsManagementView = ({ onNavigateVillages }) => {
       return;
     }
 
-    const res = await collectShopDue(selectedShopForPayment.id, { amount: payVal, mode: paymentModeInput, idempotency_key: selectedShopForPayment.receiptRequestKey || (selectedShopForPayment.receiptRequestKey = crypto.randomUUID()) });
+    const payload = {amount:payVal,mode:paymentModeInput,...(paymentModeInput === 'SPLIT' ? {cash_amount:Number(splitCash || 0),gpay_amount:Number(splitGpay || 0)} : {})};
+    const fingerprint = JSON.stringify([selectedShopForPayment.id,payload]);
+    if (paymentReference.current?.fingerprint !== fingerprint) paymentReference.current={fingerprint,key:crypto.randomUUID()};
+    collectingRef.current=true;
+    setCollecting(true);
+    let res;
+    try { res = await collectShopDue(selectedShopForPayment.id, {...payload,idempotency_key:paymentReference.current.key}); }
+    catch(error) { res={success:false,message:error.message || 'Collection was not confirmed. Retry.'}; }
+    finally { collectingRef.current=false;setCollecting(false); }
     if (res.success) {
       const remaining = res.remainingDue !== undefined ? res.remainingDue : Math.max(0, maxDue - payVal);
       if (remaining === 0) {
@@ -557,7 +580,8 @@ export const ShopsManagementView = ({ onNavigateVillages }) => {
                 {dueVal > 0 ? (
                   <button
                     onClick={() => {
-                      setSelectedShopForPayment(shop);
+                      setSelectedShopForPayment({...shop});
+                      setPaymentModeInput('CASH');setSplitCash('');setSplitGpay('');paymentReference.current=null;
                       setPaymentAmountInput(String(dueVal));
                     }}
                     className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs flex items-center justify-center gap-1 shadow-xs border border-amber-400 transition"
@@ -607,7 +631,7 @@ export const ShopsManagementView = ({ onNavigateVillages }) => {
 
               <div>
                 <label className="text-[11px] font-extrabold text-slate-500 uppercase block mb-1">Select Payment Mode:</label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     onClick={() => setPaymentModeInput('CASH')}
                     className={`py-2.5 rounded-xl font-black text-xs border transition ${paymentModeInput === 'CASH' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-50 text-slate-700 border-slate-200'}`}
@@ -620,27 +644,43 @@ export const ShopsManagementView = ({ onNavigateVillages }) => {
                   >
                     📱 GPay / UPI
                   </button>
+                  <button onClick={() => setPaymentModeInput('SPLIT')} className={`py-2.5 rounded-xl font-black text-xs border transition ${paymentModeInput === 'SPLIT' ? 'bg-purple-600 text-white border-purple-600' : 'bg-slate-50 text-slate-700 border-slate-200'}`}>Split</button>
                 </div>
               </div>
 
-              <div>
+              {paymentModeInput === 'SPLIT' ? <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-xs font-bold text-slate-600">Cash received (₹)
+                  <input aria-label="Split cash received" type="number" min="0" step="0.01" value={splitCash} onChange={e=>setSplitCash(e.target.value)} placeholder="0.00" className="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 p-2.5 font-mono" />
+                </label>
+                <label className="text-xs font-bold text-slate-600">GPay / UPI received (₹)
+                  <input aria-label="Split GPay received" type="number" min="0" step="0.01" value={splitGpay} onChange={e=>setSplitGpay(e.target.value)} placeholder="0.00" className="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 p-2.5 font-mono" />
+                </label>
+              </div> : <div>
                 <label className="text-[11px] font-extrabold text-slate-500 uppercase block mb-1">Payment Received Amount (₹):</label>
                 <input
                   type="number"
+                  aria-label="Payment received amount"
+                  min="0" step="0.01"
                   placeholder="Enter amount collected..."
                   value={paymentAmountInput}
                   onChange={(e) => setPaymentAmountInput(e.target.value)}
                   className="w-full text-sm font-mono font-black bg-slate-50 border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:border-amber-500"
                 />
+              </div>}
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm space-y-2" aria-live="polite">
+                <div className="flex justify-between gap-2"><span>Received now</span><strong>₹{(Number.isFinite(receivedNow)?receivedNow:0).toFixed(2)}</strong></div>
+                <div className="flex justify-between gap-2 text-amber-800"><span>Remaining credit</span><strong data-testid="remaining-credit">₹{remainingCredit.toFixed(2)}</strong></div>
+                <p className="text-xs text-slate-600">Unpaid balance stays as this shop's credit due.</p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 pt-2">
               <button
+                disabled={collecting || receivedNow <= 0 || receivedNow > Number(selectedShopForPayment.current_due || 0)}
                 onClick={handleCollectDue}
                 className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-xs shadow-md transition cursor-pointer"
               >
-                RECORD PAYMENT & UPDATE DUE
+                {collecting ? 'RECORDING PAYMENT...' : 'RECORD PAYMENT & UPDATE DUE'}
               </button>
               <button
                 onClick={() => setSelectedShopForPayment(null)}

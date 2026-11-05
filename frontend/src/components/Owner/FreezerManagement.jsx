@@ -1349,11 +1349,25 @@ export const FreezerManagement = () => {
                       setIsVillageDropdownOpen(false);
                     }
                   }}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3 pr-10 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition disabled:opacity-80"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3 pr-16 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-cyan-500 focus:bg-white transition disabled:opacity-80"
                 />
 
                 {!editingFreezer && (
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-slate-400">
+                    {shopSearchText && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShopSearchText('');
+                          setSelectedShopId('');
+                        }}
+                        className="p-1 hover:text-slate-700 rounded-md"
+                        title="Clear target shop"
+                        aria-label="Clear target shop"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => {

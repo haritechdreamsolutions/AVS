@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { pool } from './pg_pool.js';
 import { preflight } from './preflight.js';
 
-const migrations = ['000_production_baseline.sql', '004_production_hardening.sql', '005_payment_reversals.sql', '006_schema_compatibility.sql', '007_operation_requests.sql', '008_foundation_integrity.sql', '009_product_deletion.sql', '010_protected_administrator.sql'];
+const migrations = ['000_production_baseline.sql', '004_production_hardening.sql', '005_payment_reversals.sql', '006_schema_compatibility.sql', '007_operation_requests.sql', '008_foundation_integrity.sql', '009_product_deletion.sql', '010_protected_administrator.sql', '011_user_deletion.sql'];
 export async function verifySchema() {
   const applied = await pool.query('SELECT name,checksum FROM schema_migrations');
   const known = new Map(applied.rows.map(row=>[row.name,row.checksum]));

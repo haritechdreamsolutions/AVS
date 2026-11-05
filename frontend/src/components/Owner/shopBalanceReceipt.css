@@ -57,3 +57,19 @@
 .sbr-date-controls input:hover{border-color:#3996c5}
 .sbr-date-controls input:focus-visible{outline:2px solid #7dd3fc;outline-offset:2px;box-shadow:0 0 0 4px #e0f2fe}
 .sbr-date-controls input::-webkit-calendar-picker-indicator{cursor:pointer;padding:4px;background-color:#dff1fc;border-radius:5px}
+.sbr-printer-bar{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-top:18px;padding:18px;background:#f6faf9;border:1px solid #dceae5;border-radius:12px}
+.sbr-printer-bar label{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:700;color:#325d50}
+.sbr-printer-bar select{padding:10px 14px;background:white;border:1px solid #bdd5cb;border-radius:8px;min-height:42px;font:inherit}
+.sbr-printer-bar small{font-size:10px;color:#658276;font-weight:400}
+.sbr-print-actions{display:flex;gap:10px;flex-wrap:wrap}.sbr-print-actions button{margin:0;min-width:100px}
+.sbr-print-actions .sbr-system-print{background:white;color:#356354;border:1px solid #bdd5cb}
+.sbr-print-status{padding:12px;margin-top:12px;color:#166549;background:#ecfdf5;border-radius:8px;font-size:13px}
+@media(max-width:600px){.sbr-printer-bar{padding:12px;gap:14px}.sbr-printer-bar label,.sbr-print-actions{width:100%}.sbr-print-actions button{flex:1;padding:12px}}
+/* Keep route/shop selections inside the mobile content width. */
+.sbr-page{width:100%;min-width:0;box-sizing:border-box}
+.sbr-controls{grid-template-columns:repeat(2,minmax(0,1fr));min-width:0;max-width:100%}
+.sbr-controls .sbr-selector{min-width:0;max-width:100%;box-sizing:border-box}
+.sbr-selector select{display:block;box-sizing:border-box;max-width:100%;width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sbr-page header,.sbr-results,.sbr-filter-bar,.sbr-printer-bar{min-width:0;max-width:100%;box-sizing:border-box}
+.sbr-page h1,.sbr-results h2{overflow-wrap:anywhere}
+@media screen and (max-width:600px){.sbr-controls{grid-template-columns:minmax(0,1fr)}.sbr-controls .sbr-selector{padding:14px}.sbr-selector select{font-size:16px}.sbr-printer-bar select{min-width:0;max-width:100%;width:100%}.sbr-date-controls{min-width:0;flex-wrap:wrap}.sbr-scroll{width:100%;min-width:0}}
