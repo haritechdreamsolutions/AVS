@@ -19,6 +19,7 @@ import { SalesRecordsView } from '../Owner/SalesRecordsView';
 import { UserBalanceView } from '../common/UserBalanceView';
 import { sortProductsCustom } from '../../utils/productOrderHelper';
 import { getOperationalUnit } from '../../utils/unitHelper';
+import { getStockLitres, formatLitres } from '../../utils/productVolume';
 
 export const KeeperDashboard = () => {
   const { products = [], summary, employees, stockMovements } = useApp();
@@ -277,6 +278,7 @@ export const KeeperDashboard = () => {
                 const totalPieces = Math.round((Number(prod.warehouse_stock_units) || 0) * ppu);
                 const trays = Math.floor(totalPieces / ppu);
                 const loosePcs = totalPieces % ppu;
+                const stockLitres = getStockLitres(prod, prod.warehouse_stock_units);
 
                 return (
                   <div key={prod.id} className="relative group bg-white rounded-3xl p-3 border border-slate-200 hover:border-blue-400 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between overflow-hidden">
@@ -337,6 +339,7 @@ export const KeeperDashboard = () => {
                             <span className="font-mono font-extrabold text-[10px] text-indigo-600 mt-0.5">
                               ({totalPieces} Pcs)
                             </span>
+                            {stockLitres !== null && <span className="font-mono font-extrabold text-[10px] text-cyan-700 mt-0.5">{formatLitres(stockLitres)} L</span>}
                           </div>
                         ) : (
                           <div className="flex flex-col items-end">

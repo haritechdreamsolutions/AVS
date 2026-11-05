@@ -7,6 +7,7 @@ import { salesReport } from './reports.js';
 import { refundSale } from './payments.js';
 import * as catalog from './supplier-catalog.js';
 import { routeDuesHandler } from './route-dues.js';
+import { routeSalesHandler } from './route-sales.js';
 
 const router = express.Router();
 
@@ -18,6 +19,8 @@ const getCid = (req) => req.session?.companyId || 1;
 // ====== AUTH ROUTES ======
 router.get('/auth/csrf', csrfToken);
 router.use(authorize);
+router.get('/owner/route-sales',requireRole('OWNER'),routeSalesHandler(db.query));
+router.get('/owner/route-sales/:routeId',requireRole('OWNER'),routeSalesHandler(db.query));
 router.get('/owner/freezer-receipt/:routeId',requireRole('OWNER'),freezerReceiptHandler(db.query));
 const balanceReceipt=shopBalanceHandlers(db.query);
 router.get('/owner/shop-balance-receipt/routes',requireRole('OWNER'),balanceReceipt.routes);

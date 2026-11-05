@@ -27,6 +27,7 @@ const OwnerSuppliersView = lazy(() => import('./OwnerSuppliersView').then(m => (
 const ShopBalanceReceipt = lazy(() => import('./ShopBalanceReceipt').then(m => ({default:m.ShopBalanceReceipt})));
 const FreezerReceipt = lazy(() => import('./FreezerReceipt').then(m => ({default:m.FreezerReceipt})));
 const RouteBasedDues = lazy(() => import('./RouteBasedDues').then(m => ({ default: m.RouteBasedDues })));
+const RouteSales = lazy(() => import('./RouteSales').then(m => ({ default: m.RouteSales })));
 
 const TabLoadingFallback = () => (
   <div className="h-64 w-full flex flex-col items-center justify-center gap-2 bg-white rounded-xl shadow-sm border border-slate-200 p-8">
@@ -54,6 +55,7 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
     ...(currentUser?.role === 'OWNER' ? [{ id: 'route_based_dues', label: 'Route balance', icon: <MapPin className="w-5 h-5 text-teal-400" /> }] : []),
     ...(currentUser?.role === 'OWNER' ? [{id:'shop_balance_receipt',label:'Shop Balance Receipt',icon:<ReceiptText className="w-5 h-5"/>}] : []),
     ...(currentUser?.role === 'OWNER' ? [{id:'freezer_receipt',label:'Freezer Receipt',icon:<Snowflake className="w-5 h-5"/>}] : []),
+    ...(currentUser?.role === 'OWNER' ? [{id:'route_sales',label:'Route Sales',icon:<TrendingUp className="w-5 h-5 text-blue-400"/>}] : []),
   ];
 
   return (
@@ -168,6 +170,7 @@ export const OwnerSidebarLayout = ({ onLogout }) => {
           {activeTab === 'freezer_receipt' && currentUser?.role === 'OWNER' && <FreezerReceipt />}
           {activeTab === 'shop_balance_receipt' && currentUser?.role === 'OWNER' && <ShopBalanceReceipt />}
           {activeTab === 'route_based_dues' && currentUser?.role === 'OWNER' && <RouteBasedDues />}
+          {activeTab === 'route_sales' && currentUser?.role === 'OWNER' && <RouteSales />}
           {/* DASHBOARD TAB — Renders Owner Executive Dashboard Overview */}
           {activeTab === 'dashboard' && (
             <OwnerDashboardOverview onNavigateTab={(tab) => setActiveTab(tab)} />

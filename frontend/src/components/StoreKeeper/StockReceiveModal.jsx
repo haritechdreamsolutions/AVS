@@ -6,6 +6,7 @@ import { ProductImage } from '../common/ProductImage';
 import { resolveProductImageUrl } from '../../utils/productImageHelper';
 import { sortOwnerProducts } from '../../utils/ownerProductOrder';
 import { purchaseUnit } from '../../../../shared/purchaseUnits.js';
+import { getTrayVolume, getStockLitres, formatLitres } from '../../utils/productVolume';
 
 export const StockReceiveModal = ({ onClose }) => {
   const { receiveDealerStock, apiFetch, API_URL } = useApp();
@@ -52,6 +53,10 @@ export const StockReceiveModal = ({ onClose }) => {
   },[selectedSupplierId,API_URL]);
   const activeProducts=useMemo(()=>sortOwnerProducts(catalog?.products||[]),[catalog]);
   const currentSupplier=catalog?.supplier;
+  const totalReceiveLitres = activeProducts.reduce((sum, product) => {
+    const allocation = allocations[product.id] || {};
+    return sum + (getStockLitres(product, allocation.trays, allocation.pieces) || 0);
+  }, 0);
 
   // Helper: Format warehouse stock into Tray & Loose Pieces or Standard Units based on dynamic pieces_per_unit
   const formatWarehouseStock = (prod) => {
@@ -397,6 +402,7 @@ export const StockReceiveModal = ({ onClose }) => {
                 const isTrayBased = opUnit.isPieceBased; // Only the configured Tray purchase unit.
                 const ppu = Math.max(1, Number(prod.pieces_per_unit || 1));
                 const whStock = formatWarehouseStock(prod);
+                const volume = getTrayVolume(prod);
                 const { trayRate, pieceRate } = getProductBuyRates(prod);
 
                 const alloc = allocations[prod.id] || {};
@@ -440,6 +446,10 @@ export const StockReceiveModal = ({ onClose }) => {
                           {prod.display_name}
                         </span>
                         
+                        {volume && <div className="flex items-center gap-1 flex-wrap mt-1">
+                          <span className="font-black text-[10px] sm:text-[11px] font-mono px-1.5 py-0.5 rounded-md border whitespace-nowrap text-sky-900 bg-sky-100/90 border-sky-300">Tray: {formatLitres(volume.trayLitres)} L</span>
+                          <span className="font-black text-[10px] sm:text-[11px] font-mono px-1.5 py-0.5 rounded-md border whitespace-nowrap text-indigo-900 bg-indigo-100/90 border-indigo-300">Pcs: {formatLitres(volume.pieceMl / 1000)} L</span>
+                        </div>}
                         {/* Warehouse Stock & Live Buy Rates */}
                         <div className="flex flex-wrap items-center gap-1.5 mt-1">
                           <span className="font-bold text-slate-600 text-[10px] sm:text-[11px] bg-slate-100/90 px-1.5 py-0.5 rounded-md border border-slate-200 whitespace-nowrap">
@@ -640,6 +650,7 @@ export const StockReceiveModal = ({ onClose }) => {
             <p className="text-lg sm:text-xl font-black text-white">
               {Number(totalItemsCount).toFixed(1).replace(/\.0$/, '')} <span className="text-xs sm:text-sm text-sky-200 font-normal">Trays/Units</span>
             </p>
+            <p className="text-sm font-bold text-cyan-200">Total Tray Volume: {formatLitres(totalReceiveLitres)} L</p>
           </div>
 
           <div className="text-center sm:text-right space-y-0.5 w-full sm:w-auto">

@@ -1,3 +1,4 @@
+import { getStockLitres } from './productVolume.js';
 // Preserve the received amount. Mixed tray/piece receipts can have different
 // unit rates, so their effective rate is shown rather than repricing history.
 export function purchaseReportRows(records=[]) {
@@ -11,6 +12,7 @@ export function purchaseReportRows(records=[]) {
         if(Math.round(qty*rate*100)===Math.round(total*100))break;
       }
     }
-    return {...record,qty,report_rate:rate,effective_rate:effective,total};
+    const litres = String(record.unit || '').toLowerCase() === 'tray' ? getStockLitres(record, qty) : null;
+    return {...record,qty,report_rate:rate,effective_rate:effective,total,litres};
   });
 }

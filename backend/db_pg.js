@@ -3901,7 +3901,7 @@ export async function addStockMovement(cid,d) {
 }
 
 export async function getEmployeeStock(cid,eid) {
-  return await queryAll('SELECT es.*,p.name as product_name,p.display_name,c.name as category_name,c.operational_unit as category_operational_unit,p.selling_unit,p.base_unit,p.pieces_per_unit,p.unit_selling_price,p.piece_selling_price,p.image_url,p.icon FROM employee_stock es JOIN products p ON p.id=es.product_id LEFT JOIN categories c ON c.id=p.category_id WHERE es.company_id=$1 AND es.employee_id=$2 AND es.qty_units > 0',[cid,eid]);
+  return await queryAll('SELECT es.*,p.name as product_name,p.display_name,p.pack_size,c.name as category_name,c.operational_unit as category_operational_unit,p.selling_unit,p.base_unit,p.pieces_per_unit,p.unit_selling_price,p.piece_selling_price,p.image_url,p.icon FROM employee_stock es JOIN products p ON p.id=es.product_id LEFT JOIN categories c ON c.id=p.category_id WHERE es.company_id=$1 AND es.employee_id=$2 AND es.qty_units > 0',[cid,eid]);
 }
 
 // ====== DASHBOARD SUMMARY & PHASE 4 EXECUTIVE MANAGEMENT ======
@@ -7626,6 +7626,8 @@ export async function getSupplierInwardStockReport(cid, filters = {}) {
        im.movement_no,
        im.product_id,
        COALESCE(im.product_name, p.display_name, p.name, 'Stock Item') as product_name,
+       p.pack_size,
+       (SELECT c.name FROM categories c WHERE c.id=p.category_id AND c.company_id=p.company_id) as category_name,
        COALESCE(im.unit, p.selling_unit, 'Tray') as unit,
        COALESCE(im.unit, p.selling_unit, 'Tray') as selling_unit,
        COALESCE(p.pieces_per_unit, 20) as pieces_per_unit,

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatVehicleStockDisplay } from '../../utils/unitHelper';
+import { getStockLitres, formatLitres } from '../../utils/productVolume';
 
 export const EmployeeHome = ({ onStartBilling }) => {
   const { 
@@ -469,6 +470,7 @@ export const EmployeeHome = ({ onStartBilling }) => {
           <div className="flex flex-col gap-2.5 sm:gap-3">
             {sortOwnerProducts(employeeStock.filter(item => Number(item.qty_units || 0) > 0).map(item=>({...item,name:item.display_name||item.product_name||item.name}))).map((item, idx) => {
               const stockDisplay = formatVehicleStockDisplay(item);
+              const availableLitres = getStockLitres(item, item.qty_units);
 
               return (
                 <div 
@@ -494,6 +496,7 @@ export const EmployeeHome = ({ onStartBilling }) => {
                     <p className="text-xs text-slate-600 font-bold mt-0.5 truncate">
                       {stockDisplay.breakdownText}
                     </p>
+                    {availableLitres !== null && <p className="text-xs font-mono font-extrabold text-cyan-700 mt-1">{formatLitres(availableLitres)} L available</p>}
                   </div>
 
                   <div className="text-right shrink-0 pl-2">

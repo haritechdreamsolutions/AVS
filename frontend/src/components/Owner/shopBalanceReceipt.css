@@ -65,3 +65,11 @@
 .sbr-print-actions .sbr-system-print{background:white;color:#356354;border:1px solid #bdd5cb}
 .sbr-print-status{padding:12px;margin-top:12px;color:#166549;background:#ecfdf5;border-radius:8px;font-size:13px}
 @media(max-width:600px){.sbr-printer-bar{padding:12px;gap:14px}.sbr-printer-bar label,.sbr-print-actions{width:100%}.sbr-print-actions button{flex:1;padding:12px}}
+/* Keep route/shop selections inside the mobile content width. */
+.sbr-page{width:100%;min-width:0;box-sizing:border-box}
+.sbr-controls{grid-template-columns:repeat(2,minmax(0,1fr));min-width:0;max-width:100%}
+.sbr-controls .sbr-selector{min-width:0;max-width:100%;box-sizing:border-box}
+.sbr-selector select{display:block;box-sizing:border-box;max-width:100%;width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sbr-page header,.sbr-results,.sbr-filter-bar,.sbr-printer-bar{min-width:0;max-width:100%;box-sizing:border-box}
+.sbr-page h1,.sbr-results h2{overflow-wrap:anywhere}
+@media screen and (max-width:600px){.sbr-controls{grid-template-columns:minmax(0,1fr)}.sbr-controls .sbr-selector{padding:14px}.sbr-selector select{font-size:16px}.sbr-printer-bar select{min-width:0;max-width:100%;width:100%}.sbr-date-controls{min-width:0;flex-wrap:wrap}.sbr-scroll{width:100%;min-width:0}}

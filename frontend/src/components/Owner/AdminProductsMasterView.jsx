@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { sortOwnerProducts } from '../../utils/ownerProductOrder';
+import { getTrayVolume } from '../../utils/productVolume';
 
 const SELLING_UNITS = ['Tray', 'Box', 'Case', 'Pack', 'Crate', 'Bottle'];
 const BASE_UNITS = ['Piece', 'Box', 'Case', 'Bottle', 'Packet', 'Can', 'Pouches'];
@@ -95,6 +96,13 @@ export const AdminProductsMasterView = () => {
 
   // Validation Form Errors State
   const [formErrors, setFormErrors] = useState({});
+  const volumeCategory = categories.find(c => String(c.id) === String(formData.category_id))?.name || formData.category;
+  const isTrayVolume = String(volumeCategory || '').trim().toLowerCase() === 'tray';
+  const trayVolume = getTrayVolume(formData, volumeCategory);
+  const editVolumeCategory = categories.find(c => String(c.id) === String(selectedProduct?.category_id))?.name || selectedProduct?.category;
+  const isEditTrayVolume = String(editVolumeCategory || '').trim().toLowerCase() === 'tray';
+  const editTrayVolume = getTrayVolume(selectedProduct, editVolumeCategory);
+  const formatVolume = (value) => Number(value.toFixed(6)).toLocaleString('en-IN', { maximumFractionDigits: 6 });
 
   // Automatically keep formData.category_id synchronized with existing activeCategories
   useEffect(() => {
@@ -1168,6 +1176,27 @@ export const AdminProductsMasterView = () => {
             </div>
           </div>
 
+          <section className={`space-y-3 p-4 rounded-2xl border ${isTrayVolume ? 'bg-cyan-50 border-cyan-200' : 'bg-slate-50 border-slate-200 opacity-60'}`} aria-label="Tray volume calculation">
+            <h4 className="font-black text-xs text-slate-800 uppercase tracking-wide">Tray Volume Calculation</h4>
+            {isTrayVolume ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs" aria-live="polite">
+                  <div>
+                    <label htmlFor="piece-volume" className="font-extrabold text-slate-700 block mb-1">Volume per Piece (ml)</label>
+                    <input id="piece-volume" readOnly value={trayVolume ? `${formatVolume(trayVolume.pieceMl)} ml` : ''} placeholder="Enter a valid pack size" className="w-full p-2.5 font-black bg-white border border-cyan-200 rounded-xl" />
+                  </div>
+                  <div>
+                    <label htmlFor="tray-volume" className="font-extrabold text-slate-700 block mb-1">Volume per Tray (L)</label>
+                    <input id="tray-volume" readOnly value={trayVolume ? `${formatVolume(trayVolume.trayLitres)} L` : ''} placeholder="Enter valid packaging details" className="w-full p-2.5 font-black bg-white border border-cyan-200 rounded-xl" />
+                  </div>
+                </div>
+                <p className="text-xs font-bold text-cyan-800">
+                  {trayVolume ? `${formatVolume(trayVolume.pieceMl)} ml × ${formData.pieces_per_unit} pieces ÷ 1000 = ${formatVolume(trayVolume.trayLitres)} L per tray` : 'Enter Pack Size in ml or L (e.g. 200ml, 500ml, 1 Ltr) and a positive whole number of pieces per tray.'}
+                </p>
+              </>
+            ) : <p className="text-xs font-bold text-slate-500">Available for Tray category only.</p>}
+          </section>
+
           {/* SECTION C: PRICING MASTER */}
           <div className="space-y-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
             <h4 className="font-black text-xs text-slate-800 uppercase tracking-wide border-b border-slate-200 pb-2 flex items-center gap-2">
@@ -1586,6 +1615,28 @@ export const AdminProductsMasterView = () => {
                     />
                   </div>
                 </div>
+
+                <section className={`p-3 rounded-2xl border space-y-2 ${isEditTrayVolume ? 'bg-cyan-50 border-cyan-200' : 'bg-slate-50 border-slate-200 opacity-60'}`} aria-label="Edit tray volume calculation">
+                  <h4 className="font-black text-xs text-slate-800 uppercase">Tray Volume Calculation</h4>
+                  {isEditTrayVolume ? (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" aria-live="polite">
+                        <div>
+                          <label htmlFor="edit-piece-volume" className="font-extrabold text-slate-700 block mb-1">Volume per Piece (ml)</label>
+                          <input id="edit-piece-volume" readOnly value={editTrayVolume ? `${formatVolume(editTrayVolume.pieceMl)} ml` : ''} placeholder="Enter a valid pack size" className="w-full p-2 border border-cyan-200 rounded-xl font-bold bg-white" />
+                        </div>
+                        <div>
+                          <label htmlFor="edit-tray-volume" className="font-extrabold text-slate-700 block mb-1">Volume per Tray (L)</label>
+                          <input id="edit-tray-volume" readOnly value={editTrayVolume ? `${formatVolume(editTrayVolume.trayLitres)} L` : ''} placeholder="Enter valid packaging details" className="w-full p-2 border border-cyan-200 rounded-xl font-bold bg-white" />
+                        </div>
+                      </div>
+                      <p className="text-xs font-bold text-cyan-800">
+                        {editTrayVolume ? `${formatVolume(editTrayVolume.pieceMl)} ml × ${selectedProduct.pieces_per_unit} pieces ÷ 1000 = ${formatVolume(editTrayVolume.trayLitres)} L per tray` : 'Enter Pack Size in ml or L (e.g. 200ml, 1 Ltr) and a positive whole number of pieces per tray.'}
+                      </p>
+                      <p className="text-xs text-slate-600">Update saves Pack Size and Pieces per Tray used for this calculation.</p>
+                    </>
+                  ) : <p className="text-xs font-bold text-slate-500">Available for Tray category only.</p>}
+                </section>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
