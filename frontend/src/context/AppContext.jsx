@@ -200,7 +200,11 @@ export const AppProvider = ({ children }) => {
       const backOffice = ['OWNER','STORE_KEEPER'].includes(currentUser?.role);
       const isOwner = (currentUser?.role || '').toUpperCase() === 'OWNER' || (activeRole || '').toUpperCase() === 'OWNER';
       const [shopsRes, villagesRes, prodRes, catRes, empStockRes, summaryRes, salesRes, expRes, movRes, usersRes, routesRes, empRes, driversRes, freezerModelsRes, freezersRes, suppliersRes] = await Promise.all([
-        needs('shops') ? apiFetch(`${API_URL}/shops`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(shops),
+        needs('shops') ? apiFetch(`${API_URL}/shops`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }).then(rows => {
+          // Shop dues are authoritative even when an unrelated stock/master refresh fails.
+          if (generation === refreshGeneration.current && Array.isArray(rows)) setShops(rows);
+          return rows;
+        }) : Promise.resolve(shops),
         needs('villages') ? apiFetch(`${API_URL}/villages`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(villages),
         needs('products') ? apiFetch(`${API_URL}/products`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(products),
         needs('categories') ? apiFetch(`${API_URL}/categories`).then(r => { if (!r.ok) throw new Error('Application data could not be refreshed'); return r.json(); }) : Promise.resolve(categories),
@@ -328,6 +332,11 @@ export const AppProvider = ({ children }) => {
       if (data.success) {
         const fullSale = { ...data.sale, items: data.sale?.items || data.items || [] };
         setActiveBill(fullSale);
+        // A saved bill must immediately count as billed, even if a later data refresh fails.
+        setSales(previous => [fullSale, ...previous.filter(sale =>
+          fullSale.id != null ? String(sale.id) !== String(fullSale.id)
+            : !(fullSale.bill_no && sale.bill_no === fullSale.bill_no)
+        )]);
 
         // Update local shops state immediately
         const targetShopId = saleData.shop_id || fullSale.shop_id;
@@ -1530,12 +1539,12 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const collectShopDue = async (shopId, { amount, mode, idempotency_key }) => {
+  const collectShopDue = async (shopId, { amount, mode, cash_amount, gpay_amount, idempotency_key }) => {
     try {
       const res = await apiFetch(`${API_URL}/shops/${shopId}/collect-due`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, payment_mode: mode, idempotency_key: idempotency_key || crypto.randomUUID() })
+        body: JSON.stringify({ amount, payment_mode: mode, ...(mode === 'SPLIT' ? {cash_amount,gpay_amount} : {}), idempotency_key: idempotency_key || crypto.randomUUID() })
       });
       const data = await res.json();
       if (data.success) {

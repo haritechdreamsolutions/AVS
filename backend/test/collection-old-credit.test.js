@@ -65,4 +65,42 @@ try{
   // two successful CASH collections of 30 and ordinary collection of 50.
   assert.equal(flow.cash,'320.00');assert.equal(flow.gpay,'200.00');
  });
+ await test('driver credit is visible in shop dues and next bill collects it exactly once',async()=>{
+  const employee=(await pool.query("INSERT INTO employees(company_id,employee_code,full_name,route_id) VALUES($1,$2,'Credit driver',$3) RETURNING id",[company,randomUUID().slice(0,15),route])).rows[0].id;
+  const shop=(await pool.query("INSERT INTO shops(company_id,name,code,route_id,ledger_ready) VALUES($1,'Driver credit shop',$2,$3,true) RETURNING id",[company,randomUUID().slice(0,15),route])).rows[0].id;
+  const item=(await pool.query("INSERT INTO products(company_id,name,display_name,base_unit,selling_unit,pieces_per_unit,piece_selling_price,unit_selling_price,warehouse_stock_units) VALUES($1,'Credit item','Credit item','Piece','Piece',1,10,10,100) RETURNING id",[company])).rows[0].id;
+  await db.issueStockToEmployee(company,{employee_id:employee,items:[{product_id:item,quantity:20,unit:'Piece'}],idempotency_key:randomUUID()},owner);
+  const cart={shop_id:shop,items:[{product_id:item,unit_type:'Piece',qty:2,rate:10}],payment_mode:'CREDIT',idempotency_key:randomUUID()};
+  const first=await db.createEmployeeSale(company,employee,'Credit driver',cart,owner);
+  assert.equal(Number(first.sale.shop_current_due),20);
+  assert.equal(Number((await db.getShops(company)).find(s=>s.id===shop).current_due),20);
+  const next={...cart,payment_mode:'CASH',old_credit_paid:20,clear_previous_due:true,include_old_credit:true,idempotency_key:randomUUID()};
+  const paid=await db.createEmployeeSale(company,employee,'Credit driver',next,owner);
+  assert.equal(Number(paid.sale.previous_due),20);assert.equal(Number(paid.sale.old_credit_paid),20);
+  assert.equal(Number(paid.sale.cash_paid),40);assert.equal(Number(paid.sale.shop_current_due),0);
+  await db.createEmployeeSale(company,employee,'Credit driver',next,owner);
+  assert.equal(Number((await db.getShops(company)).find(s=>s.id===shop).current_due),0);
+  assert.equal((await pool.query('SELECT COUNT(*)::int n FROM sales WHERE shop_id=$1',[shop])).rows[0].n,2);
+ });
+ await test('split collection saves cash and UPI atomically, keeps unpaid credit and retries once',async()=>{
+  const village=(await pool.query("INSERT INTO villages(company_id,name,code,route_id,status) VALUES($1,'Split village',$2,$3,'ACTIVE') RETURNING id",[company,randomUUID().slice(0,18),route])).rows[0].id;
+  const employee=(await pool.query("INSERT INTO employees(company_id,employee_code,full_name,route_id) VALUES($1,$2,'Split route driver',$3) RETURNING id",[company,randomUUID().slice(0,18),route])).rows[0].id;
+  const shop=(await pool.query("INSERT INTO shops(company_id,name,code,route_id,village_id,ledger_ready) VALUES($1,'Split shop',$2,$3,$4,true) RETURNING id",[company,randomUUID().slice(0,18),route,village])).rows[0].id;
+  await bill(shop,120);assert.equal(await due(shop),'1200.00');
+  const before=await cashFlow(pool,company,null,{});
+  const data={amount:1000,payment_mode:'SPLIT',cash_amount:600,gpay_amount:400,idempotency_key:randomUUID()};
+  const results=await Promise.all(Array.from({length:8},()=>collectDue(company,shop,data,actor)));
+  assert.ok(results.every(r=>r.remainingDue===200));assert.equal(await due(shop),'200.00');
+  const receipts=(await pool.query('SELECT payment_mode,amount::text FROM receipts WHERE shop_id=$1 ORDER BY id',[shop])).rows;
+  assert.deepEqual(receipts,[{payment_mode:'CASH',amount:'600.00'},{payment_mode:'GPAY',amount:'400.00'}]);
+  assert.equal(Number((await db.getShops(company)).find(s=>s.id===shop).current_due),200);
+  assert.equal(Number((await db.getShops(company,{employee_id:employee})).find(s=>s.id===shop).current_due),200);
+  const flow=await cashFlow(pool,company,null,{});assert.equal(Number(flow.cash)-Number(before.cash),600);assert.equal(Number(flow.gpay)-Number(before.gpay),400);
+  for(const changes of [{amount:300,cash_amount:300,gpay_amount:0},{amount:100,cash_amount:99,gpay_amount:0},{amount:100,cash_amount:-1,gpay_amount:101},{amount:100,cash_amount:'0.001',gpay_amount:100}])await assert.rejects(collectDue(company,shop,{...data,...changes,idempotency_key:randomUUID()},actor));
+  assert.equal(await due(shop),'200.00');
+  await collectDue(company,shop,{amount:100,payment_mode:'SPLIT',cash_amount:0,gpay_amount:100,idempotency_key:randomUUID()},actor);
+  assert.equal(await due(shop),'100.00');
+  const final=await collectDue(company,shop,{amount:100,payment_mode:'CASH',idempotency_key:randomUUID()},actor);
+  assert.equal(final.remainingDue,0);
+ });
 }finally{await pool.end();}

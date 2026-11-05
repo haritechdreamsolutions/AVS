@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { dashboardBusinessDay, dashboardPeriodSales, millisecondsToDashboardMidnight } from '../../utils/executiveDashboardPeriod';
 import { useApp } from '../../context/AppContext';
 import { Search, MapPin, ArrowRight, ArrowLeft, CheckCircle2, Store, ChevronRight } from 'lucide-react';
 
@@ -20,10 +21,28 @@ export const ShopSelection = ({
 
   const [search, setSearch] = useState('');
 
-  // Check if a shop has been billed today
-  const isShopBilledToday = (shopId) => {
-    return (sales || []).some(s => Number(s.shop_id) === Number(shopId));
-  };
+  const [businessDay, setBusinessDay] = useState(() => dashboardBusinessDay());
+  useEffect(() => {
+    let timer;
+    const updateDay = () => {
+      clearTimeout(timer);
+      setBusinessDay(dashboardBusinessDay());
+      timer = setTimeout(updateDay, Math.max(1, millisecondsToDashboardMidnight()));
+    };
+    updateDay();
+    window.addEventListener('focus', updateDay);
+    document.addEventListener('visibilitychange', updateDay);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('focus', updateDay);
+      document.removeEventListener('visibilitychange', updateDay);
+    };
+  }, []);
+  const billedShopIds = useMemo(() => new Set(
+    dashboardPeriodSales(sales, {start:businessDay,end:businessDay})
+      .filter(sale => sale.shop_id != null)
+      .map(sale => String(sale.shop_id))
+  ), [sales, businessDay]);
 
   // Group shops by village
   const villageGroups = useMemo(() => {
@@ -56,7 +75,7 @@ export const ShopSelection = ({
       }
 
       const entry = map.get(key);
-      const isDone = s.completed || isShopBilledToday(s.id);
+      const isDone = billedShopIds.has(String(s.id));
       entry.shops.push({
         ...s,
         completed: isDone
@@ -78,7 +97,7 @@ export const ShopSelection = ({
 
     // Sort by name
     return result.sort((a, b) => a.name.localeCompare(b.name));
-  }, [shops, villages, sales]);
+  }, [shops, villages, billedShopIds]);
 
   // Filtered villages for Village List View
   const filteredVillages = useMemo(() => {
