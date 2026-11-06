@@ -14,6 +14,7 @@ import {
   Wind, ArrowLeft, ClipboardCheck, CheckSquare, Square
 } from 'lucide-react';
 import { toast } from 'sonner';
+import {getTrayVolume,formatLitres} from '../../utils/productVolume';
 import { printStockReport } from '../../services/stockReportPrinter.js';
 
 export const StockReturnModal = ({ onClose }) => {
@@ -52,6 +53,7 @@ export const StockReturnModal = ({ onClose }) => {
   const stockPrintPending = useRef(false);
 
   const [stockPrinting, setStockPrinting] = useState(false);
+  const [stockPaper,setStockPaper] = useState('80mm');
 
   const handleStockReportPrint = async () => {
     if (stockPrintPending.current) return;
@@ -61,6 +63,7 @@ export const StockReturnModal = ({ onClose }) => {
       const report = {
         driver: driverInfo.name || driverInfo.full_name || 'Driver',
         vehicle: driverInfo.vehicle_number || 'N/A',
+        route: stockRouteName,
         date: new Date().toLocaleString('en-GB'),
         items: reconciliationData.items.map(p => {
           const master = masterProducts.find(m => Number(m.id) === Number(p.product_id)) || {};
@@ -71,9 +74,11 @@ export const StockReturnModal = ({ onClose }) => {
         }),
         totalAllocated:reconciliationData.totalAllocated,
         totalSold:reconciliationData.totalSold,
-        totalReturn:reconciliationData.totalReturn
+        totalReturn:reconciliationData.totalReturn,
+        litres:stockLitres
       };
-      await printStockReport(report);
+      await document.fonts.ready;
+      await printStockReport(report,stockPaper);
       setShowStockViewModal(false);
       toast.success('Stock report sent to the printer.');
     } catch (error) {
@@ -202,6 +207,11 @@ export const StockReturnModal = ({ onClose }) => {
 
   // Derived Values
   const driverInfo = driverData?.driver || {};
+  const stockDriverId = driverInfo.id || selectedDriverId;
+  const stockEmployee = employees.find(e=>String(e.id)===String(stockDriverId));
+  const stockAssignedRoute = routes.find(r=>String(r.employee_id)===String(stockDriverId));
+  const stockRouteId = driverData?.session?.route_id || stockAssignedRoute?.id || driverInfo.route_id || stockEmployee?.route_id;
+  const stockRouteName = routes.find(r=>String(r.id)===String(stockRouteId))?.name || driverData?.session?.route_name || driverInfo.route_name || stockEmployee?.route_name || 'Not assigned';
   const salesSummary = driverData?.sales_summary || {};
   const products = driverData?.products || [];
   const expensesList = driverData?.expenses || [];
@@ -437,6 +447,15 @@ export const StockReturnModal = ({ onClose }) => {
       totalReturn: normalizeQuantity(totalRet)
     };
   }, [products]);
+
+  const stockLitres = useMemo(() => reconciliationData.items.reduce((sum,p) => {
+    const master = masterProducts.find(m=>String(m.id)===String(p.product_id)) || {};
+    const product = {...p,...master};
+    const volume = getTrayVolume(product);
+    if(volume && p.isPieceBased){const perPiece=volume.pieceMl/1000;sum.allocated+=p.alloc*perPiece;sum.sold+=p.sold*perPiece;sum.available+=p.retStock*perPiece;}
+    return sum;
+  },{allocated:0,sold:0,available:0}),[reconciliationData,masterProducts]);
+
 
   useEffect(() => {
     setTouchedProductIds(new Set());
@@ -2595,13 +2614,14 @@ export const StockReturnModal = ({ onClose }) => {
                 <span>Back</span>
               </button>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                <select aria-label="Stock receipt paper size" value={stockPaper} disabled={stockPrinting} onChange={e=>setStockPaper(e.target.value)} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white"><option value="58mm">58mm</option><option value="80mm">80 / 83mm</option></select>
                 <button
                   type="button"
                   onClick={handleStockReportPrint}
                   disabled={stockPrinting || reconciliationData.items.length === 0}
                   className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-blue-600/25 active:scale-95 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Print Stock Sheet on Posiflow 80/82mm Printer and Return"
+                  title="Print selected size on Posiflow Bluetooth printer and return"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>{stockPrinting ? 'Printing...' : 'Print'}</span>
@@ -2643,6 +2663,11 @@ export const StockReturnModal = ({ onClose }) => {
                   <span>Date: {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                   <span>{new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
+              </div>
+
+              <div className="flex items-start justify-between gap-3 pt-2 pb-2 text-[10.5px] border-b border-dashed border-slate-400">
+                <span className="text-slate-600 shrink-0">Route:</span>
+                <span className="font-black text-slate-900 text-right break-words">{stockRouteName}</span>
               </div>
 
               {/* Items List (58mm Compact Format) */}
@@ -2705,6 +2730,10 @@ export const StockReturnModal = ({ onClose }) => {
                 </div>
               </div>
 
+              <table className="w-full text-center border-collapse text-[10px]" aria-label="Tray stock litres">
+                <thead><tr><th className="border border-slate-300 p-1">Total L</th><th className="border border-slate-300 p-1">Sold L</th><th className="border border-slate-300 p-1">Available L</th></tr></thead>
+                <tbody><tr>{[stockLitres.allocated,stockLitres.sold,stockLitres.available].map((value,index)=><td key={index} className="border border-slate-300 p-1 font-bold">{formatLitres(value)} L</td>)}</tr></tbody>
+              </table>
               {/* End of Sheet Cut Marker */}
               <div className="text-center text-[9px] text-slate-400 pt-1 border-t border-dotted border-slate-300">
                 *** END OF STOCK SHEET ***

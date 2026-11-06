@@ -83,7 +83,7 @@ export function encodeReceiptRaster(pixels, width, height, compact = true) {
   };
   while (row < height) {
     const start = row, white = blank(row);
-    while (row < height && blank(row) === white) row++;
+    while (row < height && row - start < 128 && blank(row) === white) row++;
     const rows = row - start, bandWidth = white ? 1 : rowBytes;
     const band = new Uint8Array(8 + bandWidth * rows);
     band.set([29, 118, 48, 0, bandWidth, 0, rows % 256, Math.floor(rows / 256)]);
@@ -102,5 +102,5 @@ export function encodeReceiptRaster(pixels, width, height, compact = true) {
 
 export function printRouteDues(report, paper = '80mm', preparedBytes = null) {
   if (!navigator.bluetooth) throw new Error('Bluetooth printing requires Chrome/Edge and a BLE printer. Use System Print for USB or other printers.');
-  return printViaWebBluetooth(null, paper, preparedBytes || routeDuesBuffer(report, paper));
+  return printViaWebBluetooth(null, paper, preparedBytes || routeDuesBuffer(report, paper), {preferResponse:true,writeDelayMs:12});
 }
