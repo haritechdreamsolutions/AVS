@@ -157,7 +157,7 @@ router.get('/suppliers/report-products',requireRole('OWNER'),async(req,res)=>{
  try{res.json(await catalog.purchaseReportProducts(getCid(req),req.query.supplier_id));}catch(e){res.status(400).json({success:false,message:e.message});}
 });
 router.get('/suppliers/:id/products', requireRole('OWNER','STORE_KEEPER'), async(req,res)=>{
- try{res.json(await catalog.companyProducts(getCid(req),req.params.id));}catch(e){res.status(400).json({success:false,message:e.message});}
+ try{res.json(await catalog.companyProducts(getCid(req),req.params.id,{summaryOnly:req.query.summary==='true'&&req.session.role==='OWNER'}));}catch(e){res.status(400).json({success:false,message:e.message});}
 });
 router.post('/suppliers/:id/products',requireRole('OWNER'),async(req,res)=>{
  try{res.json(await catalog.saveCompanyProduct(getCid(req),req.params.id,null,req.body,req.session.userId));}catch(e){res.status(400).json({success:false,message:e.message});}

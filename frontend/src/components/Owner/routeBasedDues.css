@@ -278,3 +278,4 @@ th.dues-serial-heading>span {
  word-break:normal!important;
  overflow-wrap:normal!important;
 }
+.dues-date-filters{display:flex;gap:7px;flex-wrap:wrap;padding:10px 24px;border-bottom:1px solid #e0ece9;background:#f7fbfa;flex-shrink:0}.dues-date-filters button{padding:7px 12px;border-radius:9px;border:1px solid #d4e5e0;background:white;color:#55766d;font-size:11px;font-weight:750;cursor:pointer}.dues-date-filters button[aria-pressed=true]{background:#147d73;color:white;border-color:#147d73}.dues-date-filters button:disabled{opacity:.5;cursor:default}.dues-date-filters>span{font-size:11px;align-self:center}@media(max-width:600px){.dues-date-filters{padding:10px 14px;gap:5px}.dues-date-filters button{flex:1;padding:8px 5px;font-size:10px}}

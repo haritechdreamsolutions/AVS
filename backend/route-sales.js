@@ -2,9 +2,9 @@ import { getTrayVolume } from '../shared/productVolume.js';
 
 // EXISTS prevents repeated accepted returns from duplicating a session's sales.
 export const routeSalesSQL = `
- SELECT s.id AS sale_id, s.shop_id, COALESCE(s.shop_name,sh.name,'Shop') AS shop_name,
+ SELECT s.id AS sale_id, s.shop_id, COALESCE(sh.name,s.shop_name,'Shop') AS shop_name,
  COALESCE(s.sale_date::text,to_char(s.created_at AT TIME ZONE 'Asia/Kolkata','YYYY-MM-DD')) AS date,
- ds.route_id, si.product_id, si.product_name, si.qty, si.unit_type,
+ ds.route_id, sh.village_id, si.product_id, si.product_name, si.qty, si.unit_type,
  si.stock_qty_units, si.conversion_to_base, p.pack_size,p.pieces_per_unit,c.name AS category_name
  FROM sales s
  JOIN driver_sessions ds ON ds.id=s.session_id AND ds.company_id=s.company_id
@@ -12,8 +12,10 @@ export const routeSalesSQL = `
  LEFT JOIN products p ON p.id=si.product_id AND p.company_id=s.company_id
  LEFT JOIN categories c ON c.id=p.category_id AND c.company_id=p.company_id
  LEFT JOIN shops sh ON sh.id=s.shop_id AND sh.company_id=s.company_id
+ LEFT JOIN villages v ON v.id=sh.village_id AND v.company_id=s.company_id
  WHERE s.company_id=$1 AND COALESCE(s.status,'ACTIVE')!='CANCELLED'
  AND p.id IS NOT NULL AND p.deleted_at IS NULL
+ AND COALESCE(v.route_id,sh.route_id)=ds.route_id
  AND EXISTS (SELECT 1 FROM driver_returns dr WHERE dr.company_id=s.company_id
    AND dr.session_id=s.session_id AND dr.status IN ('VERIFIED','ACCEPTED')
    AND dr.checked_at IS NOT NULL AND dr.checked_by IS NOT NULL)
@@ -25,7 +27,7 @@ export function buildRouteSales(lines) {
  for(const line of lines){
   // Shop identity, rather than a bill's name snapshot, merges repeat trips.
   const key=JSON.stringify([line.route_id,line.date,line.shop_id ?? line.shop_name]);
-  if(!grouped.has(key))grouped.set(key,{route_id:line.route_id,date:line.date,shop_id:line.shop_id,shop_name:line.shop_name,products:{},litres:0});
+  if(!grouped.has(key))grouped.set(key,{route_id:line.route_id,village_id:line.village_id,date:line.date,shop_id:line.shop_id,shop_name:line.shop_name,products:{},litres:0});
   const row=grouped.get(key),pid=String(line.product_id);
   const volume=getTrayVolume(line),qty=Number(line.qty)||0;
   const ppu=Number(line.conversion_to_base)||Number(line.pieces_per_unit)||1;
@@ -55,7 +57,13 @@ export function routeSalesHandler(query){
     return res.json(routes.map(r=>({...r,litres:totals.get(String(r.id))||0})));
    }
    const {rows:products}=await query("SELECT id,COALESCE(NULLIF(display_name,''),name) AS name,pack_size FROM products WHERE company_id=$1 AND deleted_at IS NULL ORDER BY id",[cid]);
-   return res.json({route,products,rows});
+   const [villageResult,shopResult]=await Promise.all([
+    query("SELECT id,name FROM villages WHERE company_id=$1 AND route_id=$2 AND status='ACTIVE' ORDER BY name,id",[cid,Number(raw)]),
+    query(`SELECT sh.id,sh.name,sh.village_id FROM shops sh
+      LEFT JOIN villages v ON v.id=sh.village_id AND v.company_id=sh.company_id
+      WHERE sh.company_id=$1 AND sh.is_active=TRUE AND COALESCE(v.route_id,sh.route_id)=$2 ORDER BY sh.name,sh.id`,[cid,Number(raw)])
+   ]);
+   return res.json({route,products,rows,villages:villageResult.rows,shops:shopResult.rows});
   }catch(error){next(error);}
  };
 }

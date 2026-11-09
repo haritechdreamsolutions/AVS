@@ -1,8 +1,12 @@
+import {encodeReceiptRaster} from './routeDuesPrinter.js';
+import {formatLitres} from '../../../shared/productVolume.js';
 import { printViaWebBluetooth } from './printerService.js';
 
 // 80/82mm ESC/POS printers use a 576-dot printable area. Raster output preserves Tamil names.
-export function stockReportBuffer(report, doc = document) {
-  const width = 576, padding = 12;
+export function stockReportBuffer(report, doc = document, paper = '80mm') {
+  const width = paper === '58mm' ? 384 : 576, padding = 12;
+  const scale=width/576;
+  const positions=[330,400,470].map(x=>Math.round(x*scale));
   const canvas = doc.createElement('canvas');
   canvas.width = width;
   const ctx = canvas.getContext('2d');
@@ -17,8 +21,8 @@ export function stockReportBuffer(report, doc = document) {
     }
     lines.push(line); return lines;
   };
-  const rows = report.items.map(item => ({...item, lines:wrap(item.name, 250)}));
-  canvas.height = 370 + rows.reduce((height, row) => height + Math.max(32, row.lines.length * 27 + 10), 0)
+  const rows = report.items.map(item => ({...item, lines:wrap(item.name, Math.round(250*scale))}));
+  canvas.height = 530 + wrap(`Route: ${report.route || "Not assigned"}`, width-padding*2).length*27 + rows.reduce((height, row) => height + Math.max(32, row.lines.length * 27 + 10), 0)
     + wrap(`Driver: ${report.driver}`, width-padding*2).length*27
     + wrap(`Vehicle: ${report.vehicle}`, width-padding*2).length*27;
   ctx.font = `bold 20px ${font}`;
@@ -35,30 +39,26 @@ export function stockReportBuffer(report, doc = document) {
   for (const line of wrap(`Driver: ${report.driver}`,width-padding*2)) {text(line);y+=27;}
   for (const line of wrap(`Vehicle: ${report.vehicle}`,width-padding*2)) {text(line);y+=27;}
   text(report.date);y+=20;rule();
-  text('ITEM');text('ASG',330,18,'right');text('SLD',400,18,'right');text('AVL',470,18,'right');text('CHK',width-padding,18,'right');y+=18;rule();
+  y+=8;
+  for (const line of wrap(`Route: ${report.route || 'Not assigned'}`,width-padding*2)) {text(line);y+=27;}
+  rule();
+  text('ITEM');text('ASG',positions[0],18,'right');text('SLD',positions[1],18,'right');text('AVL',positions[2],18,'right');text('CHK',width-padding,18,'right');y+=18;rule();
   for (const row of rows) {
-    row.lines.forEach((line,i)=>{text(line,padding,20);if(i===0){text(row.alloc,330,20,'right');text(row.sold,400,20,'right');text(row.retStock,470,20,'right');ctx.strokeRect(528,y-18,20,20);}y+=27;});
+    row.lines.forEach((line,i)=>{text(line,padding,20);if(i===0){text(row.alloc,positions[0],20,'right');text(row.sold,positions[1],20,'right');text(row.retStock,positions[2],20,'right');ctx.strokeRect(width-padding-20,y-18,20,20);}y+=27;});
     y+=10;
   }
   rule();
   for (const [label,value] of [['TOTAL ASSIGNED:',report.totalAllocated],['TOTAL SOLD:',report.totalSold],['TOTAL AVAILABLE:',report.totalReturn]]) {
     text(label,padding,22);text(value,width-padding,24,'right');y+=34;
   }
+  if(report.litres){rule();const headings=['TOTAL L','SOLD L','AVL L'];const values=[report.litres.allocated,report.litres.sold,report.litres.available];headings.forEach((label,i)=>text(label,(i+.5)*width/3,16,'center'));y+=28;values.forEach((value,i)=>text(formatLitres(value)+' L',(i+.5)*width/3,18,'center'));y+=34;}
   text('*** END OF STOCK SHEET ***',width/2,18,'center');y+=38;
   const pixels=ctx.getImageData(0,0,width,y).data;
-  const rowBytes=width/8, bytes=new Uint8Array(8+rowBytes*y+7);
-  bytes.set([0x1d,0x76,0x30,0, rowBytes,0,y%256,Math.floor(y/256)]);
-  for(let row=0;row<y;row++)for(let x=0;x<width;x++){
-    const i=(row*width+x)*4;
-    if(pixels[i]*0.299+pixels[i+1]*0.587+pixels[i+2]*0.114<160)bytes[8+row*rowBytes+Math.floor(x/8)]|=128>>(x%8);
-  }
-  bytes.set([10,10,10,0x1d,0x56,66,0],bytes.length-7);
-  const result=new Uint8Array(bytes.length+5);result.set([27,64,27,97,1]);result.set(bytes,5);
-  return result;
+  return encodeReceiptRaster(pixels,width,y);
 }
 
-export async function printStockReport(report) {
+export async function printStockReport(report, paper = '80mm') {
   if (!report.items.length) throw new Error('No stock products are available to print.');
-  const bytes=stockReportBuffer(report);
-  return printViaWebBluetooth(null,'80mm',bytes);
+  const bytes=stockReportBuffer(report,document,paper);
+  return printViaWebBluetooth(null,paper,bytes,{preferResponse:true,writeDelayMs:12});
 }

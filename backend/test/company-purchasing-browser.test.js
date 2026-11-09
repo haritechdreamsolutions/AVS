@@ -51,7 +51,13 @@ try{
  await modal.getByLabel('Purchase rate / Tray',{exact:false}).fill('240');assert.equal(await modal.getByLabel('Purchase rate / piece',{exact:false}).inputValue(),'20.00');
  await modal.getByLabel('Purchase rate / Tray',{exact:false}).fill('120');await modal.getByLabel('Purchase rate / piece',{exact:false}).fill('11');await modal.getByRole('button',{name:'Save & activate',exact:true}).click();await modal.waitFor({state:'detached'});
  await owner.getByRole('switch',{name:'Deactivate Master Milk',exact:true}).waitFor();
- await company('Beta Foods');await owner.getByRole('switch',{name:'Activate Milk Case',exact:true}).click();await owner.getByRole('switch',{name:'Deactivate Milk Case',exact:true}).waitFor();
+ await company('Beta Foods');
+ const toggleRequests=[];const recordToggle=request=>toggleRequests.push(new URL(request.url()).pathname);owner.on('request',recordToggle);
+ const toggleStart=performance.now();
+ await owner.getByRole('switch',{name:'Activate Milk Case',exact:true}).click();await owner.getByRole('switch',{name:'Deactivate Milk Case',exact:true}).waitFor();
+ owner.off('request',recordToggle);
+ assert.ok(!toggleRequests.some(path=>path==='/api/products'||path==='/api/suppliers'||path==='/api/dashboard/summary'),'Toggle must not refetch the app directory');
+ console.log('Company activation UI update: '+Math.round(performance.now()-toggleStart)+'ms');
  assert.equal((await pool.query('SELECT COUNT(*)::int n FROM products WHERE company_id=$1',[tenant])).rows[0].n,3);
  assert.equal(Number((await pool.query('SELECT warehouse_stock_units FROM products WHERE id=$1',[masters[0].id])).rows[0].warehouse_stock_units),0);
  await owner.screenshot({path:'.tmp/existing-company-products.png',fullPage:true});
@@ -65,7 +71,7 @@ try{
  await keeper.getByText('142.00',{exact:false}).first().waitFor();await keeper.getByRole('button',{name:'CONFIRM STOCK RECEIVE',exact:false}).click();await keeper.getByText('Stock received and modal closed',{exact:true}).waitFor();
  assert.equal(Math.round(Number((await pool.query('SELECT warehouse_stock_units FROM products WHERE id=$1',[masters[0].id])).rows[0].warehouse_stock_units)*12),14);
  await owner.getByRole('button',{name:'Purchase history',exact:true}).click();await owner.getByLabel('Filter company').selectOption(alphaId);await owner.getByRole('cell',{name:'Master Milk',exact:true}).waitFor();
- assert.deepEqual(await owner.locator('.ci-report-table thead th').allTextContents(),['Date','Product name','Qty','Rate','Total amount']);assert.match(await owner.locator('.ci-report-table tbody').innerText(),/1 Tray \+ 2 Pcs/);assert.match(await owner.locator('.ci-report-table tfoot').innerText(),/142.00/);
+ assert.deepEqual(await owner.locator('.ci-report-table thead th').allTextContents(),['Date','Product name','Qty','Litres','Rate','Total amount']);assert.match(await owner.locator('.ci-report-table tbody').innerText(),/1 Tray \+ 2 Pcs/);assert.match(await owner.locator('.ci-report-table tfoot').innerText(),/142.00/);
  const options=await owner.getByLabel('Filter product').locator('option').allTextContents();assert.ok(options.includes('Master Milk'));assert.ok(!options.includes('Milk Case'));assert.ok(!options.includes('Spare Box'));
  await owner.getByLabel('From date',{exact:true}).fill('2000-01-01');await owner.getByLabel('To date',{exact:true}).fill('2000-01-02');await owner.getByText('No purchases match these filters.',{exact:true}).waitFor();
  await owner.getByLabel('From date',{exact:true}).fill('');await owner.getByLabel('To date',{exact:true}).fill(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata'}).format(new Date()));await owner.getByRole('cell',{name:'Master Milk',exact:true}).waitFor();

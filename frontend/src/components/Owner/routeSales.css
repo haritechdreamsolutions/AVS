@@ -66,3 +66,36 @@
  .rs-page .rs-table-part table small{font-size:10px}
  .rs-page .rs-table-part col{width:auto}
 }
+/* Compact report filters; shortcuts only filter the loaded report. */
+.rs-page .rs-filters{grid-template-columns:minmax(140px,1.2fr) auto minmax(125px,1fr) minmax(125px,1fr) auto;gap:10px;padding:16px}
+.rs-page .rs-filters label{font-size:11px;gap:5px}.rs-page .rs-filters select,.rs-page .rs-filters input{padding:9px;min-height:40px;font-size:12px}
+.rs-periods{display:flex;gap:4px;align-items:center;flex-wrap:wrap;padding-bottom:1px}
+.rs-page .rs-periods button{min-height:38px;padding:8px 9px;font-size:10px;background:#edf2ff;color:#4b64a2;border:1px solid #d6e0f7;white-space:nowrap}
+.rs-page .rs-periods button[aria-pressed=true]{background:#4269d4;color:white;border-color:#4269d4}
+.rs-page .rs-filters>button{padding:9px 12px;min-height:40px;font-size:11px}
+@media(max-width:1200px){.rs-page .rs-filters{grid-template-columns:minmax(130px,1fr) minmax(120px,1fr) minmax(120px,1fr) auto}.rs-periods{grid-column:1/-1;grid-row:2}}
+@media(max-width:600px){.rs-page .rs-filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}.rs-page .rs-filters label:first-child{grid-column:1/-1}.rs-periods{grid-row:auto;grid-column:1/-1}.rs-page .rs-periods button{flex:1;padding:8px 5px}.rs-page .rs-filters input,.rs-page .rs-filters select{font-size:16px;min-width:0;width:100%}.rs-page .rs-filters>button{grid-column:1/-1}}
+/* Route village/shop selectors first, centred date controls below. */
+.rs-page .rs-cascade-filters{display:flex;flex-direction:column;align-items:stretch;gap:16px}
+.rs-location-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;width:100%}
+.rs-date-row{display:flex;justify-content:center;align-items:flex-end;gap:10px;flex-wrap:wrap;width:100%}
+.rs-date-row label{width:165px;min-width:0}.rs-date-row .rs-periods{grid-column:auto;grid-row:auto;align-self:flex-end}
+.rs-page .rs-date-row>button{min-height:40px;padding:9px 12px;font-size:11px}
+.rs-location-row select{max-width:100%;min-width:0;text-overflow:ellipsis}
+@media(max-width:600px){.rs-location-row{grid-template-columns:minmax(0,1fr);gap:12px}.rs-date-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.rs-date-row label{width:100%}.rs-date-row .rs-periods{grid-column:1/-1}.rs-date-row>button{grid-column:1/-1}.rs-page .rs-location-row label:first-child{grid-column:auto}}
+/* Compact, balanced route report filters. */
+.rs-page .rs-cascade-filters{padding:20px;gap:17px;background:linear-gradient(115deg,#fff,#f8fbff);border-color:#cbdcf2;box-shadow:0 6px 20px -16px #4667a775}
+.rs-location-row{grid-template-columns:repeat(2,minmax(0,320px));justify-content:start;gap:16px}
+.rs-page .rs-location-row label{font-size:11px;font-weight:800;color:#506886;gap:6px}
+.rs-page .rs-location-row select{min-height:40px;padding:9px 12px;background:white;border:1px solid #c6d7ed;border-radius:10px;box-shadow:0 2px 5px #35578206;font-size:12px}
+.rs-date-row{display:grid;grid-template-columns:minmax(260px,1.35fr) minmax(140px,1fr) minmax(140px,1fr) auto;align-items:end;gap:14px;padding-top:15px;border-top:1px solid #e5edf7}
+.rs-date-row label{width:auto}
+.rs-page .rs-date-row .rs-periods{grid-column:auto;grid-row:auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;padding:3px;border-radius:12px;background:#edf2fb;border:1px solid #e0e8f6}
+.rs-page .rs-date-row .rs-periods button{border:0;border-radius:8px;background:transparent;min-height:34px;padding:7px 8px;color:#657a9c;font-size:11px}
+.rs-page .rs-date-row .rs-periods button:hover{background:#e0e9fa;color:#3d5caa}
+.rs-page .rs-date-row .rs-periods button[aria-pressed=true]{background:white;color:#4269d4;box-shadow:0 2px 7px #4269d41c}
+.rs-page .rs-date-row input{min-height:42px;background:white;border-radius:10px;border-color:#c6d7ed;padding:9px 12px}
+.rs-page .rs-date-row>button{min-height:42px;border:1px solid #d5e0f1;background:#edf3fd;color:#536f9e;border-radius:10px;box-shadow:none}
+@media(max-width:1100px){.rs-date-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}.rs-page .rs-date-row .rs-periods{grid-column:1/-1}.rs-location-row{grid-template-columns:repeat(2,minmax(0,1fr));max-width:660px}}
+@media(max-width:600px){.rs-page .rs-cascade-filters{padding:14px;gap:14px}.rs-location-row{width:100%;gap:10px}.rs-page .rs-location-row select{font-size:16px;padding:8px;min-height:42px}.rs-date-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-top:12px}.rs-page .rs-date-row .rs-periods{grid-column:1/-1}.rs-page .rs-date-row .rs-periods button{font-size:10px;padding:7px 3px}.rs-date-row>button{grid-column:1/-1}.rs-page .rs-date-row input{font-size:16px;padding:8px;min-width:0}.rs-location-row label{min-width:0}}
+@media(max-width:360px){.rs-location-row{grid-template-columns:minmax(0,1fr)}}

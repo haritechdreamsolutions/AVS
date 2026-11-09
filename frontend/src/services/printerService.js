@@ -952,7 +952,7 @@ export const generateEscPos80mmRasterBuffer = (bill) => {
  * Direct Web Bluetooth GATT Print implementation (Native Chrome Bluetooth Device Selector).
  * Automatically caches the connected printer for instant one-click subsequent printing.
  */
-export const printViaWebBluetooth = async (billData, widthMode = '58mm', preparedBytes = null) => {
+export const printViaWebBluetooth = async (billData, widthMode = '58mm', preparedBytes = null, options = {}) => {
   if (!navigator.bluetooth) {
     if (preparedBytes) throw new Error('Direct stock printing requires Chrome/Edge Bluetooth support and a paired BLE printer.');
     return printViaRawBT(billData, widthMode);
@@ -980,8 +980,9 @@ export const printViaWebBluetooth = async (billData, widthMode = '58mm', prepare
       const chunkSize = 100;
       for (let i = 0; i < escPosBytes.length; i += chunkSize) {
         const chunk = escPosBytes.slice(i, i + chunkSize);
-        if (writeCharacteristic.properties.writeWithoutResponse) {
+        if (writeCharacteristic.properties.writeWithoutResponse && !(options.preferResponse && writeCharacteristic.properties.write)) {
           await writeCharacteristic.writeValueWithoutResponse(chunk);
+          if (options.writeDelayMs) await new Promise(resolve => setTimeout(resolve, options.writeDelayMs));
         } else {
           await writeCharacteristic.writeValue(chunk);
         }
@@ -1019,8 +1020,9 @@ export const printViaWebBluetooth = async (billData, widthMode = '58mm', prepare
         const chunkSize = 100;
         for (let i = 0; i < escPosBytes.length; i += chunkSize) {
           const chunk = escPosBytes.slice(i, i + chunkSize);
-          if (writeCharacteristic.properties.writeWithoutResponse) {
+          if (writeCharacteristic.properties.writeWithoutResponse && !(options.preferResponse && writeCharacteristic.properties.write)) {
             await writeCharacteristic.writeValueWithoutResponse(chunk);
+          if (options.writeDelayMs) await new Promise(resolve => setTimeout(resolve, options.writeDelayMs));
           } else {
             await writeCharacteristic.writeValue(chunk);
           }
@@ -1088,8 +1090,9 @@ export const printViaWebBluetooth = async (billData, widthMode = '58mm', prepare
   const chunkSize = 100;
   for (let i = 0; i < escPosBytes.length; i += chunkSize) {
     const chunk = escPosBytes.slice(i, i + chunkSize);
-    if (writeCharacteristic.properties.writeWithoutResponse) {
+    if (writeCharacteristic.properties.writeWithoutResponse && !(options.preferResponse && writeCharacteristic.properties.write)) {
       await writeCharacteristic.writeValueWithoutResponse(chunk);
+          if (options.writeDelayMs) await new Promise(resolve => setTimeout(resolve, options.writeDelayMs));
     } else {
       await writeCharacteristic.writeValue(chunk);
     }
