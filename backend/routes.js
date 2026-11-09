@@ -162,6 +162,9 @@ router.get('/suppliers/:id/products', requireRole('OWNER','STORE_KEEPER'), async
 router.post('/suppliers/:id/products',requireRole('OWNER'),async(req,res)=>{
  try{res.json(await catalog.saveCompanyProduct(getCid(req),req.params.id,null,req.body,req.session.userId));}catch(e){res.status(400).json({success:false,message:e.message});}
 });
+router.patch('/suppliers/:id/products/:productId/activate',requireRole('OWNER'),async(req,res)=>{
+ try{res.json(await catalog.activateCompanyProduct(getCid(req),req.params.id,req.params.productId,req.session.userId));}catch(e){res.status(400).json({success:false,message:e.message});}
+});
 router.put('/suppliers/:id/products/:productId',requireRole('OWNER'),async(req,res)=>{
  try{res.json(await catalog.saveCompanyProduct(getCid(req),req.params.id,req.params.productId,req.body,req.session.userId));}catch(e){res.status(400).json({success:false,message:e.message});}
 });

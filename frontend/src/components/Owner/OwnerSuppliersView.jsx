@@ -1,3 +1,4 @@
+import {savedCompanyRates} from '../../../../shared/companyRates.js';
 import {formatLitres} from '../../utils/productVolume';
 import {companyProductActive} from '../../../../shared/supplierProducts.js';
 ﻿import React,{useEffect,useRef,useState} from 'react';
@@ -107,12 +108,14 @@ export function OwnerSuppliersView(){
  function configureProduct(p){
   const assigned=companyProductActive(catalog?.supplier?.product_rates,p.id);
   const value=catalog?.supplier?.product_rates?.[p.id]??p.purchase_price;
-  const rates=typeof value==='object'?value:{tray_rate:value};
+  let rates=typeof value==='object'?value:{tray_rate:value};
+  try{rates=savedCompanyRates(value);}catch{/* Keep invalid stored fields editable instead of blocking the form. */}
   setError('');setProductForm({...emptyProduct,existing_product_id:String(p.id),id:assigned?p.id:null,tray_rate:rates.tray_rate??rates.rate??'',piece_rate:rates.piece_rate??''});
  }
  function toggleCompanyProduct(p){
   const assigned=companyProductActive(catalog?.supplier?.product_rates,p.id);
   if(assigned)return productMutation(()=>write(`/suppliers/${selected}/products/${p.id}`,'DELETE'),'Product deactivated for this company. Previous purchases are retained.');
+  if(Object.hasOwn(catalog?.supplier?.product_rates||{},String(p.id)))return productMutation(()=>write(`/suppliers/${selected}/products/${p.id}/activate`,'PATCH'),'Product activated for this company.');
   const old=catalog?.supplier?.product_rates?.[p.id];
   const rate=typeof old==='object'?Number(old.tray_rate??old.rate):Number(old??p.purchase_price);
   if(rate<=0){configureProduct(p);return;}

@@ -1,4 +1,5 @@
 import {companyProductActive} from '../shared/supplierProducts.js';
+import {savedCompanyRates} from '../shared/companyRates.js';
 import {uploadedProductImage} from './product-image.js';
 import {pool} from './database/pg_pool.js';
 import {paise,amount,retryTransaction} from './financial.js';
@@ -13,6 +14,12 @@ export function purchaseRates(value){
  return {tray_rate:Number(amount(tray)),...(piece===null?{}:{piece_rate:Number(amount(piece))}),is_active:obj.is_active!==false,...(Object.hasOwn(obj,'image_url')?{image_url:uploadedProductImage(obj.image_url)}:{})};
 }
 async function lockedSupplier(c,cid,id){const row=(await c.query('SELECT * FROM suppliers WHERE company_id=$1 AND id=$2 AND is_active=TRUE FOR UPDATE',[cid,id])).rows[0];if(!row)throw Error('Company not found or inactive');return row;}
+async function saveOneRate(c,cid,supplierId,id,rate){
+ await c.query(`INSERT INTO supplier_product_rates(company_id,supplier_id,product_id,buy_rate) VALUES($1,$2,$3,$4)
+ ON CONFLICT(supplier_id,product_id) DO UPDATE SET buy_rate=EXCLUDED.buy_rate,updated_at=NOW()`,[cid,supplierId,id,rate.tray_rate??rate.rate??0]);
+ return (await c.query(`UPDATE suppliers SET product_rates=jsonb_set(COALESCE(product_rates,'{}'::jsonb),ARRAY[$1::text],$2::jsonb),updated_at=NOW()
+ WHERE company_id=$3 AND id=$4 RETURNING *`,[String(id),JSON.stringify(rate),cid,supplierId])).rows[0];
+}
 async function saveRates(c,cid,supplierId,rates){
  const clean={};
  const entries=Object.entries(rates||{});
@@ -57,7 +64,10 @@ export async function companyProducts(cid,id,{summaryOnly=false}={}){
  const supplier=(await pool.query('SELECT * FROM suppliers WHERE company_id=$1 AND id=$2 AND is_active=TRUE',[cid,id])).rows[0];if(!supplier)throw Error('Company not found');
  if(summaryOnly)return {supplier,products:[]};
  const products=(await pool.query("SELECT p.*,c.name category_name FROM products p LEFT JOIN categories c ON c.id=p.category_id AND c.company_id=p.company_id WHERE p.company_id=$1 AND p.deleted_at IS NULL AND p.is_active=TRUE AND $2::jsonb ? p.id::text ORDER BY p.name,p.id",[cid,JSON.stringify(supplier.product_rates||{})])).rows;
- return {supplier,products:products.filter(p=>companyProductActive(supplier.product_rates,p.id)).map(p=>{const rates=purchaseRates(supplier.product_rates[p.id]);return {...p,buy_rates:rates};})};
+ const activeProducts=products.filter(p=>companyProductActive(supplier.product_rates,p.id));
+ const normalized={...supplier.product_rates};
+ const result=activeProducts.map(p=>{const rates=savedCompanyRates(supplier.product_rates[p.id]);normalized[p.id]=rates;return {...p,buy_rates:rates};});
+ return {supplier:{...supplier,product_rates:normalized},products:result};
 }
 export async function saveCompanyProduct(cid,supplierId,productId,data,actor){return transaction(async c=>{
  const supplier=await lockedSupplier(c,cid,supplierId);
@@ -70,7 +80,7 @@ export async function saveCompanyProduct(cid,supplierId,productId,data,actor){re
  if(rates.tray_rate<=0)throw Error('Purchase rate per unit must be greater than zero');
  const previous=supplier.product_rates?.[product.id];
  if(previous&&typeof previous==='object'&&Object.hasOwn(previous,'image_url'))rates.image_url=previous.image_url;
- const updated=await saveRates(c,cid,supplierId,{...(supplier.product_rates||{}),[product.id]:rates});
+ const updated=await saveOneRate(c,cid,supplierId,product.id,rates);
  await audit(c,cid,actor,productId?'COMPANY_PRODUCT_RATES_UPDATED':'COMPANY_PRODUCT_ACTIVATED',supplierId,{product_id:product.id,buy_rates:{tray_rate:rates.tray_rate,piece_rate:rates.piece_rate}});
  return {success:true,product,supplier:updated};
 });}
@@ -78,8 +88,23 @@ export async function saveCompanyProduct(cid,supplierId,productId,data,actor){re
 export async function removeCompanyProduct(cid,supplierId,productId,actor){return transaction(async c=>{
  const supplier=await lockedSupplier(c,cid,supplierId);const rates={...(supplier.product_rates||{})};
  if(!Object.hasOwn(rates,String(productId)))throw Error('Product not assigned to this company');
- rates[productId]={...purchaseRates(rates[productId]),is_active:false};const updated=await saveRates(c,cid,supplierId,rates);
+ // Deactivation is a flag update, never a revalidation/rewrite of every rate.
+ const previous=rates[productId];
+ const disabled={...(previous&&typeof previous==='object'?previous:{tray_rate:previous}),is_active:false};
+ const updated=(await c.query(`UPDATE suppliers SET product_rates=jsonb_set(COALESCE(product_rates,'{}'::jsonb),ARRAY[$1::text],$2::jsonb),updated_at=NOW() WHERE id=$3 AND company_id=$4 RETURNING *`,[String(productId),JSON.stringify(disabled),supplierId,cid])).rows[0];
  await audit(c,cid,actor,'COMPANY_PRODUCT_REMOVED',supplierId,{product_id:productId});return {success:true,supplier:updated};
+});}
+
+export async function activateCompanyProduct(cid,supplierId,productId,actor){return transaction(async c=>{
+ const supplier=await lockedSupplier(c,cid,supplierId);
+ const product=(await c.query('SELECT id FROM products WHERE company_id=$1 AND id=$2 AND is_active=TRUE AND deleted_at IS NULL FOR UPDATE',[cid,productId])).rows[0];
+ if(!product)throw Error('Product not found or inactive');
+ if(!Object.hasOwn(supplier.product_rates||{},String(productId)))throw Error('Configure the purchase rate before activating this product');
+ const rate={...savedCompanyRates(supplier.product_rates[productId]),is_active:true};
+ if(rate.tray_rate<=0)throw Error('Purchase rate per unit must be greater than zero');
+ const updated=await saveOneRate(c,cid,supplierId,productId,rate);
+ await audit(c,cid,actor,'COMPANY_PRODUCT_ACTIVATED',supplierId,{product_id:Number(productId)});
+ return {success:true,supplier:updated};
 });}
 
 export async function purchaseReportProducts(cid,supplierId){

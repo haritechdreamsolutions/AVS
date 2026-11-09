@@ -48,6 +48,23 @@ try{
   assert.equal((await db.getSupplierInwardStockReport(cid,{supplier_id:a.id})).summary.total_valuation,142);assert.equal((await catalog.purchaseReportProducts(cid,a.id)).length,0);assert.deepEqual((await catalog.purchaseReportProducts(cid,b.id)).map(p=>p.id),[box.id]);
   await activate(a.id,milk,150,12.5);assert.equal((await db.getSupplierInwardStockReport(cid,{supplier_id:a.id})).summary.total_valuation,142);
  });
+ await test('legacy high precision rates cannot block toggles, rate edits or receiving',async()=>{
+  const legacy=(await catalog.saveCompany(cid,null,{name:'Legacy import',contact_person:'Manager',phone:'123'},actor)).supplier;
+  const imported={[milk.id]:{tray_rate:120.00000000000001,piece_rate:10.000000000000002,is_active:true},[box.id]:{tray_rate:'250.0000',is_active:true},[spare.id]:{tray_rate:'invalid legacy row',is_active:false}};
+  await pool.query('UPDATE suppliers SET product_rates=$1::jsonb WHERE id=$2',[JSON.stringify(imported),legacy.id]);
+  const before=await stock(milk.id);
+  assert.equal((await catalog.companyProducts(cid,legacy.id)).products.find(p=>p.id===milk.id).buy_rates.piece_rate,10);
+  await catalog.removeCompanyProduct(cid,legacy.id,milk.id,actor);
+  assert.ok(!(await catalog.companyProducts(cid,legacy.id)).products.some(p=>p.id===milk.id));
+  const reactivated=await catalog.activateCompanyProduct(cid,legacy.id,milk.id,actor);
+  assert.equal(reactivated.supplier.product_rates[milk.id].piece_rate,10);
+  assert.deepEqual(reactivated.supplier.product_rates[spare.id],imported[spare.id]);
+  await catalog.saveCompanyProduct(cid,legacy.id,milk.id,{buy_rates:{tray_rate:120,piece_rate:10}},actor);
+  await assert.rejects(catalog.saveCompanyProduct(cid,legacy.id,milk.id,{buy_rates:{tray_rate:'120.001',piece_rate:10}},actor),/two decimal/);
+  await db.receiveStock(cid,{supplier_id:legacy.id,items:[{product_id:milk.id,quantity:14/12,total_pieces:14,inward_trays:1,inward_pieces:2,unit:'Tray',rate:120,piece_rate:10,total_amount:140}],idempotency_key:randomUUID()},actor);
+  assert.equal(Math.round(((await stock(milk.id))-before)*12),14);
+  await assert.rejects(catalog.activateCompanyProduct(cid+9999,legacy.id,milk.id,actor),/not found/);
+ });
  await test('globally inactive products and deleted companies cannot receive; reports remain',async()=>{
   await pool.query('UPDATE products SET is_active=FALSE WHERE id=$1',[milk.id]);assert.equal((await catalog.companyProducts(cid,a.id)).products.length,0);assert.equal((await catalog.purchaseReportProducts(cid,a.id)).length,0);await assert.rejects(db.receiveStock(cid,receive(),actor),/inactive/);
   await catalog.removeCompany(cid,a.id,actor);await catalog.removeCompany(cid,a.id,actor);assert.equal((await db.getSupplierInwardStockReport(cid,{supplier_id:a.id})).summary.total_valuation,142);

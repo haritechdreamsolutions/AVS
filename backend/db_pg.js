@@ -1,4 +1,5 @@
 import {companyProductActive} from '../shared/supplierProducts.js';
+import {savedCompanyRates} from '../shared/companyRates.js';
 import {purchaseUnit} from '../shared/purchaseUnits.js';
 import bcrypt from 'bcrypt';
 import { driverPerformance, routePerformance } from './performance-reports.js';
@@ -1381,7 +1382,7 @@ async function receiveStockAttempt(cid, data, actorUserId) {
       if(supplier){
         const rates=supplier.product_rates||{};
         if(!companyProductActive(rates,pid))throw new Error('Product is not assigned to the selected company.');
-        const configured=rates[pid];
+        const configured=savedCompanyRates(rates[pid]);
         itemRate=Number(typeof configured==='object'?(configured.tray_rate??configured.rate):configured);
         pieceRate=typeof configured==='object'&&configured.piece_rate!==undefined?Number(configured.piece_rate):Number((itemRate/ppu).toFixed(2));
         if(item.rate!==undefined&&paise(item.rate)!==paise(itemRate))throw new Error('Company rate changed. Reopen Receive Stock to load the latest rates.');
