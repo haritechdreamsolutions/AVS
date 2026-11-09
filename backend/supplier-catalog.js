@@ -15,14 +15,20 @@ export function purchaseRates(value){
 async function lockedSupplier(c,cid,id){const row=(await c.query('SELECT * FROM suppliers WHERE company_id=$1 AND id=$2 AND is_active=TRUE FOR UPDATE',[cid,id])).rows[0];if(!row)throw Error('Company not found or inactive');return row;}
 async function saveRates(c,cid,supplierId,rates){
  const clean={};
- for(const [id,value] of Object.entries(rates||{})){
+ const entries=Object.entries(rates||{});
+ for(const [id,value] of entries){
   if(!/^[1-9]\d*$/.test(id))throw Error('Invalid company product');
-  const p=(await c.query('SELECT id,is_active,deleted_at FROM products WHERE company_id=$1 AND id=$2',[cid,id])).rows[0];
-  if(!p)throw Error('Company product is unavailable');
   clean[id]=purchaseRates(value);
  }
+ const ids=Object.keys(clean).map(Number);
+ if(ids.length){
+  const found=await c.query('SELECT id FROM products WHERE company_id=$1 AND id=ANY($2::int[])',[cid,ids]);
+  if(found.rows.length!==ids.length)throw Error('Company product is unavailable');
+ }
  await c.query('DELETE FROM supplier_product_rates WHERE company_id=$1 AND supplier_id=$2',[cid,supplierId]);
- for(const [id,rate] of Object.entries(clean))await c.query('INSERT INTO supplier_product_rates(company_id,supplier_id,product_id,buy_rate) VALUES($1,$2,$3,$4)',[cid,supplierId,id,rate.tray_rate]);
+ if(ids.length)await c.query(`INSERT INTO supplier_product_rates(company_id,supplier_id,product_id,buy_rate)
+  SELECT $1,$2,r.product_id,r.buy_rate FROM jsonb_to_recordset($3::jsonb) AS r(product_id integer,buy_rate numeric)`,
+  [cid,supplierId,JSON.stringify(ids.map(id=>({product_id:id,buy_rate:clean[id].tray_rate})))]);
  return (await c.query('UPDATE suppliers SET product_rates=$1::jsonb,updated_at=NOW() WHERE id=$2 AND company_id=$3 RETURNING *',[JSON.stringify(clean),supplierId,cid])).rows[0];
 }
 export async function saveCompany(cid,id,data,actor){return transaction(async c=>{
@@ -47,8 +53,9 @@ export async function removeCompany(cid,id,actor){return transaction(async c=>{
  await c.query('UPDATE suppliers SET is_active=FALSE,updated_at=NOW() WHERE id=$1 AND company_id=$2',[id,cid]);
  await audit(c,cid,actor,'SUPPLIER_DEACTIVATED',id);return {success:true,message:'Company removed; purchase history retained.'};
 });}
-export async function companyProducts(cid,id){
+export async function companyProducts(cid,id,{summaryOnly=false}={}){
  const supplier=(await pool.query('SELECT * FROM suppliers WHERE company_id=$1 AND id=$2 AND is_active=TRUE',[cid,id])).rows[0];if(!supplier)throw Error('Company not found');
+ if(summaryOnly)return {supplier,products:[]};
  const products=(await pool.query("SELECT p.*,c.name category_name FROM products p LEFT JOIN categories c ON c.id=p.category_id AND c.company_id=p.company_id WHERE p.company_id=$1 AND p.deleted_at IS NULL AND p.is_active=TRUE AND $2::jsonb ? p.id::text ORDER BY p.name,p.id",[cid,JSON.stringify(supplier.product_rates||{})])).rows;
  return {supplier,products:products.filter(p=>companyProductActive(supplier.product_rates,p.id)).map(p=>{const rates=purchaseRates(supplier.product_rates[p.id]);return {...p,buy_rates:rates};})};
 }
@@ -59,7 +66,7 @@ export async function saveCompanyProduct(cid,supplierId,productId,data,actor){re
  const product=(await c.query('SELECT * FROM products WHERE company_id=$1 AND id=$2 AND deleted_at IS NULL AND is_active=TRUE FOR UPDATE',[cid,id])).rows[0];
  if(!product)throw Error('Product not found or inactive');
  if(productId&&!companyProductActive(supplier.product_rates,id))throw Error('Product is not active for this company');
- const rates=purchaseRates(data.buy_rates??data);
+ const rates=purchaseRates({...data.buy_rates??data,is_active:true});
  if(rates.tray_rate<=0)throw Error('Purchase rate per unit must be greater than zero');
  const previous=supplier.product_rates?.[product.id];
  if(previous&&typeof previous==='object'&&Object.hasOwn(previous,'image_url'))rates.image_url=previous.image_url;

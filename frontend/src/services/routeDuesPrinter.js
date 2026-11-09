@@ -31,6 +31,7 @@ export function routeDuesBuffer(report, paper = '80mm', doc = document, compact 
   for (const value of [`Route: ${report.name}`, `Driver: ${report.driver_name || '-'}`, report.printedAt]) {
     for (const part of wrap(value, width - 24, 19)) { text(part, 12, 19); y += 28; }
   }
+  if(report.from){for(const part of wrap(`Bills: ${report.from.split('-').reverse().join('/')} - ${report.to.split('-').reverse().join('/')}`,width-24,19)){text(part,12,19);y+=28;}}
   line();
   const nameX = 62, amountX = width - 12;
   // Reserve enough room for the largest exact amount before wrapping names.

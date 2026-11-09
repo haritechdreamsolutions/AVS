@@ -20,8 +20,10 @@ const emptyCompany={name:'',contact_person:'',phone:''};
 const emptyProduct={existing_product_id:'',tray_rate:'',piece_rate:''};
 
 export function OwnerSuppliersView(){
- const {apiFetch,API_URL,refreshData}=useApp();
- const [companies,setCompanies]=useState([]),[master,setMaster]=useState([]);
+ const {apiFetch,API_URL,products:contextProducts=[],setSuppliers}=useApp();
+ const [companies,setCompanies]=useState([]);
+ const [fallbackProducts,setFallbackProducts]=useState([]);
+ const master=contextProducts.length?contextProducts:fallbackProducts;
  const [tab,setTab]=useState('companies'),[selected,setSelected]=useState(''),[catalog,setCatalog]=useState(null),[catalogBusy,setCatalogBusy]=useState(false);
  const [search,setSearch]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false);
  const [deletingCompany,setDeletingCompany]=useState(null);
@@ -37,14 +39,14 @@ export function OwnerSuppliersView(){
  }
  const write=(path,method,data)=>request(path,{method,headers:{'Content-Type':'application/json'},...(data?{body:JSON.stringify(data)}:{})});
  async function loadDirectory(){
-  const [list,products]=await Promise.all([request('/suppliers?include_inactive=true'),request('/products')]);
-  setCompanies(list);setMaster(products);return list;
+  const [list,products]=await Promise.all([request('/suppliers?include_inactive=true'),contextProducts.length?Promise.resolve(null):request('/products')]);
+  setCompanies(list);if(products)setFallbackProducts(products);return list;
  }
  useEffect(()=>{let live=true;loadDirectory().catch(e=>{if(live)setError(e.message);}).finally(()=>{if(live)setLoading(false);});return()=>{live=false;};},[]);
  useEffect(()=>{
   setCatalog(null);if(!selected)return;
   let live=true;const controller=new AbortController();setCatalogBusy(true);
-  request(`/suppliers/${selected}/products`,{signal:controller.signal}).then(data=>{if(live)setCatalog(data);}).catch(e=>{if(live&&e.name!=='AbortError')setError(e.message);}).finally(()=>{if(live)setCatalogBusy(false);});
+  request(`/suppliers/${selected}/products?summary=true`,{signal:controller.signal}).then(data=>{if(live)setCatalog(data);}).catch(e=>{if(live&&e.name!=='AbortError')setError(e.message);}).finally(()=>{if(live)setCatalogBusy(false);});
   return()=>{live=false;controller.abort();};
  },[selected]);
  useEffect(()=>{
@@ -77,10 +79,22 @@ export function OwnerSuppliersView(){
   if(saveLock.current)return;saveLock.current=true;setSaving(true);setError('');setNotice('');
   try{
    await work();setNotice(message);
-   await loadDirectory();
+   const updatedCompanies=await loadDirectory();
+   if(setSuppliers)setSuppliers(updatedCompanies);
    const activeId=selection.current;
-   if(activeId){try{const data=await request(`/suppliers/${activeId}/products`);if(selection.current===activeId)setCatalog(data);}catch{if(selection.current===activeId){setCatalog(null);setSelected('');}}}
-   if(refreshData)await refreshData();
+   if(activeId){try{const data=await request(`/suppliers/${activeId}/products?summary=true`);if(selection.current===activeId)setCatalog(data);}catch{if(selection.current===activeId){setCatalog(null);setSelected('');}}}
+  }catch(e){setError(e.message);}finally{saveLock.current=false;setSaving(false);}
+ }
+ async function productMutation(work,message){
+  if(saveLock.current)return;saveLock.current=true;setSaving(true);setError('');setNotice('');
+  try{
+   const data=await work();
+   if(!data?.supplier)throw Error('Company update response is missing. Please reload and retry.');
+   const supplier=data.supplier;
+   setCompanies(previous=>previous.map(c=>String(c.id)===String(supplier.id)?supplier:c));
+   if(setSuppliers)setSuppliers(previous=>previous.map(c=>String(c.id)===String(supplier.id)?supplier:c));
+   if(selection.current===String(supplier.id))setCatalog(previous=>({...previous,supplier}));
+   setNotice(message);
   }catch(e){setError(e.message);}finally{saveLock.current=false;setSaving(false);}
  }
  const selectedCompany=companies.find(c=>String(c.id)===String(selected));
@@ -98,12 +112,12 @@ export function OwnerSuppliersView(){
  }
  function toggleCompanyProduct(p){
   const assigned=companyProductActive(catalog?.supplier?.product_rates,p.id);
-  if(assigned)return mutation(()=>write(`/suppliers/${selected}/products/${p.id}`,'DELETE'),'Product deactivated for this company. Previous purchases are retained.');
+  if(assigned)return productMutation(()=>write(`/suppliers/${selected}/products/${p.id}`,'DELETE'),'Product deactivated for this company. Previous purchases are retained.');
   const old=catalog?.supplier?.product_rates?.[p.id];
   const rate=typeof old==='object'?Number(old.tray_rate??old.rate):Number(old??p.purchase_price);
   if(rate<=0){configureProduct(p);return;}
   const buy_rates={tray_rate:rate,...(p.selling_unit==='Tray'?{piece_rate:typeof old==='object'&&old.piece_rate!==undefined?old.piece_rate:Number((rate/Number(p.pieces_per_unit||1)).toFixed(2))}:{})};
-  return mutation(()=>write(`/suppliers/${selected}/products`,'POST',{existing_product_id:p.id,buy_rates}),'Product activated for this company.');
+  return productMutation(()=>write(`/suppliers/${selected}/products`,'POST',{existing_product_id:p.id,buy_rates}),'Product activated for this company.');
  }
  const filter=(key,value)=>setFilters(old=>({...old,[key]:value,...(key==='supplier_id'?{product_id:'ALL'}:{})}));
  const linked=master.find(p=>String(p.id)===String(productForm?.existing_product_id));
@@ -151,7 +165,7 @@ export function OwnerSuppliersView(){
     setDeletingCompany(null);
    },'Company deleted. Previous purchases and reports are retained.')}><Trash2 size={16}/>{saving?'Deleting...':'Delete company'}</button></footer></div></div></div>}
   {companyForm&&<div className="ci-overlay"><div role="dialog" aria-modal="true" aria-labelledby="ci-company-title" className="ci-modal"><header><div><span className="ci-eyebrow">PURCHASE COMPANY</span><h2 id="ci-company-title">{companyForm.id?'Edit company':'Add company'}</h2></div><button className="ci-icon-button" aria-label="Close company form" disabled={saving} onClick={()=>setCompanyForm(null)}><X size={20}/></button></header><form onSubmit={e=>{e.preventDefault();mutation(async()=>{const data=await write(companyForm.id?`/suppliers/${companyForm.id}`:'/suppliers',companyForm.id?'PUT':'POST',companyForm);setSelected(String(data.supplier.id));setCompanyForm(null);},'Company saved. Activate its existing products below.');}}><label>Company name<input required maxLength={150} value={companyForm.name} onChange={e=>setCompanyForm({...companyForm,name:e.target.value})}/></label><label>Manager name<input required maxLength={100} value={companyForm.contact_person} onChange={e=>setCompanyForm({...companyForm,contact_person:e.target.value})}/></label><label>Manager phone<input required type="tel" maxLength={30} value={companyForm.phone} onChange={e=>setCompanyForm({...companyForm,phone:e.target.value})}/></label>{error&&<p role="alert" className="ci-error">{error}</p>}<footer><button type="button" className="ci-secondary" disabled={saving} onClick={()=>setCompanyForm(null)}>Cancel</button><button disabled={saving}><Save size={16}/>{saving?'Saving...':'Save company'}</button></footer></form></div></div>}
-  {productForm&&linked&&<div className="ci-overlay"><div role="dialog" aria-modal="true" aria-labelledby="ci-product-title" className="ci-modal"><header><div><span className="ci-eyebrow">{selectedCompany?.name}</span><h2 id="ci-product-title">{productForm.id?'Edit purchase rates':'Activate product'}</h2></div><button className="ci-icon-button" aria-label="Close product form" disabled={saving} onClick={()=>setProductForm(null)}><X size={20}/></button></header><form onSubmit={e=>{e.preventDefault();mutation(async()=>{await write(`/suppliers/${selected}/products${productForm.id?'/'+productForm.id:''}`,productForm.id?'PUT':'POST',{existing_product_id:linked.id,buy_rates:{tray_rate:productForm.tray_rate,...(units==='Tray'?{piece_rate:pieceRate}:{})}});setProductForm(null);},'Company product rates saved and product activated.');}}>
+  {productForm&&linked&&<div className="ci-overlay"><div role="dialog" aria-modal="true" aria-labelledby="ci-product-title" className="ci-modal"><header><div><span className="ci-eyebrow">{selectedCompany?.name}</span><h2 id="ci-product-title">{productForm.id?'Edit purchase rates':'Activate product'}</h2></div><button className="ci-icon-button" aria-label="Close product form" disabled={saving} onClick={()=>setProductForm(null)}><X size={20}/></button></header><form onSubmit={e=>{e.preventDefault();productMutation(async()=>{const result=await write(`/suppliers/${selected}/products${productForm.id?'/'+productForm.id:''}`,productForm.id?'PUT':'POST',{existing_product_id:linked.id,buy_rates:{tray_rate:productForm.tray_rate,...(units==='Tray'?{piece_rate:pieceRate}:{})}});setProductForm(null);return result;},'Company product rates saved and product activated.');}}>
    <div className="ci-product-name"><ProductImage src={resolveProductImageUrl(linked)} alt={linked.display_name||linked.name} size={64}/><div><strong>{linked.display_name||linked.name}</strong><small>{units}{units==='Tray'?` / ${pieces} pieces`:''}</small></div></div>
    <div className="ci-form-grid"><label>Purchase rate / {units} (INR)<input required type="number" min="0.01" step="0.01" value={productForm.tray_rate} onChange={e=>setProduct('tray_rate',e.target.value)}/></label>{units==='Tray'&&<label>Purchase rate / piece (INR)<input type="number" min="0.01" step="0.01" value={productForm.piece_rate} placeholder={pieceRate} onChange={e=>setProduct('piece_rate',e.target.value)}/></label>}</div>
    {units==='Tray'&&<p className="ci-help">Loose pieces use {currency(pieceRate)} per piece.</p>}{error&&<p role="alert" className="ci-error">{error}</p>}<footer><button type="button" className="ci-secondary" disabled={saving} onClick={()=>setProductForm(null)}>Cancel</button><button disabled={saving}><Save size={16}/>{saving?'Saving...':productForm.id?'Save rates':'Save & activate'}</button></footer>
